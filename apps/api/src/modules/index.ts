@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { registerOrgModule } from './org/routes';
+import { registerPassesModule } from './passes/routes';
 import { registerRulesModule } from './rules/routes';
 import { registerTenantsModule } from './tenants/routes';
 
@@ -8,4 +9,5 @@ export function registerModules(app: FastifyInstance): void {
   registerOrgModule(app);
   registerTenantsModule(app);
   registerRulesModule(app);
+  registerPassesModule(app);
 }

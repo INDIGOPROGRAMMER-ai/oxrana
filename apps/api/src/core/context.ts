@@ -113,6 +113,11 @@ export class Scope {
     return this.ctx.organizationId;
   }
 
+  /** Вложенная транзакция (SAVEPOINT): ошибка внутри откатывает только её — строка пакета. */
+  nested<T>(fn: (scope: Scope) => Promise<T>): Promise<T> {
+    return this.db.transaction((sp) => fn(new Scope(sp, this.ctx, this.emitted)));
+  }
+
   /** Запись аудита «было → стало, кто, с какого устройства, причина» (CLAUDE.md п. 6). */
   async audit(input: AuditInput): Promise<void> {
     const { actor } = this.ctx;
