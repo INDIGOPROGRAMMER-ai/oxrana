@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { findDependencyViolations } from './check-deps';
+import { findPurityViolations } from './check-engine-purity';
 import { FORBIDDEN_NAMES, findSiteNames } from './check-no-site-names';
 
 const REPO_ROOT = join(import.meta.dirname, '..');
@@ -92,5 +93,53 @@ describe('граф зависимостей (ADR-002)', () => {
     expect(findDependencyViolations(root).map((v) => v.message)).toEqual([
       expect.stringContaining('не вправе зависеть от @oxrana/api'),
     ]);
+  });
+});
+
+describe('движок и номера — чистые функции (CLAUDE.md п. 1, ADR-009)', () => {
+  it('репозиторий чист', () => {
+    expect(findPurityViolations(REPO_ROOT)).toEqual([]);
+  });
+
+  it('находит системные часы, пояс среды, сеть и Node API', () => {
+    const root = fixture({
+      'packages/engine/src/bad.ts': [
+        'const a = Date.now();',
+        'const b = new Date();',
+        'const c = new Date(0).getHours();',
+        "const d = new Date(0).toLocaleString('ru-RU');",
+        'const e = Math.random();',
+        "import { readFileSync } from 'node:fs';",
+        "const f = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit' });",
+        'const g = fetch("/x");',
+        'const ok = Date.now; // сам идентификатор без вызова не считается',
+      ].join('\n'),
+      'packages/plates/src/good.ts':
+        "export const f = (i: number, timeZone: string) => new Intl.DateTimeFormat('ru-RU', { timeZone }).format(new Date(i));\n",
+    });
+    const found = findPurityViolations(root);
+    expect(found.map((v) => v.line)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(found.every((v) => v.file === 'packages/engine/src/bad.ts')).toBe(true);
+  });
+
+  it('комментарии и тесты не проверяются', () => {
+    const root = fixture({
+      'packages/engine/src/doc.ts':
+        '/**\n * Не используем Date.now().\n */\nexport const x = 1; // Date.now()\n',
+      'packages/engine/src/x.test.ts': 'const t = Date.now();\n',
+      'packages/plates/src/.keep': '',
+    });
+    expect(findPurityViolations(root)).toEqual([]);
+  });
+});
+
+describe('версия движка', () => {
+  it('ENGINE_VERSION совпадает с версией пакета — она пишется в gate_decisions.engine_version', () => {
+    const pkg = JSON.parse(
+      readFileSync(join(REPO_ROOT, 'packages/engine/package.json'), 'utf8'),
+    ) as { version: string };
+    const source = readFileSync(join(REPO_ROOT, 'packages/engine/src/evaluate.ts'), 'utf8');
+    const version = /export const ENGINE_VERSION = '([^']+)'/.exec(source)?.[1];
+    expect(version).toBe(pkg.version);
   });
 });

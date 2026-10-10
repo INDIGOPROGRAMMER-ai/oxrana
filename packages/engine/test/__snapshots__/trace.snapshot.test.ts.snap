@@ -1,0 +1,1428 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`снимки trace > сценарий 1: фура ДНС, 24/25 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s1",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "details": {
+      "status": "approved",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "tenant_status",
+    "details": {
+      "status": "active",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "contract",
+    "details": {
+      "validTo": null,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_validity",
+    "details": {
+      "validFrom": 1773082800000,
+      "validTo": 1773169140000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "single_used",
+    "details": {
+      "visits": 0,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "open": false,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "vehicles",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "ruleIds": [
+        "09032d35-014b-5a71-ba60-5267563b9717",
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "working_hours",
+    "result": "pass",
+  },
+  {
+    "check": "time_window",
+    "details": {
+      "earliest": 1773122400000,
+      "earlyToleranceMin": 0,
+      "lateToleranceMin": 60,
+      "latest": 1773133200000,
+      "policyId": "29eed283-5144-5052-b220-c41508a168d3",
+      "windowFrom": 1773122400000,
+      "windowTo": 1773129600000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "dock_required",
+    "details": {
+      "dockId": "af2e0e02-4cee-5c08-8da3-c596affa3891",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "quota",
+    "details": {
+      "quotas": [
+        {
+          "capacity": 25,
+          "enforcement": "hard",
+          "occupied": 24,
+          "quotaId": "cbca4c51-20b2-52cb-a77a-bd5b9a879e1e",
+          "wouldBe": 25,
+        },
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pedestrian_rule",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+]
+`;
+
+exports[`снимки trace > сценарий 2: фура ДНС, 25/25 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s2",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "details": {
+      "status": "approved",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "tenant_status",
+    "details": {
+      "status": "active",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "contract",
+    "details": {
+      "validTo": null,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_validity",
+    "details": {
+      "validFrom": 1773082800000,
+      "validTo": 1773169140000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "single_used",
+    "details": {
+      "visits": 0,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "open": false,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "vehicles",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "ruleIds": [
+        "09032d35-014b-5a71-ba60-5267563b9717",
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "working_hours",
+    "result": "pass",
+  },
+  {
+    "check": "time_window",
+    "details": {
+      "earliest": 1773122400000,
+      "earlyToleranceMin": 0,
+      "lateToleranceMin": 60,
+      "latest": 1773133200000,
+      "policyId": "29eed283-5144-5052-b220-c41508a168d3",
+      "windowFrom": 1773122400000,
+      "windowTo": 1773129600000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "dock_required",
+    "details": {
+      "dockId": "af2e0e02-4cee-5c08-8da3-c596affa3891",
+    },
+    "result": "pass",
+  },
+  {
+    "basis": "п. … (ПРОВЕРИТЬ)",
+    "check": "quota",
+    "details": {
+      "quotas": [
+        {
+          "capacity": 25,
+          "enforcement": "hard",
+          "occupied": 25,
+          "quotaId": "cbca4c51-20b2-52cb-a77a-bd5b9a879e1e",
+          "wouldBe": 26,
+        },
+      ],
+    },
+    "result": "fail",
+    "settingLink": "Настройки → Лимиты → ДНС → Грузовые",
+    "severity": "wait",
+  },
+  {
+    "check": "pedestrian_rule",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+]
+`;
+
+exports[`снимки trace > сценарий 5: малотоннажный ДНС на КПП-2 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s5",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "details": {
+      "status": "approved",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "tenant_status",
+    "details": {
+      "status": "active",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "contract",
+    "details": {
+      "validTo": null,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_validity",
+    "details": {
+      "validFrom": 1773082800000,
+      "validTo": 1773169140000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "single_used",
+    "details": {
+      "visits": 0,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "open": false,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "vehicles",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "ruleIds": [
+        "4e479075-d7e9-59ca-946c-80c6d298a4b0",
+      ],
+    },
+    "result": "fail",
+    "settingLink": "Настройки → Маршруты",
+    "severity": "wrong_gate",
+  },
+  {
+    "check": "working_hours",
+    "result": "pass",
+  },
+  {
+    "check": "time_window",
+    "details": {
+      "earliest": 1773122400000,
+      "earlyToleranceMin": 0,
+      "lateToleranceMin": 60,
+      "latest": 1773133200000,
+      "policyId": "29eed283-5144-5052-b220-c41508a168d3",
+      "windowFrom": 1773122400000,
+      "windowTo": 1773129600000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "dock_required",
+    "details": {
+      "dockId": "39205165-4635-5334-b287-302be7e7d8c1",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "quota",
+    "details": {
+      "quotas": [
+        {
+          "capacity": 25,
+          "enforcement": "hard",
+          "occupied": 0,
+          "quotaId": "cbca4c51-20b2-52cb-a77a-bd5b9a879e1e",
+          "wouldBe": 1,
+        },
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pedestrian_rule",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+]
+`;
+
+exports[`снимки trace > сценарий 7: опоздание 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s7",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "details": {
+      "status": "approved",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "tenant_status",
+    "details": {
+      "status": "active",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "contract",
+    "details": {
+      "validTo": null,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_validity",
+    "details": {
+      "validFrom": 1773082800000,
+      "validTo": 1773169140000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "single_used",
+    "details": {
+      "visits": 0,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "open": false,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "vehicles",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "ruleIds": [
+        "09032d35-014b-5a71-ba60-5267563b9717",
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "working_hours",
+    "result": "pass",
+  },
+  {
+    "check": "time_window",
+    "details": {
+      "earlyToleranceMin": 0,
+      "lateToleranceMin": 60,
+      "latest": 1773140400000,
+      "policyId": "29eed283-5144-5052-b220-c41508a168d3",
+      "windowFrom": 1773133200000,
+      "windowTo": 1773136800000,
+    },
+    "result": "fail",
+    "settingLink": "Настройки → Окна прибытия",
+    "severity": "deny",
+  },
+  {
+    "check": "dock_required",
+    "details": {
+      "dockId": "af2e0e02-4cee-5c08-8da3-c596affa3891",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "quota",
+    "details": {
+      "quotas": [
+        {
+          "capacity": 25,
+          "enforcement": "hard",
+          "occupied": 0,
+          "quotaId": "cbca4c51-20b2-52cb-a77a-bd5b9a879e1e",
+          "wouldBe": 1,
+        },
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pedestrian_rule",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+]
+`;
+
+exports[`снимки trace > сценарий 8: ДЛ-Транс сверх лимита 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s8",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "details": {
+      "status": "approved",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "tenant_status",
+    "details": {
+      "status": "active",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "contract",
+    "details": {
+      "validTo": null,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_validity",
+    "details": {
+      "validFrom": 1773082800000,
+      "validTo": 1773169140000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "single_used",
+    "details": {
+      "visits": 0,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "open": false,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "vehicles_and_pedestrians",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "ruleIds": [
+        "0a77b589-52cc-578a-99dc-ecd254a57e50",
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "working_hours",
+    "result": "pass",
+  },
+  {
+    "check": "time_window",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+  {
+    "check": "dock_required",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+  {
+    "basis": "п. … (ПРОВЕРИТЬ)",
+    "check": "quota",
+    "details": {
+      "quotas": [
+        {
+          "capacity": 15,
+          "enforcement": "soft",
+          "occupied": 15,
+          "quotaId": "24db0f0d-1576-5d49-b040-2e975a80b358",
+          "wouldBe": 16,
+        },
+      ],
+    },
+    "result": "fail",
+    "settingLink": "Настройки → Лимиты → ДЛ-Транс → Легковые",
+    "severity": "overage",
+  },
+  {
+    "check": "pedestrian_rule",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+]
+`;
+
+exports[`снимки trace > сценарий 10: фура Континента, лимит 0 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s10",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "details": {
+      "status": "approved",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "tenant_status",
+    "details": {
+      "status": "active",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "contract",
+    "details": {
+      "validTo": null,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_validity",
+    "details": {
+      "validFrom": 1773082800000,
+      "validTo": 1773169140000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "single_used",
+    "details": {
+      "visits": 0,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "open": false,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "vehicles",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "ruleIds": [
+        "09032d35-014b-5a71-ba60-5267563b9717",
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "working_hours",
+    "result": "pass",
+  },
+  {
+    "check": "time_window",
+    "details": {
+      "earliest": 1773122400000,
+      "earlyToleranceMin": 0,
+      "lateToleranceMin": 60,
+      "latest": 1773133200000,
+      "policyId": "29eed283-5144-5052-b220-c41508a168d3",
+      "windowFrom": 1773122400000,
+      "windowTo": 1773129600000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "dock_required",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+  {
+    "basis": "п. … (ПРОВЕРИТЬ)",
+    "check": "quota",
+    "details": {
+      "quotas": [
+        {
+          "capacity": 0,
+          "enforcement": "hard",
+          "occupied": 0,
+          "quotaId": "12234c05-ad28-5c18-ac7b-38941399c0e0",
+          "wouldBe": 1,
+        },
+      ],
+    },
+    "result": "fail",
+    "settingLink": "Настройки → Лимиты → Континент → Фура и грузовой свыше 5 т",
+    "severity": "deny",
+  },
+  {
+    "check": "pedestrian_rule",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+]
+`;
+
+exports[`снимки trace > сценарий 13: автобус ДНС по исключению 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s13",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "details": {
+      "status": "approved",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "tenant_status",
+    "details": {
+      "status": "active",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "contract",
+    "details": {
+      "validTo": null,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_validity",
+    "details": {
+      "validFrom": 1773082800000,
+      "validTo": 1773169140000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "single_used",
+    "details": {
+      "visits": 0,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "open": false,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "vehicles_and_pedestrians",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "ruleIds": [
+        "0a77b589-52cc-578a-99dc-ecd254a57e50",
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "working_hours",
+    "result": "pass",
+  },
+  {
+    "check": "time_window",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+  {
+    "check": "dock_required",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+  {
+    "check": "quota",
+    "details": {
+      "exception": "Служебный автобус ДНС",
+    },
+    "result": "skipped",
+    "skippedBy": {
+      "exceptionId": "be8613a6-0c03-58b6-af70-b02e275d361e",
+    },
+  },
+  {
+    "check": "pedestrian_rule",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+]
+`;
+
+exports[`снимки trace > сценарий 14: X5 в 03:00 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s14",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "details": {
+      "status": "approved",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "tenant_status",
+    "details": {
+      "status": "active",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "contract",
+    "details": {
+      "validTo": null,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_validity",
+    "details": {
+      "validFrom": 1773082800000,
+      "validTo": 1773169140000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "single_used",
+    "details": {
+      "visits": 0,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "open": false,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "vehicles",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "ruleIds": [
+        "09032d35-014b-5a71-ba60-5267563b9717",
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "working_hours",
+    "details": {
+      "exception": "Агроторг (X5) — круглосуточно",
+    },
+    "result": "skipped",
+    "skippedBy": {
+      "exceptionId": "ad9ff429-a0eb-53fa-8336-2dbd40fe9991",
+    },
+  },
+  {
+    "check": "time_window",
+    "details": {
+      "exception": "Агроторг (X5) — круглосуточно",
+    },
+    "result": "skipped",
+    "skippedBy": {
+      "exceptionId": "ad9ff429-a0eb-53fa-8336-2dbd40fe9991",
+    },
+  },
+  {
+    "check": "dock_required",
+    "details": {
+      "dockId": "93aa859c-9eed-5e59-8fc6-58ad60f065ad",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "quota",
+    "details": {
+      "quotas": [
+        {
+          "capacity": 7,
+          "enforcement": "hard",
+          "occupied": 0,
+          "quotaId": "7fe4252f-f01d-5bd3-859c-103a68d3aa61",
+          "wouldBe": 1,
+        },
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pedestrian_rule",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+]
+`;
+
+exports[`снимки trace > сценарий 16: выезд без отметки въезда 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s16",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "open": false,
+    },
+    "result": "fail",
+    "severity": "info",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "vehicles_and_pedestrians",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "reason": "any_gate_out",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "tenant_status",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "contract",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "pass_validity",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "single_used",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "working_hours",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "time_window",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "dock_required",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "quota",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "pedestrian_rule",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+]
+`;
+
+exports[`снимки trace > сценарий 26: выезд после окончания пропуска 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s26",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "timeIn": 1773115200000,
+      "visitId": "v26",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "vehicles_and_pedestrians",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "reason": "any_gate_out",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "tenant_status",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "contract",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "pass_validity",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "single_used",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "working_hours",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "time_window",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "dock_required",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "quota",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+  {
+    "check": "pedestrian_rule",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "direction_out",
+    },
+  },
+]
+`;
+
+exports[`снимки trace > сценарий 34: пешеход Континента на внутреннем посту 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s34",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "details": {
+      "status": "approved",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "tenant_status",
+    "details": {
+      "status": "active",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "contract",
+    "details": {
+      "validTo": null,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_validity",
+    "details": {
+      "validFrom": 1767207600000,
+      "validTo": null,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "single_used",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "open": false,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "pedestrians",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "ruleIds": [
+        "811c3a3c-8b3a-54a4-9f81-909c3164aacf",
+      ],
+      "zone": "d871c62a-f06a-526b-a563-fbb01fb8a9ac",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "working_hours",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "internal_gate",
+    },
+  },
+  {
+    "check": "time_window",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "internal_gate",
+    },
+  },
+  {
+    "check": "dock_required",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "internal_gate",
+    },
+  },
+  {
+    "check": "quota",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "internal_gate",
+    },
+  },
+  {
+    "check": "pedestrian_rule",
+    "details": {
+      "documentRequired": false,
+      "escort": "always",
+      "ruleId": "fda2e4e6-cc42-5024-855d-05e9188dd1e3",
+    },
+    "result": "pass",
+  },
+]
+`;
+
+exports[`снимки trace > сценарий 42: одобренное исключение при 25/25 1`] = `
+[
+  {
+    "check": "pass_found",
+    "details": {
+      "passId": "s42",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_status",
+    "details": {
+      "status": "approved",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "blacklist",
+    "result": "pass",
+  },
+  {
+    "check": "tenant_status",
+    "details": {
+      "status": "active",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "contract",
+    "details": {
+      "validTo": null,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "pass_validity",
+    "details": {
+      "validFrom": 1773082800000,
+      "validTo": 1773169140000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "single_used",
+    "details": {
+      "visits": 0,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "open_visit",
+    "details": {
+      "open": false,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "gate_admits",
+    "details": {
+      "admits": "vehicles",
+    },
+    "result": "pass",
+  },
+  {
+    "check": "routing",
+    "details": {
+      "ruleIds": [
+        "09032d35-014b-5a71-ba60-5267563b9717",
+      ],
+    },
+    "result": "pass",
+  },
+  {
+    "check": "working_hours",
+    "result": "pass",
+  },
+  {
+    "check": "time_window",
+    "details": {
+      "earliest": 1773122400000,
+      "earlyToleranceMin": 0,
+      "lateToleranceMin": 60,
+      "latest": 1773133200000,
+      "policyId": "29eed283-5144-5052-b220-c41508a168d3",
+      "windowFrom": 1773122400000,
+      "windowTo": 1773129600000,
+    },
+    "result": "pass",
+  },
+  {
+    "check": "dock_required",
+    "details": {
+      "dockId": "af2e0e02-4cee-5c08-8da3-c596affa3891",
+    },
+    "result": "pass",
+  },
+  {
+    "basis": "п. … (ПРОВЕРИТЬ)",
+    "check": "quota",
+    "details": {
+      "quotas": [
+        {
+          "capacity": 25,
+          "enforcement": "hard",
+          "occupied": 25,
+          "quotaId": "cbca4c51-20b2-52cb-a77a-bd5b9a879e1e",
+          "wouldBe": 26,
+        },
+      ],
+    },
+    "result": "fail",
+    "settingLink": "Настройки → Лимиты → ДНС → Грузовые",
+    "severity": "wait",
+  },
+  {
+    "check": "pedestrian_rule",
+    "result": "skipped",
+    "skippedBy": {
+      "reason": "not_applicable",
+    },
+  },
+  {
+    "check": "override",
+    "details": {
+      "overrideId": "ovr-42",
+      "validUntil": null,
+    },
+    "result": "pass",
+  },
+]
+`;
