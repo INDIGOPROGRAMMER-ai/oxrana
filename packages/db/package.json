@@ -8,6 +8,7 @@
   },
   "scripts": {
     "migrate": "tsx --env-file-if-exists=../../.env src/migrate-cli.ts",
+    "seed": "tsx --env-file-if-exists=../../.env seed/cli.ts",
     "generate": "drizzle-kit generate"
   },
   "dependencies": {

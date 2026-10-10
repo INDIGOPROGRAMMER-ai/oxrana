@@ -70,24 +70,26 @@
 
 ## Команды
 
-Всё запускается из корня. Облачная сессия готовит окружение сама (SessionStart-хук: `pnpm install`, `pnpm db:up`, `pnpm db:migrate`); вручную — тот же набор.
+Всё запускается из корня. Облачная сессия готовит окружение сама (SessionStart-хук: `pnpm install`, `pnpm db:up`, `pnpm db:migrate`, `pnpm db:seed`); вручную — тот же набор.
 
 | Что | Команда |
 |---|---|
 | Установка зависимостей | `pnpm install` |
 | Поднять PostgreSQL, роли и базу `oxrana`; создать `.env` из `.env.example` | `pnpm db:up` (идемпотентно, ~3 с) |
 | Применить миграции (под `oxrana_owner`) | `pnpm db:migrate` |
-| Пересоздать базу с нуля и мигрировать | `pnpm db:reset` (сид — `pnpm db:seed`, появится на этапе 2) |
+| Демо-объект «ЛЦ Радонежский» (идемпотентно: повтор ничего не дублирует и не меняет) | `pnpm db:seed` |
+| Пересоздать базу с нуля: миграции и сид | `pnpm db:reset` |
 | Запуск для разработки: API :3000, web :5173, gate :5174 | `pnpm dev` |
 | Сборка web, gate и API | `pnpm build` |
 | Дымовая проверка собранного API (после `build`) | `bash scripts/smoke-build.sh` |
 | Типы (`tsc -b` по project references) | `pnpm typecheck` |
 | Линт и формат (Biome) | `pnpm lint` · исправить автоматически: `pnpm format` |
 | Юнит-тесты, без БД | `pnpm test:unit` |
-| Интеграционные тесты на реальном PostgreSQL (сами применяют миграции) | `pnpm test:integration` |
+| Интеграционные тесты на реальном PostgreSQL (шаблон `oxrana_test_template` с миграциями, своя копия базы на каждый файл) | `pnpm test:integration` |
 | Все тесты Vitest | `pnpm test` |
 | E2E Playwright (сами поднимают API, web, gate на портах 3100/5273/5274) | `pnpm test:e2e` |
 | Один тест | `pnpm exec vitest run путь/к/файлу.test.ts` |
+| Новая миграция из изменённой схемы `packages/db/src/schema` | `pnpm --filter @oxrana/db generate` |
 | Проверка «готово» | `pnpm typecheck && pnpm lint && pnpm test` |
 
-Где что: `apps/api` (Fastify), `apps/web` и `apps/gate` (Vite + TanStack Router), `packages/{contracts,engine,plates,db}`, `scripts/` (БД, архитектурные проверки), `e2e/`. Решения по устройству каркаса — ADR-013. Новая внешняя зависимость — только через `catalog:` в `pnpm-workspace.yaml`, версия точная.
+Где что: `apps/api` (Fastify), `apps/web` и `apps/gate` (Vite + TanStack Router), `packages/{contracts,engine,plates,db}`, `scripts/` (БД, архитектурные проверки), `e2e/`. В `packages/db`: `src/schema` (Drizzle), `migrations/` (0001 генерируется, ручное — отдельными файлами), `seed/` (единственное место с названиями объекта), `test/` (harness тестовых баз). Решения по устройству каркаса — ADR-013. Новая внешняя зависимость — только через `catalog:` в `pnpm-workspace.yaml`, версия точная.

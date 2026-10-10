@@ -18,6 +18,7 @@
     "test:e2e": "playwright test",
     "db:up": "bash scripts/db-up.sh",
     "db:migrate": "pnpm --filter @oxrana/db migrate",
+    "db:seed": "pnpm --filter @oxrana/db seed",
     "db:reset": "bash scripts/db-reset.sh"
   },
   "devDependencies": {

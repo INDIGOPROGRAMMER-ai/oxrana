@@ -5,6 +5,6 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["src", "test", "drizzle.config.ts"],
+  "include": ["src", "seed", "test", "drizzle.config.ts"],
   "references": [{ "path": "../contracts" }]
 }

@@ -62,6 +62,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:up
       - run: pnpm db:migrate
+      - run: pnpm db:seed # демо-объект поднимается командой, как в сессии
       - run: pnpm test:integration
       - name: Собранный API отвечает на /healthz и /readyz
         run: pnpm build && bash scripts/smoke-build.sh
