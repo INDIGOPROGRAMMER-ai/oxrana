@@ -1034,7 +1034,12 @@ export async function runAction(
   // Офлайн: что показал пост, — второй записью журнала рядом с серверным вердиктом (ADR-005).
   if (mode.offline && mode.localVerdict && response.verdict) {
     await insertDecision(s, g, {
-      direction: action.type === 'check_out' ? 'out' : 'in',
+      direction:
+        'direction' in action && action.direction
+          ? action.direction
+          : action.type === 'check_out'
+            ? 'out'
+            : 'in',
       verdict: {
         ...(response.verdict as unknown as Verdict),
         code: mode.localVerdict.code as Verdict['code'],

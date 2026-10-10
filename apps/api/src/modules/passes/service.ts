@@ -288,6 +288,12 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
   const ctx = await loadPassContext(s, tenant);
   const requested = valuesFromPatch(patch);
   const current = valuesOf(pass);
+  // Тот же номер в другой записи («а123вс 174» вместо «А123ВС174») — не изменение номера.
+  if (requested.plateNorm !== undefined && requested.plateNorm === current.plateNorm) {
+    delete requested.plateRaw;
+    delete requested.plateNorm;
+    delete requested.plateCountry;
+  }
   const fields = changedFields(
     current as unknown as Record<string, unknown>,
     requested,

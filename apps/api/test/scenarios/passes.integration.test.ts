@@ -319,6 +319,33 @@ describe('правка пропуска', () => {
     }
   });
 
+  it('тот же номер в другой записи — не изменение: заявки нет, пропуск не меняется', async () => {
+    const created = await create(admin, {
+      ...truck({
+        passType: 'multi',
+        plate: 'А555ВС174',
+        validTo: '2026-03-14T15:00:00.000Z',
+        categoryId: car,
+        dockId: undefined,
+        windowFrom: undefined,
+        windowTo: undefined,
+      }),
+      comment: 'Служебная машина',
+    });
+    t.clock.advance(60 * 60_000);
+    try {
+      const res = await t.as(dnsRequester, {
+        method: 'PATCH',
+        url: `/passes/${created.json().id}`,
+        payload: { plate: 'a555bc 174', reason: 'Переписали номер' },
+      });
+      expect(res.json()).toMatchObject({ applied: [], changeRequest: null });
+      expect(res.json().pass.plateRaw).toBe('А555ВС174');
+    } finally {
+      t.clock.set(NOON);
+    }
+  });
+
   it('у не начавшегося пропуска арендатор правит сам; заказчик без права правки — 403', async () => {
     const passId = (
       await create(
