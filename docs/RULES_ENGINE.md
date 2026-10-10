@@ -10,7 +10,7 @@ type Instant = number;                 // мс с эпохи (UTC). Date не и
 interface EvaluationInput {
   now: Instant;
   site: { id; timezone: string; workingHours: WorkingHours | null; settings: SiteSettings };
-  gate: { id; name; kind: 'perimeter' | 'internal'; zoneId?: string; direction: 'in'|'out'|'both' };
+  gate: { id; name; kind: 'perimeter' | 'internal'; admits: 'vehicles_and_pedestrians'|'vehicles'|'pedestrians'; zoneId?: string; direction: 'in'|'out'|'both' };
   direction: 'in' | 'out';
   subject: Subject;                    // что проверяем — см. ниже
   rules: RuleSet;                      // срез правил объекта (один и тот же на сервере и в кэше поста)
@@ -24,16 +24,15 @@ type Subject =
   | { kind: 'pedestrian_lookup'; nameQuery: string; candidates: PassView[] };
 
 interface RuleSet {                     // все записи уже отфильтрованы по объекту и действующие на момент загрузки
-  categories: CategoryView[];           // id, code, name
-  groups: { id; name; tenantId?: string; categoryIds: string[] }[];
-  quotas: QuotaView[];                  // tenantId, groupId|participant, capacity, counting, enforcement, tariff, schedule, validFrom/To
+  categories: CategoryView[];           // id, presetCode, name, dockEligible
+  quotas: QuotaView[];                  // tenantId, participant, categoryIds[] (ADR-012), name, capacity, counting, enforcement, tariff, schedule, validFrom/To
   routing: RoutingRuleView[];           // tenantId?, participant, categoryId?, destinationZoneId?, gateId, direction, priority
-  timeWindows: TimeWindowPolicyView[];
+  timeWindows: TimeWindowPolicyView[];  // tenantId?, categoryIds[] (пусто = все), windowRequired, early, late, onViolation
   exceptions: ExceptionView[];          // match, waives[], validFrom/To, guardText
   pedestrianRules: PedestrianRuleView[];
   blacklist: { plateNorm?: string; personName?: string; reason: string; validTo?: Instant }[];
   tenants: TenantView[];                // status, isOperator, trucksDockRequired, contractValidTo
-  gates: GateView[];                    // для подсказки «направьте на КПП-2»
+  gates: GateView[];                    // id, name, kind, admits — для gate_admits и подсказки «направьте на КПП-2»
   docks: { id; number; tenantId?: string }[];
 }
 
@@ -71,7 +70,7 @@ interface Reason { code: string; message: string; params?: Record<string, unknow
 
 interface TraceEntry {
   check: CheckKind;                    // 'pass_found'|'pass_status'|'blacklist'|'tenant_status'|'contract'|'pass_validity'|'single_used'
-                                       // |'routing'|'working_hours'|'time_window'|'dock_required'|'quota'|'pedestrian_rule'|'override'
+                                       // |'gate_admits'|'routing'|'working_hours'|'time_window'|'dock_required'|'quota'|'pedestrian_rule'|'override'
   result: 'pass' | 'fail' | 'warn' | 'skipped';
   severity?: 'deny' | 'wrong_gate' | 'wait' | 'overage' | 'info';
   skippedBy?: { exceptionId: string } | { reason: 'not_applicable' | 'direction_out' | 'internal_gate' };
@@ -110,17 +109,21 @@ evaluate(input):
   5 contract        contractValidTo ≥ today(site tz) или нет договора в настройках → иначе deny
   6 pass_validity   valid_from ≤ now ≤ valid_to (permanent: только from)   раньше → wait «пропуск с …»; позже → deny «закончился …»
   7 single_used     single и уже есть закрытый визит           → deny (кроме singleReturnWindowMin)
-  8 routing         gate ∈ allowedGates(participant, category, tenant, destinationZone)   иначе → wrong_gate + suggestedGateIds
+  8 gate_admits     gate.admits пропускает участника (пешеход на КПП «только машины» → wrong_gate, suggested = КПП с admits ∋ pedestrians)
                     waived.routing → skipped
-  9 working_hours   now внутри site.workingHours (или gate.workingHours)   иначе по settings.outsideWorkingHours: deny | warn | pass
+  9 routing         машины: gate ∈ allowedGates(category, tenant) по матрице routing_rules (правило арендатора приоритетнее правила объекта);
+                    пешеходы: правила routing_rules для participant pedestrian применяются, только если заданы (иначе любой КПП с admits ∋ pedestrians);
+                    внутренний пост: по destinationZoneId                              иначе → wrong_gate + suggestedGateIds
+                    waived.routing → skipped
+  10 working_hours   now внутри site.workingHours (или gate.workingHours)   иначе по settings.outsideWorkingHours: deny | warn | pass
                     waived.working_hours → skipped
- 10 time_window     policy = самая специфичная (tenant+group > tenant > group > site)
+ 11 time_window     policy = самая специфичная (tenant+group > tenant > group > site)
                     если policy.windowRequired и у пропуска нет окна → deny «нет окна прибытия» (на сервере это не даст сохранить пропуск; здесь — защита)
                     now < window_from − early → wait «Рано: въезд с 14:00, ещё N мин»
                     now > window_to + late  → policy.onViolation == hard ? deny «Опоздание: окно закрыто в 16:00 (15:00 + 60 мин)» + 'request_window' : warn
                     waived.time_window → skipped
- 11 dock_required   tenant.trucksDockRequired и категория в группе грузовых и pass.dockId == null → warn (info «док не указан»); не блокирует
- 12 quota           for q in applicableQuotas(tenant, category|participant, now):        // все группы, куда входит категория
+ 12 dock_required   tenant.trucksDockRequired и category.dockEligible и pass.dockId == null → warn (info «док не указан»); не блокирует
+ 13 quota           for q in applicableQuotas(tenant, category|participant, now):        // все лимиты, в чей набор входит тип
                         occ = occupancy[q.id]; wouldBe = occ + 1
                         q.capacity == 0            → deny «… не предусмотрены договором (квота 0)»   // waived.quota снимает и это (Q-8)
                         wouldBe ≤ capacity         → pass
@@ -129,8 +132,8 @@ evaluate(input):
                         enforcement warn           → warn
                     итог по самой строгой; quotaStates заполняется всеми
                     waived.quota → skipped (все квоты)
- 13 pedestrian_rule participant == pedestrian: infoLine из pedestrianRules (tenant × zone) — только информация
- 14 override        есть ApprovedOverride для (pass|plate, gate, direction), не истёк → worst = ALLOW, appliedOverrideId
+ 14 pedestrian_rule participant == pedestrian: infoLine из pedestrianRules (tenant × zone) — только информация
+ 15 override        есть ApprovedOverride для (pass|plate, gate, direction), не истёк → worst = ALLOW, appliedOverrideId
   → verdict = compose(worst, reasons, trace, …)
 ```
 
@@ -144,23 +147,23 @@ evaluate(input):
   квоты, окна, рабочее время на выезде не проверяются никогда; чёрный список → warn (выпускать всегда)
 ```
 
-Внутренний пост (`gate.kind = 'internal'`): проверки 1–5, 6, 8 (маршрут по `destinationZoneId`), 13; квоты и окно — `skipped: internal_gate`. Действие — `passage` (пишется `gate_passages`), визит не меняется.
+Внутренний пост (`gate.kind = 'internal'`): проверки 1–8, 9 (маршрут по `destinationZoneId`), 14; квоты и окно — `skipped: internal_gate`. Действие — `passage` (пишется `gate_passages`), визит не меняется.
 
 ## 4. Подсчёт квот
 
 ```ts
 applicableQuotas(tenant, category | 'pedestrian', now):
-  groups = rules.groups.filter(g => g.categoryIds.includes(category.id) && (g.tenantId == null || g.tenantId == tenant.id))
   return rules.quotas.filter(q => q.tenantId == tenant.id && q.isActive(now) && q.scheduleMatches(now, tz)
-                                && (q.participant == 'pedestrian' ? participant == 'pedestrian' : groups.ids.includes(q.groupId)))
-  // нет ни одной квоты → без ограничения (оператор объекта); квота с capacity 0 → запрет
+                                && (q.participant == 'pedestrian' ? participant == 'pedestrian' : q.categoryIds.includes(category.id)))
+  // тип может входить в несколько лимитов → все проверяются, вердикт по самому строгому (ADR-012)
+  // нет ни одного лимита → без ограничения (оператор объекта); лимит с capacity 0 → запрет
 
-countOccupancy(openVisits, quota, groups):            // используется постом офлайн и песочницей
+countOccupancy(openVisits, quota):                    // используется постом офлайн и песочницей
   openVisits.filter(v => v.tenantId == quota.tenantId
                       && v.timeOut == null
                       && !(v.exceptionWaivesQuota)                       // автобус ДНС не занимает место
                       && (quota.participant == 'pedestrian' ? v.participant == 'pedestrian'
-                                                             : group(quota).categoryIds.includes(v.categoryId))).length
+                                                             : quota.categoryIds.includes(v.categoryId))).length
 
 capacity(quota, docks): quota.capacityFromDocks ? docks.filter(d => d.tenantId == quota.tenantId && d.countsInQuota).length : quota.capacity
 ```
@@ -176,7 +179,7 @@ capacity(quota, docks): quota.capacityFromDocks ? docks.filter(d => d.tenantId =
 | `match` | Совпадает, если |
 |---|---|
 | `{ plates: [...] }` | `pass.plateNorm ∈ plates` |
-| `{ categoryCodes: [...] }` | `category.code ∈ categoryCodes` (+ `tenantId` исключения, если задан) |
+| `{ categoryIds: [...] }` | `category.id ∈ categoryIds` (+ `tenantId` исключения, если задан) |
 | `{ tenant: true }` | `pass.tenantId == exception.tenantId` (X5 24/7) |
 | `{ passIds: [...] }` | `pass.id ∈ passIds` (руководство) |
 
@@ -201,6 +204,7 @@ resolveCandidates({plateNorm, candidates, openVisits}, rules, now):
 | | Сервер (`apps/api`) | Пост офлайн (`apps/gate`) |
 |---|---|---|
 | `RuleSet` | из БД, кэш 5 с | из IndexedDB, обновляется по SSE `rules.changed` и при старте |
+| Когда работает | всегда | только при недоступности сервера: в режиме «на объекте» (ADR-011) посты ходят к серверу по LAN, и обрыв интернета офлайн-режим не включает |
 | `LiveState.occupancy` | `count(*)` открытых визитов в транзакции под advisory lock (ADR-006) | `countOccupancy(cachedOpenVisits + localQueue)` |
 | `now` | часы сервера (`clock.now()`, в тестах — фиксированные) | часы устройства; в действие пишется `client_at`, сервер при синхронизации пересчитывает по `client_at` и помечает расхождение > 5 мин |
 | Результат | пишется в `gate_decisions` вместе с `trace` | показывается; при синхронизации сервер считает свой вердикт и пишет оба (`offline = true`) |
@@ -276,15 +280,15 @@ export function evaluate(input: EvaluationInput): Verdict {
 | 1 | 24/25 грузовых, фура ДНС на КПП-2 | `quota` pass, `quotaStates 24/25` | engine |
 | 2 | 25/25, ещё фура | `quota` hard → `wait`, primaryAction `wait` | engine (+ push: уведомления) |
 | 3 | фура выехала → карточка зелёная | `LiveState` обновился → `allow` (realtime — ADR-004) | engine + E2E |
-| 4 | малотоннажный ДНС на КПП-1 при 25/25 | `routing` pass, `quota` wait (группа «Грузовые») | engine |
+| 4 | малотоннажный ДНС на КПП-1 при 25/25 | `routing` pass, `quota` wait (лимит «Грузовые» = малотоннажный + фура + грузовой свыше 5 т) | engine |
 | 5 | малотоннажный на КПП-2 | `routing` → `wrong_gate`, suggested КПП-1 | engine |
 | 6 | окно 14:00, часы 13:40 | `time_window` → `wait`, «ещё 20 мин» | engine |
 | 7 | окно 14–15, часы 16:30, late 60 | `time_window` → `deny`, secondary `request_window` | engine |
 | 8 | ДЛ-Транс 16-я легковая | `quota` soft → `allow_overage`, `overage.tariffRub = 67` | engine |
 | 9 | сверхлимит 22:00 → 09:00 | `overageDays` = 2 | engine + задача начислений |
 | 10 | фура Континента | `quota` capacity 0 → `deny` «не предусмотрены договором» | engine |
-| 11 | пешеход ДНС на КПП-2 | `routing` pedestrian → `wrong_gate` | engine |
-| 12 | пешеход ДНС на КПП-1 | `routing` pass → `allow` | engine |
+| 11 | пешеход ДНС на КПП-2 | `gate_admits` (КПП-2 = только машины) → `wrong_gate`, suggested КПП-1 | engine |
+| 12 | пешеход ДНС на КПП-1 | `gate_admits` pass (машины и пешеходы) → `allow` | engine |
 | 13 | автобус ДНС при 30/30 | `collectWaivers` → quota skipped, infoLine «Исключение» | engine |
 | 14 | X5 в 03:00 | `working_hours`, `time_window` skipped by exception | engine |
 | 15 | без пропуска → запрос → зелёный | `no_pass` + `request_pass`; после создания пропуска `allow` | engine + API |
@@ -293,8 +297,8 @@ export function evaluate(input: EvaluationInput): Verdict {
 | 26 | пропуск истёк внутри | out: `allow`, flags `after_expiry` | engine |
 | 27–28, 36 | нормализация номеров | `@oxrana/plates.normalize` | plates |
 | 30 | Мастервент малотоннажный | `quota` 0 → `deny` | engine |
-| 33 | третья спецтехника ДНС | `quota` «Спецтехника» 2/2 → `wait`; «Грузовые» не задействована | engine |
-| 34 | пешеход Континента на КПП офис | internal gate: `routing` по зоне, `pedestrian_rule` infoLine; визит не открывается | engine + API |
+| 33 | третья спецтехника ДНС | `quota` лимит «Спецтехника» = {спецтехника} 2/2 → `wait`; лимит «Грузовые» не задействован | engine |
+| 34 | пешеход Континента на КПП офис | internal gate (`admits = pedestrians`): `routing` по зоне, `pedestrian_rule` infoLine; визит не открывается | engine + API |
 | 35 | пешеход ДНС без документа | `pedestrian_rule` → infoLine «вызовите ответственного» | engine |
 | 37 | гонка за последнее место | движок детерминирован; гарантия — транзакция ADR-006 | API (интеграция) |
 | 40 | очередь: сигнал первой | `LiveState.queue` → сервер шлёт `queue.slot_freed` только первой | API |

@@ -22,12 +22,10 @@ erDiagram
   sites ||--o{ docks : ""
   sites ||--o{ tenants : ""
   sites ||--o{ vehicle_categories : "override"
-  sites ||--o{ category_groups : ""
-  category_groups }o--o{ vehicle_categories : "members"
   tenants ||--o{ contracts : ""
   contracts ||--o{ contract_clauses : ""
   tenants ||--o{ quotas : ""
-  category_groups ||--o{ quotas : ""
+  quotas }o--o{ vehicle_categories : "quota_categories"
   tenants ||--o{ pedestrian_rules : ""
   tenants ||--o{ tenant_dock_assignments : ""
   docks ||--o{ tenant_dock_assignments : ""
@@ -88,6 +86,7 @@ gates
   id uuid PK, organization_id, site_id NN FK
   name text NN                              -- «КПП-1»
   kind text NN check in ('perimeter','internal')   -- A4: внутренний пост не открывает визит
+  admits text NN default 'vehicles_and_pedestrians' check in ('vehicles_and_pedestrians','vehicles','pedestrians')  -- «кого пропускает» (ADR-012)
   zone_id uuid FK zones                     -- для internal: в какую зону ведёт
   direction text NN default 'both' check in ('in','out','both')
   working_hours jsonb
@@ -112,23 +111,16 @@ parking_areas
 ### 2.2 Справочники
 
 ```sql
-vehicle_categories
+vehicle_categories                          -- типы транспорта (ADR-012)
   id uuid PK, organization_id NN FK
   site_id uuid FK                           -- null = уровень организации; иначе переопределение на объекте
-  code text NN                              -- 'car','light_truck','semi','truck_5t','special','bus'
-  name text NN                              -- «грузовой свыше 5 т» (A1: порог — данные, не код)
-  requires_dock_hint boolean NN default false
-  sort int NN default 100, deleted_at timestamptz
-  unique (organization_id, coalesce(site_id, nil_uuid), code)
-
-category_groups
-  id uuid PK, organization_id, site_id NN FK
-  tenant_id uuid FK tenants                 -- null = общая группа объекта; иначе своя у арендатора («Грузовые до 4,5 т»)
-  name text NN, deleted_at timestamptz
-
-category_group_members
-  group_id uuid FK NN, category_id uuid FK NN, PK (group_id, category_id)
-  -- категория может входить в несколько групп → действуют все квоты (A2)
+  preset_code text                          -- ключ из VEHICLE_CATEGORY_PRESETS ('car','light_truck','semi','truck_5t','special','bus','moto',…); null = свой тип
+  name text NN                              -- переименовывается свободно: «грузовой свыше 5 т» (A1: порог — данные, не код)
+  enabled boolean NN default true           -- выключенный тип не виден в формах, остаётся в истории
+  dock_eligible boolean NN default false    -- «обычно едет к доку»: к нему применяется tenants.trucks_dock_required
+  sort int NN                               -- порядок в списках, перетаскивание; дефолта при выборе нет
+  deleted_at timestamptz
+  unique (organization_id, coalesce(site_id, nil_uuid), preset_code) where preset_code is not null
 
 visit_purposes
   id uuid PK, organization_id, site_id NN FK
@@ -200,8 +192,7 @@ fleet_vehicles
 quotas
   id uuid PK, organization_id, site_id, tenant_id NN FK
   participant text NN default 'vehicle' check in ('vehicle','pedestrian')
-  category_group_id uuid FK                 -- null только для pedestrian
-  name text                                 -- для табло, по умолчанию имя группы
+  name text NN                              -- подпись на табло: по умолчанию «Малотоннажный + фура + …», редактируется («Грузовые»)
   capacity int NN check >= 0                -- 0 = не предусмотрено договором
   capacity_from_docks boolean NN default false   -- capacity = число назначенных доков с counts_in_quota
   counting text NN default 'on_site' check in ('on_site','active_passes','per_day')
@@ -211,7 +202,11 @@ quotas
   basis_clause_id uuid FK
   valid_from timestamptz NN default now(), valid_to timestamptz
   deleted_at timestamptz
-  -- отсутствие квоты у арендатора на группу = без ограничения (оператор); квота 0 = запрет
+  -- отсутствие квоты у арендатора на тип = без ограничения (оператор); квота 0 = запрет
+
+quota_categories                            -- набор типов лимита (ADR-012); тип может входить в несколько лимитов — действуют все
+  quota_id uuid FK NN, category_id uuid FK NN, PK (quota_id, category_id)
+  -- для participant = 'pedestrian' строк нет
 
 routing_rules
   id uuid PK, organization_id, site_id NN FK
@@ -225,17 +220,20 @@ routing_rules
 
 time_window_policies
   id uuid PK, organization_id, site_id NN FK
-  tenant_id uuid FK, category_group_id uuid FK      -- null = все
+  tenant_id uuid FK                         -- null = все арендаторы
   window_required boolean NN default false
   early_tolerance_min int NN default 0
   late_tolerance_min int                    -- null = до конца пропуска
   on_violation text NN default 'hard' check in ('hard','warn')
   deleted_at timestamptz
 
+time_window_policy_categories               -- к каким типам применяется; нет строк = ко всем
+  policy_id uuid FK NN, category_id uuid FK NN, PK (policy_id, category_id)
+
 exceptions
   id uuid PK, organization_id, site_id NN FK, tenant_id uuid FK
   name text NN
-  match jsonb NN                            -- ExceptionMatch (zod): {plates:[...]} | {categoryCodes:[...]} | {tenant:true} | {passIds:[...]}
+  match jsonb NN                            -- ExceptionMatch (zod): {plates:[...]} | {categoryIds:[...]} | {tenant:true} | {passIds:[...]}
   waives text[] NN                          -- подмножество ('inspection','quota','time_window','working_hours','routing')
   guard_text text                           -- «Служебный автобус — без досмотра»
   basis text, basis_clause_id uuid FK
@@ -562,7 +560,7 @@ notifications
 | 10 | Таблица `domain_events` (outbox) | ADR-004: realtime, уведомления и вебхуки из одного источника, в одной транзакции с изменением |
 | 11 | `users` — платформенные (без `organization_id`), `role_assignments.organization_id`; `invitations`, `sessions`, `login_codes` | Один человек в нескольких арендаторах/организациях (04_); приглашения со сроком (D2); отзываемые сессии |
 | 12 | `organization_id` на всех бизнес-таблицах + RLS | CLAUDE.md п. 9: фильтр по организации на сервере; защита от ошибки в запросе |
-| 13 | `quotas.site_id`, `quotas.name`, `quotas.deleted_at`; `category_groups.deleted_at`; `vehicle_categories.deleted_at`; `deleted_at` у всех справочников | Мягкое удаление везде (CLAUDE.md п. 10) |
+| 13 | `quotas.site_id`, `quotas.name`, `quotas.deleted_at`; `vehicle_categories.deleted_at`; `deleted_at` у всех справочников | Мягкое удаление везде (CLAUDE.md п. 10) |
 | 14 | `visits.plate_norm`, `participant`, `decision_in/out_id`, `gate_account_*`, `device_*`, флаги `offline_over_quota`, `undone`, `client_time_*` | Поиск открытого визита по номеру без пропуска; связь с вердиктом; офлайн-синхронизация (ADR-005) |
 | 15 | Exclusion-constraint на дубли активных пропусков и на назначения доков | `10_` §4 и §1: невозможные состояния запрещает БД, а не только форма |
 | 16 | `pass_batches`, `pass_tokens` (с `consent_at`), `fleet_vehicles` | B3 «создано N из N»; страница водителя с токеном и согласием (D7, B11); автопарк из `04_` отсутствовал в `11_` |
@@ -574,6 +572,10 @@ notifications
 | 22 | `overage_charges.tenant_id/site_id`; `notifications`, `push_subscriptions`, `notification_preferences`, `telegram_links` | Отчёт сверхлимитов без join-цепочки; уведомления из `05_` §5 |
 | 23 | `users.email citext`; `must_change_password` | Вход без учёта регистра; пароль, выданный админом, меняется при первом входе (§26 справки) |
 | 24 | Перечисления — `text + check`, а не Postgres `enum` | Добавление значения без `ALTER TYPE` и блокировок |
+| 25 | Убраны `category_groups` и `category_group_members`; лимит связан с типами напрямую через `quota_categories`; `quotas.name` обязателен | ADR-012: пользователь не создаёт «групп», лимит = «типы — число»; тип в нескольких лимитах — действуют все |
+| 26 | `vehicle_categories`: `preset_code` вместо `code`, `enabled`, `dock_eligible`, `sort` без дефолта 100 | ADR-012: рекомендованный набор включается кликом, свои типы и переименование, порядок перетаскиванием |
+| 27 | `gates.admits` (машины и пешеходы / только машины / только пешеходы) | ADR-012: карточка КПП; пешеход на КПП «только машины» → `wrong_gate` без правил маршрута |
+| 28 | `time_window_policy_categories` вместо `category_group_id` | следствие п. 25 |
 
 ## 6. Хранение ПДн (152-ФЗ) — где лежат персональные данные
 
