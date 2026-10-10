@@ -178,7 +178,7 @@ describe('лимит 0 и отсутствие лимита', () => {
     expect(v.code).toBe('allow');
     expect(traceOf(v, 'quota')).toMatchObject({ result: 'pass', details: { reason: 'no_quota' } });
     expect(v.quotaStates).toEqual([]);
-    expect(v.headline).toBe('Пропуск действует — впускайте');
+    expect(v.headline).toBe('Пропуск действует');
   });
 
   it('исключение снимает и лимит 0 (Q-8)', () => {
@@ -478,7 +478,7 @@ describe('выезд', () => {
     const v = check({ gate: 'kpp1', direction: 'out', subject: pass, openVisit: visit(pass) });
     expect(v.code).toBe('allow');
     expect(v.primaryAction).toBe('check_out');
-    expect(v.headline).toBe('Выпускайте');
+    expect(v.headline).toBe('Выезд разрешён');
     expect(v.reasons[0]).toMatchObject({
       code: 'other_gate_on_entry',
       message: 'Въезд для этого типа — через КПП-2; выезд разрешён',

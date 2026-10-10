@@ -34,7 +34,7 @@ describe('лимиты', () => {
     expect(v.code).toBe('allow');
     expect(v.color).toBe('green');
     expect(v.primaryAction).toBe('check_in');
-    expect(v.headline).toBe('Грузовые 24/25 — впускайте');
+    expect(v.headline).toBe('Грузовые 24/25');
     expect(v.quotaStates).toEqual([
       expect.objectContaining({
         quotaId: quotaId('dns/trucks'),
@@ -394,7 +394,7 @@ describe('исключение с поста', () => {
     expect(v.color).toBe('green');
     expect(v.primaryAction).toBe('check_in');
     expect(v.appliedOverrideId).toBe('ovr-1');
-    expect(v.headline).toBe('Исключение одобрено администратором — впускайте');
+    expect(v.headline).toBe('Исключение одобрено администратором');
     expect(v.trace.at(-1)).toMatchObject({ check: 'override', result: 'pass' });
     expect(v.secondaryActions).not.toContain('override_request');
   });

@@ -891,7 +891,7 @@ function compose(options: ComposeOptions): Verdict {
       });
       reasons.unshift({
         code: 'override_approved',
-        message: 'Исключение одобрено администратором — впускайте',
+        message: 'Исключение одобрено администратором',
         params: { overrideId: options.override.id },
       });
       code = 'allow';
@@ -922,7 +922,8 @@ function compose(options: ComposeOptions): Verdict {
   }
   const overage = outcomes.find((o) => o.overage)?.overage;
 
-  // Зелёная карточка: заголовок — «впускайте», предупреждения идут второй строкой (RULES_ENGINE §3).
+  // Зелёная карточка: короткий заголовок без глагола — действие называет кнопка «Впустить»;
+  // предупреждения идут второй строкой (RULES_ENGINE §2).
   const headline =
     options.headline ??
     (appliedOverrideId || fails.length > 0 ? reasons[0]?.message : undefined) ??
@@ -950,12 +951,12 @@ function compose(options: ComposeOptions): Verdict {
 
 function allowHeadline(input: EvaluationInput, quotaStates: readonly QuotaState[]): string {
   if (input.gate.kind === 'internal') return 'Проход разрешён';
-  if (input.direction === 'out') return 'Выпускайте';
+  if (input.direction === 'out') return 'Выезд разрешён';
   const tightest = [...quotaStates].sort(
     (a, b) => a.capacity - a.occupied - (b.capacity - b.occupied),
   )[0];
-  if (tightest) return `${tightest.name} ${tightest.occupied}/${tightest.capacity} — впускайте`;
-  return 'Пропуск действует — впускайте';
+  if (tightest) return `${tightest.name} ${tightest.occupied}/${tightest.capacity}`;
+  return 'Пропуск действует';
 }
 
 function candidateView(input: EvaluationInput, p: PassView): CandidateView {
