@@ -602,6 +602,7 @@ notifications
 | ФИО, телефон, e-mail пользователей | `users`, `invitations` | пока учётка активна + 1 год | не пишутся в `pino`-логи (редакция по ключам) |
 | ФИО водителя/пешехода, телефон, номер | `passes`, `visits.snapshot`, `gate_requests`, `fleet_vehicles` | `retentionDays.visits` | задача `retention` обезличивает (`person_name → null`, `plate_norm → хэш`) по сроку |
 | Фото с камер | хранилище файлов, ссылка в `hardware_events.photo_ref` | `retentionDays.photos` | удаляются задачей |
+| «Было → стало» правок пропусков (номер, ФИО) | `audit_log.diff`, `pass_change_requests.changes`, `pass_batches.errors` | `retentionDays.audit` | журнал в БД; в технические логи и `domain_events.payload` не попадают |
 | Согласия | `pass_tokens.consent_at`, `users` (при приёме приглашения) | вместе с записью | |
 
 ## 7. Уточнения реализации (этап 2)
@@ -620,3 +621,21 @@ notifications
 | 8 | NOTIFY outbox | ADR-004: `{"siteId", "id"}` | `{"id", "organizationId", "siteId"}` | слушатель читает событие под RLS |
 | 9 | `sites.settings` | `SiteSettings` | хранятся только заданные ключи, значения по умолчанию — в zod (`SiteSettingsSchema.parse`) | новая настройка с дефолтом не требует миграции данных |
 | 10 | `sites.working_hours`, `gates.working_hours`, `quotas.schedule` | `{"mon":[["08:00","20:00"]],…}` | то же, все семь дней явно (`WorkingHours`), `[]` — выходной | нет двусмысленности «день не указан = выходной или круглосуточно» |
+
+## 8. Уточнения реализации (этап 4)
+
+Решения — ADR-017; пояса — ADR-009 (дополнение). Миграции `0003_gate_actions_timezones.sql` (сгенерирована) и `0004_gate_actions_grants.sql` (вручную).
+
+| # | Где | Что | Почему |
+|---|---|---|---|
+| 1 | `gate_actions` (новая, 55-я таблица) | действие поста с id устройства, итог, сохранённый ответ, отпечаток тела; только insert (`REVOKE UPDATE, DELETE` в 0004); `undo_of` уникален | идемпотентность действий онлайн и из офлайн-очереди (ADR-005): повтор возвращает тот же ответ |
+| 2 | `organizations.default_timezone` | IANA, может быть `null` | пояс по умолчанию для нового объекта (ADR-009) |
+| 3 | `users.show_own_time`, `users.own_timezone` | `check (not show_own_time or own_timezone is not null)` | «показывать ещё и моё время» второй строкой (ADR-009) |
+| 4 | `gate_decisions.action` | + `passage` | проход внутреннего поста пишется в журнал КПП как решение |
+| 5 | `visits.flags` | + `pass_cancelled_meanwhile` | офлайн-въезд по пропуску, отменённому за это время (ADR-005) |
+| 6 | `visits.exception_id` | только исключение, **снявшее лимит** | такой визит не занимает место; остальные применённые исключения видны в `gate_decisions.trace` |
+| 7 | `visits` | вставка — только `packages/db/src/queries/visits.ts` (`insertVisit`), вызывается транзакцией въезда | ADR-006: все пути создания визита — через `checkIn()`; проверяет архитектурный тест |
+| 8 | `pass_tokens` | создаётся вместе с пропуском, срок — конец пропуска + сутки (постоянный — год) | ссылка на страницу водителя в ответе создания (ARCHITECTURE §3.2) |
+| 9 | `pass_batches` | строка пакета создаётся до строк пропусков (на неё ссылается `passes.batch_id`), итог дописывается в конце | «создано N из M» с ошибками по строкам; предпросмотр строку не создаёт |
+| 10 | `gate_queue` | `quota_id` — самый тесный жёсткий лимит, из-за которого «ждать»; `notified_at` — кому уже отправлен сигнал «место освободилось» | сигнал только первым по числу свободных мест (сценарий 40) |
+
