@@ -218,7 +218,7 @@ exports[`снимки trace > сценарий 2: фура ДНС, 25/25 1`] = `
     "result": "pass",
   },
   {
-    "basis": "п. … (ПРОВЕРИТЬ)",
+    "basis": "п. 2.2",
     "check": "quota",
     "details": {
       "quotas": [
@@ -581,7 +581,7 @@ exports[`снимки trace > сценарий 8: ДЛ-Транс сверх л�
     },
   },
   {
-    "basis": "п. … (ПРОВЕРИТЬ)",
+    "basis": "п. 2.1",
     "check": "quota",
     "details": {
       "quotas": [
@@ -705,7 +705,7 @@ exports[`снимки trace > сценарий 10: фура Континента
     },
   },
   {
-    "basis": "п. … (ПРОВЕРИТЬ)",
+    "basis": "п. 2.2",
     "check": "quota",
     "details": {
       "quotas": [
@@ -1392,7 +1392,7 @@ exports[`снимки trace > сценарий 42: одобренное искл
     "result": "pass",
   },
   {
-    "basis": "п. … (ПРОВЕРИТЬ)",
+    "basis": "п. 2.2",
     "check": "quota",
     "details": {
       "quotas": [

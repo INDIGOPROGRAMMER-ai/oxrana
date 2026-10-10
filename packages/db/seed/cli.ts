@@ -29,8 +29,6 @@ try {
   console.log(
     `Сид применён (${DEMO_SEED.site.name}): добавлено строк ${inserted}, уже было ${described - inserted}.`,
   );
-  console.log('Заглушки до ответа заказчика (ПРОВЕРИТЬ):');
-  for (const item of DEMO_SEED.checkList) console.log(`  • ${item}`);
 } catch (error) {
   console.error('Сид не применён:', error instanceof Error ? error.message : error);
   process.exitCode = 1;

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createDb, createPool } from '../src';
@@ -22,6 +23,8 @@ try {
   const target = resolve(import.meta.dirname, '../../..', fixturePath(DEMO_SEED));
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, `${JSON.stringify(fixture, null, 2)}\n`);
+  // Тот же вид, что даёт `pnpm format`: иначе следующий `pnpm lint` потребует переформатировать файл.
+  execFileSync('pnpm', ['exec', 'biome', 'format', '--write', target], { stdio: 'ignore' });
   console.log(
     `Фикстура записана: ${fixturePath(DEMO_SEED)} (арендаторов ${fixture.rules.tenants.length}, лимитов ${fixture.rules.quotas.length}).`,
   );
