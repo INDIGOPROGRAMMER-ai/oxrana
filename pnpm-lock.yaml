@@ -125,6 +125,12 @@ importers:
       '@oxrana/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@oxrana/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@oxrana/plates':
+        specifier: workspace:*
+        version: link:../../packages/plates
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
