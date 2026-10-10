@@ -9,6 +9,7 @@ import {
   type RoutingRuleView,
   resolveCandidates,
   resolvePedestrian,
+  routeGates,
 } from '../src';
 import {
   at,
@@ -1128,5 +1129,33 @@ describe('разрешение кандидатов по номеру и фам�
     });
     expect(v.quotaStates.map((q) => q.name)).toEqual(['Посетители']);
     expect(zoneId('office')).toBeTruthy();
+  });
+});
+
+describe('routeGates: разрешённые КПП для подсказок формы', () => {
+  const subject = (category: string | null, participant: 'vehicle' | 'pedestrian' = 'vehicle') => ({
+    tenantId: tenantId('dns'),
+    participant,
+    categoryId: category === null ? null : categoryId(category),
+    destinationZoneId: null,
+  });
+
+  it('по матрице «тип × КПП»: фура — КПП-2, легковой — КПП-1, пешеход — КПП-1', () => {
+    expect(routeGates(fx.rules, subject('semi'))).toEqual([gateId('kpp2')]);
+    expect(routeGates(fx.rules, subject('car'))).toEqual([gateId('kpp1')]);
+    expect(routeGates(fx.rules, subject(null, 'pedestrian'))).toEqual([gateId('kpp1')]);
+  });
+
+  it('без правил — все КПП периметра, которые пропускают участника', () => {
+    const rules = { ...fx.rules, routing: [] };
+    expect(routeGates(rules, subject('car')).sort()).toEqual(
+      [gateId('kpp1'), gateId('kpp2')].sort(),
+    );
+    expect(routeGates(rules, subject(null, 'pedestrian'))).toEqual([gateId('kpp1')]);
+  });
+
+  it('внутренний пост — по месту назначения', () => {
+    const ped = { ...subject(null, 'pedestrian'), destinationZoneId: zoneId('office') };
+    expect(routeGates(fx.rules, ped, 'in', 'internal')).toEqual([gateId('office')]);
   });
 });

@@ -4,6 +4,7 @@
  */
 import { resolveCandidates, resolvePedestrian } from './candidates';
 import { applicableQuotas, capacityOf } from './quotas';
+import { matchingRoutes, participantAdmitted } from './routing';
 import {
   describeTodayHours,
   formatDateTime,
@@ -19,7 +20,6 @@ import type {
   CheckKind,
   EvaluationInput,
   GateKind,
-  GateView,
   Instant,
   PassageDirection,
   PassView,
@@ -163,27 +163,9 @@ function gateNames(ctx: Ctx, ids: readonly string[]): string {
   return names.join(' или ');
 }
 
-function participantAdmitted(gate: GateView, participant: PassView['participant']): boolean {
-  if (gate.admits === 'vehicles_and_pedestrians') return true;
-  return participant === 'vehicle' ? gate.admits === 'vehicles' : gate.admits === 'pedestrians';
-}
-
 /** Маршруты, применимые к пропуску на КПП данного вида и направления; правила арендатора приоритетнее. */
-function matchingRoutes(ctx: Ctx, direction: PassageDirection, kind: GateKind): RoutingRuleView[] {
-  const { pass: p, input } = ctx;
-  const gateKind = new Map(input.rules.gates.map((g) => [g.id, g.kind] as const));
-  const applies = (r: RoutingRuleView): boolean =>
-    r.participant === p.participant &&
-    (r.direction === 'both' || r.direction === direction) &&
-    gateKind.get(r.gateId) === kind &&
-    (p.participant === 'pedestrian' || r.categoryId === null || r.categoryId === p.categoryId) &&
-    (r.destinationZoneId === null || r.destinationZoneId === p.destinationZoneId);
-  const tenantRules = input.rules.routing.filter((r) => r.tenantId === p.tenantId && applies(r));
-  const chosen =
-    tenantRules.length > 0
-      ? tenantRules
-      : input.rules.routing.filter((r) => r.tenantId === null && applies(r));
-  return [...chosen].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
+function routesFor(ctx: Ctx, direction: PassageDirection, kind: GateKind): RoutingRuleView[] {
+  return matchingRoutes(ctx.input.rules, ctx.pass, direction, kind);
 }
 
 function participantLabel(ctx: Ctx): string {
@@ -448,7 +430,7 @@ const gateAdmits: Check = (ctx) => {
 const routingIn: Check = (ctx) => {
   const { input, pass: p } = ctx;
   if (ctx.waivers.waived.has('routing')) return skippedByException(ctx, 'routing', 'routing');
-  const rules = matchingRoutes(ctx, 'in', input.gate.kind);
+  const rules = routesFor(ctx, 'in', input.gate.kind);
   const ruleIds = rules.map((r) => r.id);
   if (input.gate.kind === 'internal') {
     if (p.destinationZoneId === null) return pass('routing', { reason: 'no_destination' });
@@ -491,7 +473,7 @@ const routingIn: Check = (ctx) => {
 /** Выезд — через любой КПП, если правил на выезд нет (Q-9); не тот въездной КПП — только подсказка. */
 const routingOut: Check = (ctx) => {
   const { input } = ctx;
-  const outRules = matchingRoutes(ctx, 'out', 'perimeter');
+  const outRules = routesFor(ctx, 'out', 'perimeter');
   if (outRules.length > 0) {
     const allowed = [...new Set(outRules.map((r) => r.gateId))];
     if (allowed.includes(input.gate.id))
@@ -507,7 +489,7 @@ const routingOut: Check = (ctx) => {
       { suggestedGateIds: allowed, details: { ruleIds: outRules.map((r) => r.id) } },
     );
   }
-  const inRules = matchingRoutes(ctx, 'in', 'perimeter');
+  const inRules = routesFor(ctx, 'in', 'perimeter');
   const inGates = [...new Set(inRules.map((r) => r.gateId))];
   if (inGates.length === 0 || inGates.includes(input.gate.id)) {
     return pass('routing', { reason: 'any_gate_out' });

@@ -281,7 +281,7 @@ export function evaluate(input: EvaluationInput): Verdict {
 }
 ```
 
-Публичный API пакета: `evaluate`, `countOccupancy`, `applicableQuotas`, `capacityOf`, `overageDays`, `collectWaivers`, `resolveCandidates`, `resolvePedestrian`, `ENGINE_VERSION`, хелперы местного времени (`localParts`, `localDate`, `formatTime`, `formatDateTime`, `isWithinHours`) и типы. Всё остальное — внутреннее.
+Публичный API пакета: `evaluate`, `countOccupancy`, `applicableQuotas`, `capacityOf`, `overageDays`, `collectWaivers`, `resolveCandidates`, `resolvePedestrian`, `routeGates` / `matchingRoutes` / `participantAdmitted` (маршрут — та же логика, что у проверки 9; подсказки формы пропуска «Фура → КПП-2», этап 4), `ENGINE_VERSION`, хелперы местного времени (`localParts`, `localDate`, `formatTime`, `formatDateTime`, `isWithinHours`) и типы. Всё остальное — внутреннее.
 
 ## 10. Сценарии приёмки → проверка движка
 
