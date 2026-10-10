@@ -354,6 +354,48 @@ describe('пешеходы и внутренний пост', () => {
     expect(traceOf(v, 'routing')?.result).toBe('pass');
   });
 
+  it('внутренний пост: пока визит открыт или разовый не использован — проход сколько угодно раз; после выезда — отказ', () => {
+    // Решение заказчика 10.10.2026: вышел из офиса покурить и вернулся — пост пропускает снова.
+    const single = pedestrianPass({
+      tenant: 'kontinent',
+      type: 'single',
+      destinationZone: 'office',
+      from: `${DAY} 08:00`,
+      to: `${DAY} 20:00`,
+    });
+    const notUsed = check({ gate: 'office', subject: single, pastVisits: [] });
+    expect(notUsed.code).toBe('allow');
+    expect(notUsed.primaryAction).toBe('passage');
+
+    const inside = visit(single, { gate: 'kpp1', timeIn: `${DAY} 09:00` });
+    // Проходы внутреннего поста визит не меняют, поэтому каждый следующий проход видит то же
+    // состояние: открытый визит. Пять проходов подряд — пять зелёных карточек без предупреждений.
+    for (const now of ['10:00', '10:15', '12:30', '12:40', '17:55']) {
+      const v = check({
+        gate: 'office',
+        now: `${DAY} ${now}`,
+        subject: single,
+        openVisit: inside,
+        pastVisits: [inside],
+      });
+      expect(v.code, now).toBe('allow');
+      expect(v.reasons, now).toEqual([]);
+      expect(traceOf(v, 'single_used')?.result).toBe('pass');
+      expect(traceOf(v, 'open_visit')).toMatchObject({ result: 'pass', details: { open: true } });
+    }
+
+    const closed = visit(single, { gate: 'kpp1', timeIn: `${DAY} 09:00`, timeOut: `${DAY} 18:00` });
+    const afterExit = check({
+      gate: 'office',
+      now: `${DAY} 18:30`,
+      subject: single,
+      openVisit: null,
+      pastVisits: [closed],
+    });
+    expect(afterExit.code).toBe('deny');
+    expect(afterExit.headline).toBe('Разовый пропуск использован — нужен новый пропуск');
+  });
+
   it('сценарий 35: пешеход ДНС без документа на КПП-1 — «без документа — … выйдет ответственный ДНС» с телефоном', () => {
     const v = check({ gate: 'kpp1', subject: pedestrianPass({ tenant: 'dns' }) });
     expect(v.code).toBe('allow');

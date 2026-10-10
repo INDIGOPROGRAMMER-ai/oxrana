@@ -403,6 +403,10 @@ const singleUsed: Check = (ctx) => {
 const alreadyInside: Check = (ctx) => {
   const { openVisit, tz, input } = ctx;
   if (!openVisit) return pass('open_visit', { open: false });
+  // Внутренний пост: человек и должен быть на территории — открытый визит не предупреждение.
+  if (input.gate.kind === 'internal') {
+    return pass('open_visit', { open: true, visitId: openVisit.id });
+  }
   const gate = input.rules.gates.find((g) => g.id === openVisit.gateInId)?.name;
   const when = openVisit.timeIn === null ? '' : ` ${formatDateTime(openVisit.timeIn, tz)}`;
   return warn(
