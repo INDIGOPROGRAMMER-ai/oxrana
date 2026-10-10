@@ -142,7 +142,7 @@ blacklist
 tenants
   id uuid PK, organization_id, site_id NN FK
   legal_name text NN, short_name text NN, inn text
-  is_operator boolean NN default false      -- A6: оператор как арендатор без квот
+  is_operator boolean NN default false      -- A6: оператор как арендатор без лимитов
   status text NN default 'active' check in ('active','blocked_new_passes','blocked_entry','archived')
   trucks_dock_required boolean NN default false   -- A5
   default_category_id uuid FK vehicle_categories
@@ -202,7 +202,7 @@ quotas
   basis_clause_id uuid FK
   valid_from timestamptz NN default now(), valid_to timestamptz
   deleted_at timestamptz
-  -- отсутствие квоты у арендатора на тип = без ограничения (оператор); квота 0 = запрет
+  -- отсутствие лимита у арендатора на тип = без ограничения (оператор); лимит 0 = запрет
 
 quota_categories                            -- набор типов лимита (ADR-012); тип может входить в несколько лимитов — действуют все
   quota_id uuid FK NN, category_id uuid FK NN, PK (quota_id, category_id)
@@ -313,7 +313,7 @@ visits
   exception_id uuid FK, override_id uuid FK override_requests
   flags text[] NN default '{}'              -- 'no_checkin','after_expiry','over_stay','offline_over_quota','undone'
   client_time_in timestamptz, client_time_out timestamptz   -- время устройства при офлайн-отметке
-  index (site_id, tenant_id, category_id) where time_out is null    -- подсчёт квот
+  index (site_id, tenant_id, category_id) where time_out is null    -- подсчёт лимитов
   index (site_id, plate_norm) where time_out is null
   index (pass_id)
 
@@ -550,8 +550,8 @@ notifications
 |---|---|---|
 | 1 | Убраны `users.pin_hash`, `shifts`, `role_assignments.scope_gate_id`; добавлены `gate_accounts`, `gate_devices` (с привязкой к учётке, не к КПП напрямую), `device_enrollments`, необязательные `shift_marks` | `16_` A11: одна учётка на КПП, без личных PIN |
 | 2 | `gates.kind` (`perimeter`/`internal`), `gates.zone_id`, таблица `gate_passages` | A4: КПП офис — внутренний пост, проход не открывает визит |
-| 3 | `passes.destination jsonb` → `destination_zone_id` + `dock_id` (FK); `tenants.trucks_dock_required`; `docks.counts_in_quota` | A5: док обязателен и выбирается из списка; 11 наземных ворот ДНС не в квоте; маршрут пешехода по месту назначения |
-| 4 | `tenants.is_operator` | A6: оператор — арендатор без квот |
+| 3 | `passes.destination jsonb` → `destination_zone_id` + `dock_id` (FK); `tenants.trucks_dock_required`; `docks.counts_in_quota` | A5: док обязателен и выбирается из списка; 11 наземных ворот ДНС не в лимите; маршрут пешехода по месту назначения |
+| 4 | `tenants.is_operator` | A6: оператор — арендатор без лимитов |
 | 5 | Таблица `pedestrian_rules` | A3: правила пешеходов на арендатора (× зона) |
 | 6 | Таблица `pass_change_requests` | A8: заявка на изменение начавшегося согласованного пропуска |
 | 7 | Таблица `override_requests`; из `gate_decisions` убран `override_reason`, добавлены `override_id`, `trace`, `engine_version`, `direction`, `offline`, `client_at`, `hardware_event_id` | A11 (запрос исключения администратору), B2 (объяснимость), офлайн и камеры |

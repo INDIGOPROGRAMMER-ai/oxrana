@@ -14,7 +14,7 @@ interface EvaluationInput {
   direction: 'in' | 'out';
   subject: Subject;                    // что проверяем — см. ниже
   rules: RuleSet;                      // срез правил объекта (один и тот же на сервере и в кэше поста)
-  state: LiveState;                    // занятость квот и открытые визиты — то, что меняется каждую минуту
+  state: LiveState;                    // занятость лимитов и открытые визиты — то, что меняется каждую минуту
   overrides: ApprovedOverride[];       // одобренные запросы исключений для этого субъекта/КПП
 }
 
@@ -37,7 +37,7 @@ interface RuleSet {                     // все записи уже отфил
 }
 
 interface LiveState {
-  occupancy: { quotaId: string; occupied: number }[];   // открытые визиты, попавшие в квоту (без визитов по исключению «вне квоты»)
+  occupancy: { quotaId: string; occupied: number }[];   // открытые визиты, попавшие в лимит (без визитов по исключению «вне лимита»)
   queue: { quotaId: string; passIds: string[] }[];        // FIFO очередь у ворот
   asOf: Instant;                                          // когда снято; офлайн-пост показывает возраст
 }
@@ -75,7 +75,7 @@ interface TraceEntry {
   severity?: 'deny' | 'wrong_gate' | 'wait' | 'overage' | 'info';
   skippedBy?: { exceptionId: string } | { reason: 'not_applicable' | 'direction_out' | 'internal_gate' };
   details?: Record<string, unknown>;   // quotaId, occupied, capacity, windowFrom, toleranceMin, ruleIds…
-  settingLink?: string;                // «Настройки → Квоты → ДНС → Грузовые»
+  settingLink?: string;                // «Настройки → Лимиты → ДНС → Грузовые»
   basis?: string;                      // «Договор, прил. 2»
 }
 ```
@@ -125,13 +125,13 @@ evaluate(input):
  12 dock_required   tenant.trucksDockRequired и category.dockEligible и pass.dockId == null → warn (info «док не указан»); не блокирует
  13 quota           for q in applicableQuotas(tenant, category|participant, now):        // все лимиты, в чей набор входит тип
                         occ = occupancy[q.id]; wouldBe = occ + 1
-                        q.capacity == 0            → deny «… не предусмотрены договором (квота 0)»   // waived.quota снимает и это (Q-8)
+                        q.capacity == 0            → deny «… не предусмотрены договором (лимит 0)»   // waived.quota снимает и это (Q-8)
                         wouldBe ≤ capacity         → pass
                         enforcement hard           → wait «ДНС грузовые 25/25 — ждите»
                         enforcement soft           → overage (allow_overage, tariff)   // overage_cap: превышение cap → wait
                         enforcement warn           → warn
                     итог по самой строгой; quotaStates заполняется всеми
-                    waived.quota → skipped (все квоты)
+                    waived.quota → skipped (все лимиты)
  14 pedestrian_rule participant == pedestrian: infoLine из pedestrianRules (tenant × zone) — только информация
  15 override        есть ApprovedOverride для (pass|plate, gate, direction), не истёк → worst = ALLOW, appliedOverrideId
   → verdict = compose(worst, reasons, trace, …)
@@ -144,12 +144,12 @@ evaluate(input):
   открытый визит по pass или plate найден     → allow, primary check_out; flags += after_expiry если valid_to < now
   не найден                                   → code 'no_pass'-вариант для выезда: primary 'check_out_flagged' (причина обязательна), flags += no_checkin
   маршрут на выезд проверяется только если есть routing-правила с direction out/both; иначе любой КПП
-  квоты, окна, рабочее время на выезде не проверяются никогда; чёрный список → warn (выпускать всегда)
+  лимиты, окна, рабочее время на выезде не проверяются никогда; чёрный список → warn (выпускать всегда)
 ```
 
-Внутренний пост (`gate.kind = 'internal'`): проверки 1–8, 9 (маршрут по `destinationZoneId`), 14; квоты и окно — `skipped: internal_gate`. Действие — `passage` (пишется `gate_passages`), визит не меняется.
+Внутренний пост (`gate.kind = 'internal'`): проверки 1–8, 9 (маршрут по `destinationZoneId`), 14; лимиты и окно — `skipped: internal_gate`. Действие — `passage` (пишется `gate_passages`), визит не меняется.
 
-## 4. Подсчёт квот
+## 4. Подсчёт лимитов
 
 ```ts
 applicableQuotas(tenant, category | 'pedestrian', now):
@@ -169,7 +169,7 @@ capacity(quota, docks): quota.capacityFromDocks ? docks.filter(d => d.tenantId =
 ```
 
 - `counting = 'active_passes'` и `'per_day'` — в MVP занятость для них сервер считает иначе (по пропускам / по визитам за местные сутки) и передаёт в `occupancy` так же; движок разницы не видит. На Радонежском используется только `on_site`.
-- Мягкая квота: кто именно «сверх» — последние въехавшие в моменте; `overage` ставится визиту при въезде и не пересчитывается задним числом.
+- Мягкий лимит: кто именно «сверх» — последние въехавшие в моменте; `overage` ставится визиту при въезде и не пересчитывается задним числом.
 - Начисление: `overageDays(timeIn, timeOut ?? now, timezone)` = число местных календарных дат, затронутых интервалом (22:00 → 09:00 следующего дня = 2). Чистая функция в этом же пакете; фоновая задача на сервере пишет `overage_charges` идемпотентно (`unique (visit_id, day)`).
 
 ## 5. Исключения
@@ -292,7 +292,7 @@ export function evaluate(input: EvaluationInput): Verdict {
 | 13 | автобус ДНС при 30/30 | `collectWaivers` → quota skipped, infoLine «Исключение» | engine |
 | 14 | X5 в 03:00 | `working_hours`, `time_window` skipped by exception | engine |
 | 15 | без пропуска → запрос → зелёный | `no_pass` + `request_pass`; после создания пропуска `allow` | engine + API |
-| 16 | выезд без отметки въезда | out: `check_out_flagged`, flags `no_checkin`; квота не уходит в минус (визит создаётся сразу закрытым) | engine + API |
+| 16 | выезд без отметки въезда | out: `check_out_flagged`, flags `no_checkin`; лимит не уходит в минус (визит создаётся сразу закрытым) | engine + API |
 | 25 | разовый вернулся через час | `single_used` → `deny` + `request_pass` | engine |
 | 26 | пропуск истёк внутри | out: `allow`, flags `after_expiry` | engine |
 | 27–28, 36 | нормализация номеров | `@oxrana/plates.normalize` | plates |
