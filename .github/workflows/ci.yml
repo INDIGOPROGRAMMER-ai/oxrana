@@ -1,5 +1,7 @@
 name: CI
 
+# Мажоры actions — на рантайме Node 24 (Q-49): v4 выдавали «Node.js 20 is deprecated».
+
 on:
   push: # любая ветка: проверка на каждом коммите, без дублей от pull_request
   workflow_dispatch:
@@ -16,9 +18,9 @@ jobs:
     name: Typecheck, lint, unit, сборка
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4 # версия pnpm — из packageManager в package.json
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5 # версия pnpm — из packageManager в package.json
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -51,9 +53,9 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: postgres
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -68,9 +70,9 @@ jobs:
     name: E2E (Playwright, Chromium)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -78,7 +80,7 @@ jobs:
       - run: cp .env.example .env # API требует DATABASE_URL; для smoke-тестов подключение не открывается
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: playwright-report
