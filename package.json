@@ -14,17 +14,20 @@
     "format": "biome check --write .",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
+    "test:coverage": "vitest run --project unit --coverage",
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
     "db:up": "bash scripts/db-up.sh",
     "db:migrate": "pnpm --filter @oxrana/db migrate",
     "db:seed": "pnpm --filter @oxrana/db seed",
-    "db:reset": "bash scripts/db-reset.sh"
+    "db:reset": "bash scripts/db-reset.sh",
+    "fixture:engine": "pnpm --filter @oxrana/db freeze-fixture"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
     "@playwright/test": "catalog:",
     "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

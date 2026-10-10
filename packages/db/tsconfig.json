@@ -6,5 +6,5 @@
     "types": ["node"]
   },
   "include": ["src", "seed", "test", "drizzle.config.ts"],
-  "references": [{ "path": "../contracts" }]
+  "references": [{ "path": "../contracts" }, { "path": "../engine" }]
 }
