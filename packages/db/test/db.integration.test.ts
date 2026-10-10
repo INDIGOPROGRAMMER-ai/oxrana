@@ -19,7 +19,7 @@ describe('БД после миграций', () => {
     const { rows } = await owner.query(
       'select count(*)::int as n from drizzle.__drizzle_migrations',
     );
-    expect(rows[0].n).toBeGreaterThanOrEqual(1);
+    expect(rows[0].n).toBeGreaterThanOrEqual(3);
   });
 
   it('нужные расширения установлены', async () => {

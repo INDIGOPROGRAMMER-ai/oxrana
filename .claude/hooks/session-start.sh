@@ -1,6 +1,6 @@
 #!/bin/bash
 # SessionStart-хук облачных сессий Claude Code (ADR-010 п. 6): к началу работы готовы зависимости,
-# запущен PostgreSQL и применены миграции. Идемпотентен и быстр (~10 с на холодном контейнере,
+# запущен PostgreSQL, применены миграции и демо-сид. Идемпотентен и быстр (~10 с на холодном контейнере,
 # секунды на повторном запуске). Вне облака (CLAUDE_CODE_REMOTE != true) ничего не делает.
 set -uo pipefail
 
@@ -23,9 +23,11 @@ step "pnpm install" pnpm install --frozen-lockfile --prefer-offline
 # Postgres и роли: безопасно повторять; .env создаётся из .env.example при первом запуске.
 step "pnpm db:up" pnpm db:up
 step "pnpm db:migrate" pnpm db:migrate
+# Демо-объект: сид идемпотентен, повторный запуск ничего не дублирует и не меняет.
+step "pnpm db:seed" pnpm db:seed
 
 if [ "${#failed[@]}" -gt 0 ]; then
   echo "Окружение подготовлено не полностью (${failed[*]}). Повторите шаги вручную: см. раздел «Команды» в CLAUDE.md." >&2
   exit 1
 fi
-echo "Окружение готово: зависимости, PostgreSQL, миграции." >&2
+echo "Окружение готово: зависимости, PostgreSQL, миграции, демо-сид." >&2

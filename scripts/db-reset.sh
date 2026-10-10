@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Пересоздаёт базу oxrana с нуля и применяет миграции (ADR-010). Сид появится на этапе 2.
+# Пересоздаёт базу oxrana с нуля: миграции и демо-сид (ADR-010).
 # Только для dev/test: данные в базе будут удалены.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -15,3 +15,4 @@ bash scripts/db-up.sh
 psql_admin -c 'drop database if exists oxrana with (force)'
 bash scripts/db-up.sh
 pnpm db:migrate
+pnpm db:seed
