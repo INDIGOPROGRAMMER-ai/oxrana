@@ -9,6 +9,8 @@ export interface AppErrorOptions {
   settingLink?: string;
   /** Не хватившее право (только для `forbidden`, ADR-007). */
   permission?: string;
+  /** Данные для экрана: где используется запись, какой пропуск дублируется. */
+  details?: Record<string, unknown>;
 }
 
 /** Ожидаемая ошибка прикладного уровня; обработчик превращает её в тело `{code, message, field, settingLink, requestId}`. */
@@ -17,6 +19,7 @@ export class AppError extends Error {
   readonly field: string | null;
   readonly settingLink: string | null;
   readonly permission: string | null;
+  readonly details: Record<string, unknown> | null;
 
   constructor(code: ErrorCode, options: AppErrorOptions = {}) {
     super(options.message ?? ERROR_MESSAGES[code]);
@@ -25,6 +28,7 @@ export class AppError extends Error {
     this.field = options.field ?? null;
     this.settingLink = options.settingLink ?? null;
     this.permission = options.permission ?? null;
+    this.details = options.details ?? null;
   }
 
   get statusCode(): number {

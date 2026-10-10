@@ -31,6 +31,7 @@ export function registerErrorHandling(app: FastifyInstance): void {
         field: error.field,
         settingLink: error.settingLink,
         ...(error.permission !== null ? { permission: error.permission } : {}),
+        ...(error.details !== null ? { details: error.details } : {}),
       });
     }
 
