@@ -239,7 +239,7 @@ GitHub Actions: typecheck, lint, unit, интеграция с Postgres, E2E (Pl
 
 ## 8. Среда разработки
 
-- Облачная сессия: `pnpm install && pnpm db:up && pnpm db:migrate && pnpm db:seed && pnpm dev`. Postgres — системный кластер, Docker недоступен (ADR-010). Команды будут вписаны в `CLAUDE.md` на этапе 1.
+- Облачная сессия: `pnpm install && pnpm db:up && pnpm db:migrate && pnpm db:seed && pnpm dev`. Postgres — системный кластер, Docker недоступен (ADR-010). Команды — в `CLAUDE.md`, раздел «Команды».
 - Режим развёртывания (`DEPLOY_MODE`) на код не влияет: в сессии и в тестах приложение запускается так же, как на сервере объекта, без Caddy и туннеля.
 - Тесты: `pnpm test:unit` (без БД), `pnpm test` (с БД), `pnpm test:e2e` (Playwright, Chromium предустановлен).
 - Любая сессия — своя ветка, результат в `main` через PR; CI повторяет те же команды.

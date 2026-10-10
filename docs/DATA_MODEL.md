@@ -1,6 +1,6 @@
 # Модель данных
 
-Основа — `docs/spec/11_модель_данных.sql`, исправленная по `16_дополнения_и_уточнения.md` и решениям ADR. Исходный код схемы будет в `packages/db/src/schema/*.ts` (Drizzle), миграции — в `packages/db/migrations/`. Этот документ — источник истины для этапа 2; после этапа 2 расхождения правятся здесь же.
+Основа — `docs/spec/11_модель_данных.sql`, исправленная по `16_дополнения_и_уточнения.md` и решениям ADR. Схема — `packages/db/src/schema/*.ts` (Drizzle, файл на раздел §2), миграции — `packages/db/migrations/` (этап 2, ADR-014). Этот документ — источник истины: изменение схемы начинается здесь. Где реализация уточнила запись ниже — §7.
 
 Соглашения:
 - Ключи — `uuid` (`gen_random_uuid()`), журналы — `bigint identity`.
@@ -539,8 +539,8 @@ notifications
 
 ## 4. Мультиарендность и RLS
 
-- Каждая таблица с данными организации имеет `organization_id`. Приложение в начале транзакции выполняет `set local app.organization_id = '<uuid>'` (и `app.site_id`, где уместно).
-- На всех таких таблицах включён RLS с политикой `organization_id = current_setting('app.organization_id')::uuid`. Приложение ходит под ролью `oxrana_app` без `BYPASSRLS`; миграции и сид — под владельцем `oxrana_owner`.
+- Каждая таблица с данными организации имеет `organization_id`. Приложение в начале транзакции выполняет `set local app.organization_id = '<uuid>'` (и `app.site_id`, где уместно) — хелпер `withOrganization(db, orgId, fn)` из `@oxrana/db`.
+- На всех таких таблицах включён RLS с политикой `organization_id = nullif(current_setting('app.organization_id', true), '')::uuid` (`USING` и `WITH CHECK`); таблицы-связки без `organization_id` — через видимость родителя; платформенные таблицы (`users`, `sessions`, `login_codes`, `push_subscriptions`, `notification_preferences`, `telegram_links`) — без RLS (ADR-014 п. 4). Приложение ходит под ролью `oxrana_app` без `BYPASSRLS`; миграции и сид — под владельцем `oxrana_owner`.
 - Запросы фильтруют по `organization_id` явно (Drizzle-хелпер `scoped(table, ctx)`), RLS — вторая линия. Тест: запрос с чужим `organization_id` возвращает пусто.
 - Пользователи арендатора видят только `tenant_id` из своих `role_assignments` — это проверяется в сервисном слое (RLS по арендатору не делаем: у охраны и админа срез по объекту).
 
@@ -585,3 +585,20 @@ notifications
 | ФИО водителя/пешехода, телефон, номер | `passes`, `visits.snapshot`, `gate_requests`, `fleet_vehicles` | `retentionDays.visits` | задача `retention` обезличивает (`person_name → null`, `plate_norm → хэш`) по сроку |
 | Фото с камер | хранилище файлов, ссылка в `hardware_events.photo_ref` | `retentionDays.photos` | удаляются задачей |
 | Согласия | `pass_tokens.consent_at`, `users` (при приёме приглашения) | вместе с записью | |
+
+## 7. Уточнения реализации (этап 2)
+
+Схема реализована строго по §2 (54 таблицы). Ниже — места, где запись §2 уточнена при реализации, и почему. Решения — ADR-014.
+
+| # | Где | Как в §2 | Как в БД | Почему |
+|---|---|---|---|---|
+| 1 | `approval_policies`, `role_assignments`, `notification_preferences` | `unique (…, coalesce(x, nil), …)` | `UNIQUE NULLS NOT DISTINCT (…, x, …)` | то же поведение (null — одно значение) встроенным средством PostgreSQL 15+, без выражений; у `vehicle_categories` (частичный индекс) оставлен `coalesce` |
+| 2 | `notification_preferences` | `PK (user_id, coalesce(tenant_id, nil), kind, channel)` | без PK, уникальность — п. 1 | в первичный ключ нельзя включить выражение и nullable-колонку |
+| 3 | `vehicle_categories.preset_code`, `visits.participant`, `gate_requests.participant`, `gate_passages.direction`, `override_requests.direction`, `override_requests.verdict_code`, `device_enrollments.kind` | перечисление без `check` | `check` по спискам contracts (`VEHICLE_CATEGORY_PRESET_CODES`, `PARTICIPANTS`, `PASSAGE_DIRECTIONS`, `VERDICT_CODES`, `GATE_DEVICE_KINDS`) | соглашение «перечисления — `text` + `check`»; `device_enrollments.kind` трактуется как вид привязываемого устройства (`post`/`agent`). Свободным текстом остались открытые списки: `notifications.kind/channel`, `violations.kind`, `audit_log.action`, `domain_events.type`, `hardware_events.direction`, `barrier_commands.direction` — их значения появятся на этапах 10 и 14 |
+| 4 | `quota_categories`, `time_window_policy_categories` | без `organization_id` | без `organization_id`, RLS через родителя (`exists` по `quotas` / `time_window_policies`) | изоляция без денормализации (ADR-014 п. 4) |
+| 5 | `organization_id` в журналах (`audit_log`, `domain_events`, `notifications`) | `NN` | `NN` + FK на `organizations` | как у остальных бизнес-таблиц |
+| 6 | `created_at`/`updated_at` | «у всех редактируемых таблиц» | `created_at` + `updated_at` (триггер) — у 31 справочника и бизнес-таблицы; только `created_at` — у `pass_batches`, `pass_tokens`, `role_assignments`, `invitations`, `login_codes`, `device_enrollments`, `overage_charges`, `notifications`; журналы — со своим временем события (`at`, `time_in`, `queued_at`, `issued_at`) | журналы не редактируются; токены и связи создаются и удаляются, но не правятся. У `violations` добавлен `updated_at` (меняется статус) |
+| 7 | права `oxrana_app` | ADR-003: без `UPDATE`/`DELETE` на 4 журнала | то же + без `DELETE` на `visits` и `barrier_commands` | журналы не удаляются (§ соглашения); эти два обновляются выездом и статусом команды |
+| 8 | NOTIFY outbox | ADR-004: `{"siteId", "id"}` | `{"id", "organizationId", "siteId"}` | слушатель читает событие под RLS |
+| 9 | `sites.settings` | `SiteSettings` | хранятся только заданные ключи, значения по умолчанию — в zod (`SiteSettingsSchema.parse`) | новая настройка с дефолтом не требует миграции данных |
+| 10 | `sites.working_hours`, `gates.working_hours`, `quotas.schedule` | `{"mon":[["08:00","20:00"]],…}` | то же, все семь дней явно (`WorkingHours`), `[]` — выходной | нет двусмысленности «день не указан = выходной или круглосуточно» |
