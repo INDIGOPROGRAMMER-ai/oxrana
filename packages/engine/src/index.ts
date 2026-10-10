@@ -1,10 +1,31 @@
 /**
- * Движок вердикта (контракт — docs/RULES_ENGINE.md): чистые функции без БД, сети и системных
- * часов. Этап 1 — только заготовка; `evaluate` появится на этапе 3.
+ * Движок вердикта (docs/RULES_ENGINE.md): чистые функции без БД, сети и системных часов. Время и
+ * все данные приходят параметрами; один и тот же код работает в API, на посту офлайн, в песочнице
+ * и в тестах. Публичный API: `evaluate`, `countOccupancy`, `applicableQuotas`, `overageDays`,
+ * `collectWaivers`, `resolveCandidates`, `ENGINE_VERSION` и типы.
  */
+export { type CandidateResolution, resolveCandidates, resolvePedestrian } from './candidates';
+export { ENGINE_VERSION, evaluate } from './evaluate';
+export {
+  applicableQuotas,
+  capacityOf,
+  countOccupancy,
+  overageDays,
+  type QuotaTarget,
+} from './quotas';
+export {
+  formatDate,
+  formatDateTime,
+  formatTime,
+  isWithinHours,
+  type LocalParts,
+  localDate,
+  localParts,
+} from './time';
+export type * from './types';
+export { collectWaivers, type Waivers } from './waivers';
 
-/** Момент времени: миллисекунды с эпохи (UTC). Движок сам время не читает — оно приходит параметром. */
-export type Instant = number;
+import type { Instant } from './types';
 
 /** Момент в виде строки ISO 8601 в UTC — для trace и журналов. */
 export function instantToIso(instant: Instant): string {

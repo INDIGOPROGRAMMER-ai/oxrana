@@ -6,6 +6,13 @@ const env = loadEnv('test', process.cwd(), '');
 
 export default defineConfig({
   test: {
+    // Покрытие чистых пакетов (этап 3): `pnpm test:coverage`, порог — 95 % строк.
+    coverage: {
+      provider: 'v8',
+      include: ['packages/engine/src/**', 'packages/plates/src/**'],
+      reporter: ['text', 'text-summary'],
+      thresholds: { lines: 95, functions: 95, statements: 95 },
+    },
     projects: [
       {
         // Без БД: работает и без `pnpm db:up` (ADR-010 п. 3).

@@ -1,6 +1,8 @@
 # Движок вердикта — контракт `@oxrana/engine`
 
-Пакет `packages/engine`. Чистые функции: без БД, сети, системных часов, `Math.random`, `Date.now()`. Время и все данные приходят параметрами. Один и тот же собранный код выполняется в API-сервере, в PWA поста (офлайн), в песочнице админки и в тестах. Зависимостей нет (только `Intl` платформы для локальных суток и форматирования времени в причинах).
+Пакет `packages/engine`. Чистые функции: без БД, сети, системных часов, `Math.random`, `Date.now()` — это проверяет `scripts/check-engine-purity.ts` (ADR-015). Время и все данные приходят параметрами. Один и тот же собранный код выполняется в API-сервере, в PWA поста (офлайн), в песочнице админки и в тестах. Единственная зависимость — `@oxrana/plates` (похожие номера, §6); из платформы — только `Intl` для локальных суток и форматирования времени в причинах.
+
+> Реализовано на этапе 3. Уточнения, внесённые при реализации, помечены «(ADR-015)».
 
 ## 1. Вход
 
@@ -54,8 +56,8 @@ interface Verdict {
   headline: string;                    // одна фраза для охраны: «ДНС грузовые 25/25 — ждите»
   reasons: Reason[];                   // все причины, первая = headline
   trace: TraceEntry[];                 // каждая проверка, в порядке выполнения
-  primaryAction: 'check_in' | 'check_out' | 'wait' | 'redirect' | 'refuse' | 'request_pass' | 'none';
-  secondaryActions: ('override_request' | 'request_window' | 'check_out_flagged' | 'choose_tenant')[];
+  primaryAction: 'check_in' | 'check_out' | 'check_out_flagged' | 'passage' | 'wait' | 'redirect' | 'refuse' | 'request_pass' | 'none';   // check_out_flagged, passage — ADR-015
+  secondaryActions: ('override_request' | 'request_window' | 'check_out_flagged' | 'choose_tenant' | 'request_pass')[];
   suggestedGateIds: string[];          // для wrong_gate
   quotaStates: { quotaId; name; occupied; capacity; enforcement; wouldBe: number }[];   // для плашки «мест: грузовые 20/25»
   infoLines: string[];                 // «Док №12», «Проверьте документ · Сопровождение: позвоните …», «Исключение: служебный автобус»
@@ -63,14 +65,17 @@ interface Verdict {
   overage?: { quotaId; tariffRub: number };
   appliedExceptionIds: string[];
   appliedOverrideId?: string;
+  candidates: CandidateView[];         // «к кому едет?» и похожие номера (ADR-015)
+  passId: string | null;               // пропуск, по которому принят вердикт после разрешения номера (ADR-015)
   engineVersion: string;               // семвер пакета; пишется в gate_decisions
 }
 
 interface Reason { code: string; message: string; params?: Record<string, unknown>; settingLink?: string; basis?: string }
 
 interface TraceEntry {
-  check: CheckKind;                    // 'pass_found'|'pass_status'|'blacklist'|'tenant_status'|'contract'|'pass_validity'|'single_used'
+  check: CheckKind;                    // 'pass_found'|'pass_status'|'blacklist'|'tenant_status'|'contract'|'pass_validity'|'single_used'|'open_visit'
                                        // |'gate_admits'|'routing'|'working_hours'|'time_window'|'dock_required'|'quota'|'pedestrian_rule'|'override'
+                                       // open_visit (ADR-015): на выезде — есть ли открытый визит; на въезде — warn «уже на территории»
   result: 'pass' | 'fail' | 'warn' | 'skipped';
   severity?: 'deny' | 'wrong_gate' | 'wait' | 'overage' | 'info';
   skippedBy?: { exceptionId: string } | { reason: 'not_applicable' | 'direction_out' | 'internal_gate' };
@@ -86,6 +91,7 @@ interface TraceEntry {
 - Движок детерминирован: одинаковый `EvaluationInput` → одинаковый `Verdict` (snapshot-тесты).
 - Все проверки выполняются до конца (кроме `pass_found = fail`): trace полный даже при раннем `deny`, чтобы админ видел всю цепочку.
 - Тексты причин — по-русски, в движке (одна точка истины для сервера и поста). Время в текстах форматируется в `site.timezone` через `Intl.DateTimeFormat`.
+- Заголовок зелёной карточки — «Грузовые 24/25 — впускайте» (самый тесный лимит) или «Пропуск действует — впускайте»; предупреждения (`warn`) идут в `reasons` второй строкой. Для `wait`/`wrong_gate`/`deny` заголовок = первая (самая строгая) причина; при одобренном исключении — «Исключение одобрено администратором — впускайте» (ADR-015).
 
 ## 3. Порядок проверок (въезд через КПП периметра)
 
@@ -143,11 +149,12 @@ evaluate(input):
 ```
   открытый визит по pass или plate найден     → allow, primary check_out; flags += after_expiry если valid_to < now
   не найден                                   → code 'no_pass'-вариант для выезда: primary 'check_out_flagged' (причина обязательна), flags += no_checkin
-  маршрут на выезд проверяется только если есть routing-правила с direction out/both; иначе любой КПП
+  маршрут на выезд проверяется только если есть routing-правила с direction out/both; иначе любой КПП,
+                                                и не тот въездной КПП — предупреждение «выезд разрешён» (Q-9, ADR-015); пешеход через КПП «только машины» — тоже предупреждение
   лимиты, окна, рабочее время на выезде не проверяются никогда; чёрный список → warn (выпускать всегда)
 ```
 
-Внутренний пост (`gate.kind = 'internal'`): проверки 1–8, 9 (маршрут по `destinationZoneId`), 14; лимиты и окно — `skipped: internal_gate`. Действие — `passage` (пишется `gate_passages`), визит не меняется.
+Внутренний пост (`gate.kind = 'internal'`): проверки 1–8, 9 (маршрут по `destinationZoneId`; без правил — по `gate.zoneId`), 14, 15; лимиты, окно, рабочее время и док — `skipped: internal_gate`. Действие — `passage` (пишется `gate_passages`), визит не меняется.
 
 ## 4. Подсчёт лимитов
 
@@ -188,16 +195,19 @@ capacity(quota, docks): quota.capacityFromDocks ? docks.filter(d => d.tenantId =
 ## 6. Разрешение кандидатов по номеру (камера, поиск, QR)
 
 ```ts
-resolveCandidates({plateNorm, candidates, openVisits}, rules, now):
-  exact  = candidates.filter(p => p.plateNorm == plateNorm && p.status == 'approved' && validAround(p, now, ±24h))
-  if exact.length == 1 → [exact]
-  if exact.length > 1 && один арендатор → берём с ближайшим окном
-  if exact.length > 1 && разные арендаторы → вернуть всех: пост спрашивает «к кому едет?» (сценарий «одна машина на двух арендаторов»)
-  if exact.length == 0 → fuzzy = candidates.filter(p => plateDistance(p.plateNorm, plateNorm) ≤ 1)  // из @oxrana/plates: O/0, B/8, C/С, пропуск символа
-                         → NO_PASS с infoLines «Похожие: А123ВС174 (ДНС)» — охранник выбирает руками; автопроезд по fuzzy запрещён
+resolveCandidates({plateNorm, candidates}, now): {kind:'one', pass} | {kind:'choose', passes} | {kind:'none', similar}   // (ADR-015)
+  exact   = candidates.filter(p => p.plateNorm == plateNorm)
+  current = exact.filter(p => p.status == 'approved' && validAround(p, now, ±24h))
+  if current.length == 1 → one
+  if current.length > 1 && один арендатор → one: с ближайшим окном
+  if current.length > 1 && разные арендаторы → choose: пост спрашивает «к кому едет?» (сценарий «одна машина на двух арендаторов»)
+  if current.length == 0 && exact.length > 0 → one: самый свежий — охранник увидит настоящую причину («разовый использован», «на согласовании»)
+  иначе → none, similar = candidates.filter(p => plateDistance(p.plateNorm, plateNorm) ≤ 1)  // из @oxrana/plates: O/0, B/8, пропуск символа
+          → NO_PASS с infoLines «Похожие: А123ВС174 (ДНС)» и candidates — охранник выбирает руками; автопроезд по fuzzy запрещён
+  на выезде: сначала открытый визит по номеру (пропуск — из визита), затем то же разрешение; нет визита → check_out_flagged
 ```
 
-Для QR субъект сразу `{kind:'pass'}` по id из токена. Для пешехода — поиск по подстроке `person_name` (3–4 буквы фамилии), кандидаты показываются списком, движок вызывается для выбранного.
+Для QR субъект сразу `{kind:'pass'}` по id из токена. Для пешехода — `resolvePedestrian`: поиск по подстроке `person_name` (3–4 буквы фамилии) без учёта регистра; один найден — проверки, несколько — `no_pass` с `candidates` и `choose_tenant`, движок вызывается для выбранного.
 
 ## 7. Один код на сервере и на посту
 
@@ -271,7 +281,7 @@ export function evaluate(input: EvaluationInput): Verdict {
 }
 ```
 
-Публичный API пакета: `evaluate`, `countOccupancy`, `applicableQuotas`, `overageDays`, `collectWaivers`, `resolveCandidates`, `ENGINE_VERSION`, типы. Всё остальное — внутреннее.
+Публичный API пакета: `evaluate`, `countOccupancy`, `applicableQuotas`, `capacityOf`, `overageDays`, `collectWaivers`, `resolveCandidates`, `resolvePedestrian`, `ENGINE_VERSION`, хелперы местного времени (`localParts`, `localDate`, `formatTime`, `formatDateTime`, `isWithinHours`) и типы. Всё остальное — внутреннее.
 
 ## 10. Сценарии приёмки → проверка движка
 

@@ -85,11 +85,13 @@
 | Типы (`tsc -b` по project references) | `pnpm typecheck` |
 | Линт и формат (Biome) | `pnpm lint` · исправить автоматически: `pnpm format` |
 | Юнит-тесты, без БД | `pnpm test:unit` |
+| Покрытие `engine` и `plates` (порог 95 % строк) | `pnpm test:coverage` |
 | Интеграционные тесты на реальном PostgreSQL (шаблон `oxrana_test_template` с миграциями, своя копия базы на каждый файл) | `pnpm test:integration` |
 | Все тесты Vitest | `pnpm test` |
 | E2E Playwright (сами поднимают API, web, gate на портах 3100/5273/5274) | `pnpm test:e2e` |
 | Один тест | `pnpm exec vitest run путь/к/файлу.test.ts` |
 | Новая миграция из изменённой схемы `packages/db/src/schema` | `pnpm --filter @oxrana/db generate` |
+| Перегенерировать фикстуру RuleSet демо-объекта для тестов движка (после правки сида или `loadRuleSet`) | `pnpm fixture:engine` |
 | Проверка «готово» | `pnpm typecheck && pnpm lint && pnpm test` |
 
-Где что: `apps/api` (Fastify), `apps/web` и `apps/gate` (Vite + TanStack Router), `packages/{contracts,engine,plates,db}`, `scripts/` (БД, архитектурные проверки), `e2e/`. В `packages/db`: `src/schema` (Drizzle), `migrations/` (0001 генерируется, ручное — отдельными файлами), `seed/` (единственное место с названиями объекта), `test/` (harness тестовых баз). Решения по устройству каркаса — ADR-013. Новая внешняя зависимость — только через `catalog:` в `pnpm-workspace.yaml`, версия точная.
+Где что: `apps/api` (Fastify), `apps/web` и `apps/gate` (Vite + TanStack Router), `packages/{contracts,engine,plates,db}`, `scripts/` (БД, архитектурные проверки), `e2e/`. В `packages/db`: `src/schema` (Drizzle), `migrations/` (0001 генерируется, ручное — отдельными файлами), `seed/` (единственное место с названиями объекта), `test/` (harness тестовых баз). В `packages/engine/test/fixtures` — замороженный срез правил демо-объекта (ADR-015), в `scripts/check-engine-purity.ts` — запрет часов, сети и пояса среды в `engine` и `plates`. Решения по устройству каркаса — ADR-013. Новая внешняя зависимость — только через `catalog:` в `pnpm-workspace.yaml`, версия точная.

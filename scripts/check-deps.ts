@@ -4,15 +4,16 @@ import { fileURLToPath } from 'node:url';
 import { walk } from './walk';
 
 /**
- * ADR-002: зависимости между пакетами идут только «вниз», чистые пакеты (engine, plates) не зависят
- * ни от чего, внешние версии берутся из pnpm catalog.
+ * ADR-002, ADR-015: зависимости между пакетами идут только «вниз»; чистые пакеты (engine, plates)
+ * без внешних зависимостей, engine → plates (нечёткие номера), db → engine (сборка RuleSet);
+ * внешние версии берутся из pnpm catalog.
  */
 const WORKSPACE_RULES: Record<string, { internal: string[]; external?: string[]; pure?: boolean }> =
   {
-    '@oxrana/engine': { internal: [], external: [], pure: true },
+    '@oxrana/engine': { internal: ['@oxrana/plates'], external: [], pure: true },
     '@oxrana/plates': { internal: [], external: [], pure: true },
     '@oxrana/contracts': { internal: [], external: ['zod'], pure: true },
-    '@oxrana/db': { internal: ['@oxrana/contracts'] },
+    '@oxrana/db': { internal: ['@oxrana/contracts', '@oxrana/engine'] },
     '@oxrana/hardware': { internal: ['@oxrana/contracts'], pure: true },
     '@oxrana/ui': { internal: ['@oxrana/contracts'] },
   };

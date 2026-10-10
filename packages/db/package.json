@@ -9,10 +9,12 @@
   "scripts": {
     "migrate": "tsx --env-file-if-exists=../../.env src/migrate-cli.ts",
     "seed": "tsx --env-file-if-exists=../../.env seed/cli.ts",
-    "generate": "drizzle-kit generate"
+    "generate": "drizzle-kit generate",
+    "freeze-fixture": "tsx --env-file-if-exists=../../.env seed/freeze-fixture.ts"
   },
   "dependencies": {
     "@oxrana/contracts": "workspace:*",
+    "@oxrana/engine": "workspace:*",
     "drizzle-orm": "catalog:",
     "pg": "catalog:"
   },

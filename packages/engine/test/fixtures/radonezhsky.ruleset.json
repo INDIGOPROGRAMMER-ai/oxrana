@@ -1,0 +1,1773 @@
+{
+  "$comment": "Сгенерировано скриптом pnpm fixture:engine из сида packages/db/seed — руками не править.",
+  "seed": "radonezhsky",
+  "site": {
+    "id": "906d17a2-2aae-5ef3-abdd-dbba471d5a7f",
+    "name": "ЛЦ «Радонежский»",
+    "timezone": "Asia/Yekaterinburg",
+    "workingHours": {
+      "fri": [["08:00", "20:00"]],
+      "mon": [["08:00", "20:00"]],
+      "sat": [["08:00", "20:00"]],
+      "sun": [["08:00", "20:00"]],
+      "thu": [["08:00", "20:00"]],
+      "tue": [["08:00", "20:00"]],
+      "wed": [["08:00", "20:00"]]
+    },
+    "settings": {
+      "outsideWorkingHours": "warn",
+      "singleReturnWindowMin": null,
+      "overrideValidMin": 15
+    }
+  },
+  "rules": {
+    "gates": [
+      {
+        "id": "23d3ffb6-2ee0-5797-8033-292d99b8fb7c",
+        "name": "КПП-2",
+        "kind": "perimeter",
+        "admits": "vehicles",
+        "zoneId": null,
+        "direction": "both",
+        "workingHours": null
+      },
+      {
+        "id": "d98c4c2e-8dc9-5b7e-98a4-c3e494639011",
+        "name": "КПП-1",
+        "kind": "perimeter",
+        "admits": "vehicles_and_pedestrians",
+        "zoneId": null,
+        "direction": "both",
+        "workingHours": null
+      },
+      {
+        "id": "fb94127e-a3b8-5622-9b91-f0ccfb52fa81",
+        "name": "КПП офис",
+        "kind": "internal",
+        "admits": "pedestrians",
+        "zoneId": "d871c62a-f06a-526b-a563-fbb01fb8a9ac",
+        "direction": "both",
+        "workingHours": null
+      }
+    ],
+    "zones": [
+      {
+        "id": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "name": "Основной склад"
+      },
+      {
+        "id": "6ccdd126-5e5c-57ae-bdd2-e29ab12bfffe",
+        "name": "Стр. 5 (склад Агроторга)"
+      },
+      {
+        "id": "a45b854a-e6df-56b4-ab05-01bc702d81e6",
+        "name": "Территория и стоянки"
+      },
+      {
+        "id": "d871c62a-f06a-526b-a563-fbb01fb8a9ac",
+        "name": "АБК (офисное здание)"
+      }
+    ],
+    "categories": [
+      {
+        "id": "811d550b-09e5-59e8-8a61-1dc16a38caad",
+        "presetCode": "semi",
+        "name": "фура",
+        "dockEligible": true
+      },
+      {
+        "id": "ae93890c-cca6-5331-b581-a3fc5f721132",
+        "presetCode": "truck_5t",
+        "name": "грузовой свыше 5 т",
+        "dockEligible": true
+      },
+      {
+        "id": "ceb06fb8-7ab3-5445-9b31-fc780d133298",
+        "presetCode": "car",
+        "name": "легковой",
+        "dockEligible": false
+      },
+      {
+        "id": "d420cc64-d57e-5f53-bcc3-79d450043a09",
+        "presetCode": "light_truck",
+        "name": "малотоннажный",
+        "dockEligible": true
+      },
+      {
+        "id": "f108064f-2971-531b-bc80-cbb8384aa65e",
+        "presetCode": "special",
+        "name": "спецтехника",
+        "dockEligible": false
+      }
+    ],
+    "docks": [
+      {
+        "id": "081c1e11-806d-5db5-8cb1-c4458e5b2d0d",
+        "number": "70",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "088ac97e-3ae2-5ae5-a39f-8a9a6fb2284f",
+        "number": "Н2",
+        "zoneId": null,
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": false
+      },
+      {
+        "id": "0bb82547-6766-5d0c-ae44-65c771aa6c04",
+        "number": "60",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "1540d08b-4777-5097-9d97-b53ce0cd16f3",
+        "number": "57",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "1653d582-07fb-5035-aab7-2790252070a5",
+        "number": "42",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "1a3e6b80-bf24-5023-9263-b3f4357fdac9",
+        "number": "3",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "1b403c19-d58a-5de6-a8d1-0031aaed2bfd",
+        "number": "9",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "1ca235bb-08a2-57a4-8039-e8f2f3251aa2",
+        "number": "Н8",
+        "zoneId": null,
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": false
+      },
+      {
+        "id": "1ca828ae-0d0b-5e0a-8ac3-c5f7a5c0e08a",
+        "number": "71",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "20a81ff6-62f8-565e-bf74-ad2e77d8198d",
+        "number": "Н7",
+        "zoneId": null,
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": false
+      },
+      {
+        "id": "211083a4-de4a-581d-acb3-0a79b8bf504c",
+        "number": "35",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "21c979ef-53f4-5dbe-a669-bc043e9b6dd0",
+        "number": "31",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "2503a112-1139-5101-9b72-5978974166ce",
+        "number": "28",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "2589c109-68f4-5e4b-8a80-1dec3d063c7e",
+        "number": "47",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "27697886-23a6-5ae9-853d-926626a5e8bc",
+        "number": "58",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "328a80a2-a79a-5887-b1ba-e93567ecd373",
+        "number": "18",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "33d9034e-7da5-531f-9084-c9e31e1f0fea",
+        "number": "37",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "39205165-4635-5334-b287-302be7e7d8c1",
+        "number": "1",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "3a7e81a7-ab15-5fa7-856b-d01d3b4d7896",
+        "number": "25",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "3dd5c555-4027-5cbe-a97e-e6e8781a4c88",
+        "number": "Н1",
+        "zoneId": null,
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": false
+      },
+      {
+        "id": "3f64582e-9a30-5016-a2e9-2ec4a78f1233",
+        "number": "5",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "3f6b5eb8-3baf-58cd-9ee0-195259a5ee4b",
+        "number": "Н9",
+        "zoneId": null,
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": false
+      },
+      {
+        "id": "45ca85c7-b8c7-50c7-8828-9dc8651275a9",
+        "number": "Н11",
+        "zoneId": null,
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": false
+      },
+      {
+        "id": "47e9e12a-5bfd-53b9-b7c6-1ad0fb179eb3",
+        "number": "14",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "4845b3b2-2e87-5972-b3bf-114cc41425c5",
+        "number": "30",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "49d01eda-53f4-53b6-94f1-6613f8a8fff7",
+        "number": "50",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "4b7b18da-b2d7-51a7-b940-7d64b01ee81f",
+        "number": "66",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "4bfe7115-e949-5f3f-a5dc-51051ba3035a",
+        "number": "40",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "51bfa383-dd6b-523a-8e1e-755d05cec1c0",
+        "number": "53",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "529770a1-8bbc-5f59-a195-cecdf5df2b66",
+        "number": "65",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "55fd1a64-2881-5f88-81d1-4ce82cf2900c",
+        "number": "З4",
+        "zoneId": "6ccdd126-5e5c-57ae-bdd2-e29ab12bfffe",
+        "tenantId": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "countsInQuota": true
+      },
+      {
+        "id": "5abcaf36-dbc7-534b-a58c-7cecaed78a2e",
+        "number": "Н4",
+        "zoneId": null,
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": false
+      },
+      {
+        "id": "5e16b95c-96cf-59d5-8baf-fbdc29af2d7b",
+        "number": "24",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "5f135b15-72e2-5efb-ab2a-641f08353441",
+        "number": "72",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "6126c82a-127d-56a6-a3bb-43dbfc63e15b",
+        "number": "45",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "621d7cb2-2168-5ae7-ba6b-13d79fd6ebfa",
+        "number": "56",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "629b56a6-589f-5d96-9730-f3a7469ea937",
+        "number": "2",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "62ac1067-5472-5056-9e79-268dc5a5d4c1",
+        "number": "21",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "62e0ea7e-0e64-54c9-b965-f6469d1aeb6a",
+        "number": "Н6",
+        "zoneId": null,
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": false
+      },
+      {
+        "id": "6637a063-2f5d-5f5d-84b4-f14f17216ea0",
+        "number": "4",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "66ac0a56-ed10-5a31-82a5-c0f1a68a8247",
+        "number": "Н5",
+        "zoneId": null,
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": false
+      },
+      {
+        "id": "66ea3b0b-e603-5f28-97c7-aa51fe819767",
+        "number": "23",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "67eba5b8-ac41-5b9f-beca-366b563b489e",
+        "number": "8",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "69af21dc-7d46-5d3c-8e3b-2725b838ede4",
+        "number": "46",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "6b7f3658-d8d4-55e0-8cd0-5153e3e314df",
+        "number": "З3",
+        "zoneId": "6ccdd126-5e5c-57ae-bdd2-e29ab12bfffe",
+        "tenantId": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "countsInQuota": true
+      },
+      {
+        "id": "78197d48-4e51-5469-9027-c15f6d2da546",
+        "number": "64",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "7a5b71a1-9cd8-5ef4-88be-0381afc429ff",
+        "number": "19",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "7bd8ed05-662e-5e29-859d-e15171ab1675",
+        "number": "33",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "7f5b6005-a0fd-514a-9f22-5beb08e3b863",
+        "number": "10",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "804e7407-ba14-55d2-b8e4-615aec0e632c",
+        "number": "41",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "80f4ecc5-67ed-5f80-a2dd-3d339270f973",
+        "number": "З2",
+        "zoneId": "6ccdd126-5e5c-57ae-bdd2-e29ab12bfffe",
+        "tenantId": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "countsInQuota": true
+      },
+      {
+        "id": "8d6a6457-b07d-5926-b7a8-c8067b619fe5",
+        "number": "13",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "8f4ffdae-c424-598f-ba8a-8d2030df0600",
+        "number": "39",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "90c7c524-6119-53a6-87fc-943b9b74e679",
+        "number": "15",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "9118f09a-d4d3-54c0-9f9f-1296ea361733",
+        "number": "43",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "93825c11-19eb-5054-ae8b-a3b327d50a12",
+        "number": "7",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "93a7333b-7715-5bd3-97ca-00282a8b9b33",
+        "number": "20",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "93aa859c-9eed-5e59-8fc6-58ad60f065ad",
+        "number": "З1",
+        "zoneId": "6ccdd126-5e5c-57ae-bdd2-e29ab12bfffe",
+        "tenantId": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "countsInQuota": true
+      },
+      {
+        "id": "93ddd9b4-2b90-58e4-843a-b40d3272793c",
+        "number": "51",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "9505eb7e-014d-5d27-9f67-b709139b5ac4",
+        "number": "55",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "952d0051-7397-589b-a5b2-a8f2565b6f51",
+        "number": "68",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "9a96c492-5154-5fa1-98b7-cad1af005e52",
+        "number": "27",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "9e0f807b-33a2-58a4-954b-ef98905acc13",
+        "number": "З7",
+        "zoneId": "6ccdd126-5e5c-57ae-bdd2-e29ab12bfffe",
+        "tenantId": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "countsInQuota": true
+      },
+      {
+        "id": "a0a56e80-ff2e-58ae-899f-00fd3d5169ff",
+        "number": "54",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "a46cd64d-8285-5d2a-bd5b-c3d246668c6f",
+        "number": "16",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "a64ba5cd-2fb0-54cc-8651-5de498e0892c",
+        "number": "38",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "aa5e1b11-8a9d-5d6b-86fd-fa79423b24aa",
+        "number": "48",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "af2e0e02-4cee-5c08-8da3-c596affa3891",
+        "number": "12",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "b4f3d1b4-cb99-5c70-9f42-9e661ab2cbc9",
+        "number": "69",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "b74109fd-034e-5da6-a511-909c09297fbf",
+        "number": "11",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "baf85d53-f403-5fdf-892d-f495630ec898",
+        "number": "6",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "bec0aa08-fc42-50bc-b778-d4f007ba7b66",
+        "number": "59",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "bed337c9-f0a8-5fa4-a205-867c3dd5a451",
+        "number": "49",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "c2e92565-f0f7-5aee-a890-7f124f622147",
+        "number": "62",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "c7c5c87d-1614-500c-823d-aea9d71f1e80",
+        "number": "63",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "c81870f5-62b9-531a-a51e-f0660de018b4",
+        "number": "Н3",
+        "zoneId": null,
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": false
+      },
+      {
+        "id": "c928bce4-9495-5a0e-9dde-678b6e1baa62",
+        "number": "61",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "ca639f6c-eba7-554a-aace-1453d0e7afd5",
+        "number": "67",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "d4a2eae7-5f15-560c-a621-8e8a08418c08",
+        "number": "З6",
+        "zoneId": "6ccdd126-5e5c-57ae-bdd2-e29ab12bfffe",
+        "tenantId": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "countsInQuota": true
+      },
+      {
+        "id": "ddb9243e-ff2e-5453-95ba-401332c7bbab",
+        "number": "34",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "de150247-6486-5ce7-a852-6b07c98be611",
+        "number": "32",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "deaedfd8-4918-5a03-bb00-04bf2039ecc5",
+        "number": "29",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "e3d96b8a-63cf-54b6-9a2e-4ee459388df8",
+        "number": "36",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "e7977447-4374-5acc-95e2-9723a1789e2d",
+        "number": "44",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "e79cc3fe-3715-5e23-9fa7-4f731c797e88",
+        "number": "З5",
+        "zoneId": "6ccdd126-5e5c-57ae-bdd2-e29ab12bfffe",
+        "tenantId": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "countsInQuota": true
+      },
+      {
+        "id": "e92f7fdb-7b4b-5968-a2fd-65d5584b00e7",
+        "number": "26",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "ef5632aa-d703-5008-bb52-f2e27c4e7b22",
+        "number": "17",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": true
+      },
+      {
+        "id": "fec1692a-6c84-544a-8f88-e2faaef7f5be",
+        "number": "52",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "countsInQuota": true
+      },
+      {
+        "id": "ff6293ff-6c28-523d-b47d-8d7d6c45eea6",
+        "number": "22",
+        "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "countsInQuota": true
+      },
+      {
+        "id": "ffe767ed-8f4f-5a43-9030-1e07e88c7f24",
+        "number": "Н10",
+        "zoneId": null,
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "countsInQuota": false
+      }
+    ],
+    "tenants": [
+      {
+        "id": "2d91991c-ddc9-502a-882a-166ee0570515",
+        "name": "Столовая",
+        "status": "active",
+        "isOperator": false,
+        "trucksDockRequired": false,
+        "contractValidTo": null
+      },
+      {
+        "id": "48fcac99-f3be-5032-8ad6-cc842de50e90",
+        "name": "Интеграция",
+        "status": "active",
+        "isOperator": true,
+        "trucksDockRequired": false,
+        "contractValidTo": null
+      },
+      {
+        "id": "4e5272ea-d0e7-5de3-b4ec-d208fbec5e86",
+        "name": "ДЛ-Транс",
+        "status": "active",
+        "isOperator": false,
+        "trucksDockRequired": false,
+        "contractValidTo": null
+      },
+      {
+        "id": "7d2b4698-354e-5cdb-86de-c39ab71e0067",
+        "name": "ЭнергоМАКС",
+        "status": "active",
+        "isOperator": false,
+        "trucksDockRequired": false,
+        "contractValidTo": null
+      },
+      {
+        "id": "96ce78ea-273e-5530-8c04-ea08b260e59e",
+        "name": "Мастервент",
+        "status": "active",
+        "isOperator": false,
+        "trucksDockRequired": false,
+        "contractValidTo": null
+      },
+      {
+        "id": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "name": "Рельеф-Центр",
+        "status": "active",
+        "isOperator": false,
+        "trucksDockRequired": true,
+        "contractValidTo": null
+      },
+      {
+        "id": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "name": "ДНС",
+        "status": "active",
+        "isOperator": false,
+        "trucksDockRequired": true,
+        "contractValidTo": null
+      },
+      {
+        "id": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "name": "Агроторг (X5)",
+        "status": "active",
+        "isOperator": false,
+        "trucksDockRequired": true,
+        "contractValidTo": null
+      },
+      {
+        "id": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "name": "МОЛЛ",
+        "status": "active",
+        "isOperator": false,
+        "trucksDockRequired": true,
+        "contractValidTo": null
+      },
+      {
+        "id": "e10c946f-d919-5ea1-8a4a-b0a33975917e",
+        "name": "Континент",
+        "status": "active",
+        "isOperator": false,
+        "trucksDockRequired": false,
+        "contractValidTo": null
+      },
+      {
+        "id": "efe27404-0dfb-5a2c-8481-8f6bba944d4a",
+        "name": "Мултон",
+        "status": "active",
+        "isOperator": false,
+        "trucksDockRequired": false,
+        "contractValidTo": null
+      },
+      {
+        "id": "f1a01150-8439-5ca9-8cd5-1dd88b1a971b",
+        "name": "Кофеавтоматы",
+        "status": "active",
+        "isOperator": false,
+        "trucksDockRequired": false,
+        "contractValidTo": null
+      }
+    ],
+    "quotas": [
+      {
+        "id": "02965826-e88a-5966-b41f-bd8c4676ca36",
+        "tenantId": "96ce78ea-273e-5530-8c04-ea08b260e59e",
+        "participant": "vehicle",
+        "categoryIds": ["ceb06fb8-7ab3-5445-9b31-fc780d133298"],
+        "name": "Легковые",
+        "capacity": 5,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "12234c05-ad28-5c18-ac7b-38941399c0e0",
+        "tenantId": "e10c946f-d919-5ea1-8a4a-b0a33975917e",
+        "participant": "vehicle",
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132"
+        ],
+        "name": "Фура и грузовой свыше 5 т",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "16c28345-da1d-5321-a005-d60080165ece",
+        "tenantId": "2d91991c-ddc9-502a-882a-166ee0570515",
+        "participant": "vehicle",
+        "categoryIds": ["f108064f-2971-531b-bc80-cbb8384aa65e"],
+        "name": "Спецтехника",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "1f8b85e9-e43d-5259-9a44-6754b6d7d0c4",
+        "tenantId": "efe27404-0dfb-5a2c-8481-8f6bba944d4a",
+        "participant": "vehicle",
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132",
+          "d420cc64-d57e-5f53-bcc3-79d450043a09"
+        ],
+        "name": "Грузовые",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "24db0f0d-1576-5d49-b040-2e975a80b358",
+        "tenantId": "4e5272ea-d0e7-5de3-b4ec-d208fbec5e86",
+        "participant": "vehicle",
+        "categoryIds": ["ceb06fb8-7ab3-5445-9b31-fc780d133298"],
+        "name": "Легковые",
+        "capacity": 15,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "soft",
+        "overageTariffRub": 67,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "3d9096d1-d380-5bc4-aeaf-45145d819fd7",
+        "tenantId": "7d2b4698-354e-5cdb-86de-c39ab71e0067",
+        "participant": "vehicle",
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132",
+          "d420cc64-d57e-5f53-bcc3-79d450043a09"
+        ],
+        "name": "Грузовые",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "3de34ed1-08e4-5c5e-9479-abdac557534f",
+        "tenantId": "2d91991c-ddc9-502a-882a-166ee0570515",
+        "participant": "vehicle",
+        "categoryIds": ["ceb06fb8-7ab3-5445-9b31-fc780d133298"],
+        "name": "Легковые",
+        "capacity": 2,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "42554945-3b7c-56fa-9550-751f05a3c408",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "participant": "vehicle",
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132",
+          "d420cc64-d57e-5f53-bcc3-79d450043a09"
+        ],
+        "name": "Грузовые",
+        "capacity": 18,
+        "capacityFromDocks": true,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "468fa674-5a4d-5780-b84e-dc6add4d9144",
+        "tenantId": "4e5272ea-d0e7-5de3-b4ec-d208fbec5e86",
+        "participant": "vehicle",
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132",
+          "d420cc64-d57e-5f53-bcc3-79d450043a09"
+        ],
+        "name": "Грузовые",
+        "capacity": 7,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "soft",
+        "overageTariffRub": 233,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "482b9b99-8724-557e-9f3a-288948450aa4",
+        "tenantId": "e10c946f-d919-5ea1-8a4a-b0a33975917e",
+        "participant": "vehicle",
+        "categoryIds": ["f108064f-2971-531b-bc80-cbb8384aa65e"],
+        "name": "Спецтехника",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "496d1747-5164-5ce4-b6d7-d23f48b90d80",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "participant": "vehicle",
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132",
+          "d420cc64-d57e-5f53-bcc3-79d450043a09"
+        ],
+        "name": "Грузовые",
+        "capacity": 29,
+        "capacityFromDocks": true,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "54f3154d-767d-5500-b294-b020dbc61c5e",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "participant": "vehicle",
+        "categoryIds": ["f108064f-2971-531b-bc80-cbb8384aa65e"],
+        "name": "Спецтехника",
+        "capacity": 1,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "554602c1-70d1-52d0-b246-32f613e9faa6",
+        "tenantId": "96ce78ea-273e-5530-8c04-ea08b260e59e",
+        "participant": "vehicle",
+        "categoryIds": ["f108064f-2971-531b-bc80-cbb8384aa65e"],
+        "name": "Спецтехника",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "5d88390c-c82a-5be8-9fd6-2f52c13eee95",
+        "tenantId": "4e5272ea-d0e7-5de3-b4ec-d208fbec5e86",
+        "participant": "vehicle",
+        "categoryIds": ["f108064f-2971-531b-bc80-cbb8384aa65e"],
+        "name": "Спецтехника",
+        "capacity": 1,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "653d1530-b166-582c-aabe-e2fbc2f5c323",
+        "tenantId": "efe27404-0dfb-5a2c-8481-8f6bba944d4a",
+        "participant": "vehicle",
+        "categoryIds": ["ceb06fb8-7ab3-5445-9b31-fc780d133298"],
+        "name": "Легковые",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "662e1e57-fdf4-5cc3-91a9-aaec138a3286",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "participant": "vehicle",
+        "categoryIds": ["ceb06fb8-7ab3-5445-9b31-fc780d133298"],
+        "name": "Легковые",
+        "capacity": 2,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "6bffacc9-c9e2-561b-acc2-73e1f793d61e",
+        "tenantId": "e10c946f-d919-5ea1-8a4a-b0a33975917e",
+        "participant": "vehicle",
+        "categoryIds": ["d420cc64-d57e-5f53-bcc3-79d450043a09"],
+        "name": "Малотоннажные",
+        "capacity": 22,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "6e8ba748-99f5-57b6-8817-a212c105fa60",
+        "tenantId": "e10c946f-d919-5ea1-8a4a-b0a33975917e",
+        "participant": "vehicle",
+        "categoryIds": ["ceb06fb8-7ab3-5445-9b31-fc780d133298"],
+        "name": "Легковые",
+        "capacity": 28,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "71451aff-36a1-5b48-950e-007d2e12297b",
+        "tenantId": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "participant": "vehicle",
+        "categoryIds": ["f108064f-2971-531b-bc80-cbb8384aa65e"],
+        "name": "Спецтехника",
+        "capacity": 1,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "72a9ac36-4de0-5c64-bcca-8c80ce8ba436",
+        "tenantId": "96ce78ea-273e-5530-8c04-ea08b260e59e",
+        "participant": "vehicle",
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132",
+          "d420cc64-d57e-5f53-bcc3-79d450043a09"
+        ],
+        "name": "Грузовые",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "7fe4252f-f01d-5bd3-859c-103a68d3aa61",
+        "tenantId": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "participant": "vehicle",
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132",
+          "d420cc64-d57e-5f53-bcc3-79d450043a09"
+        ],
+        "name": "Грузовые",
+        "capacity": 7,
+        "capacityFromDocks": true,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "88175d90-d97b-518c-b692-8b065cbef86c",
+        "tenantId": "f1a01150-8439-5ca9-8cd5-1dd88b1a971b",
+        "participant": "vehicle",
+        "categoryIds": ["ceb06fb8-7ab3-5445-9b31-fc780d133298"],
+        "name": "Легковые",
+        "capacity": 2,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "9614872f-05c2-59a2-97d9-ad8f4747ec78",
+        "tenantId": "c7529354-951f-50f2-8343-3c1adc7a09be",
+        "participant": "vehicle",
+        "categoryIds": ["ceb06fb8-7ab3-5445-9b31-fc780d133298"],
+        "name": "Легковые",
+        "capacity": 5,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "a6066369-9e27-55a5-aa97-51c4d6d81828",
+        "tenantId": "f1a01150-8439-5ca9-8cd5-1dd88b1a971b",
+        "participant": "vehicle",
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132",
+          "d420cc64-d57e-5f53-bcc3-79d450043a09"
+        ],
+        "name": "Грузовые",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "bf0b637d-b584-5e62-a752-d84953e64971",
+        "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+        "participant": "vehicle",
+        "categoryIds": ["f108064f-2971-531b-bc80-cbb8384aa65e"],
+        "name": "Спецтехника",
+        "capacity": 1,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "cbca4c51-20b2-52cb-a77a-bd5b9a879e1e",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "participant": "vehicle",
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132",
+          "d420cc64-d57e-5f53-bcc3-79d450043a09"
+        ],
+        "name": "Грузовые",
+        "capacity": 25,
+        "capacityFromDocks": true,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "cc3b4a5f-7e07-52f8-bb9a-d94d161f6b13",
+        "tenantId": "f1a01150-8439-5ca9-8cd5-1dd88b1a971b",
+        "participant": "vehicle",
+        "categoryIds": ["f108064f-2971-531b-bc80-cbb8384aa65e"],
+        "name": "Спецтехника",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "d73a16d9-fb5b-5143-a803-0913317af0e3",
+        "tenantId": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "participant": "vehicle",
+        "categoryIds": ["ceb06fb8-7ab3-5445-9b31-fc780d133298"],
+        "name": "Легковые",
+        "capacity": 2,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "e58f9633-f729-58ab-a9fb-013b3958cb48",
+        "tenantId": "7d2b4698-354e-5cdb-86de-c39ab71e0067",
+        "participant": "vehicle",
+        "categoryIds": ["f108064f-2971-531b-bc80-cbb8384aa65e"],
+        "name": "Спецтехника",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "e6c20210-9d14-5660-a167-7cd3a953b8b3",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "participant": "vehicle",
+        "categoryIds": ["f108064f-2971-531b-bc80-cbb8384aa65e"],
+        "name": "Спецтехника",
+        "capacity": 2,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "eb3f810a-c20c-5746-a926-2a4414ee9796",
+        "tenantId": "7d2b4698-354e-5cdb-86de-c39ab71e0067",
+        "participant": "vehicle",
+        "categoryIds": ["ceb06fb8-7ab3-5445-9b31-fc780d133298"],
+        "name": "Легковые",
+        "capacity": 1,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "ee068461-c1b1-592c-b89a-a42b1714f3ea",
+        "tenantId": "2d91991c-ddc9-502a-882a-166ee0570515",
+        "participant": "vehicle",
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132",
+          "d420cc64-d57e-5f53-bcc3-79d450043a09"
+        ],
+        "name": "Грузовые",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "f2792d88-bc21-535e-b5a2-ac4585fdc17a",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "participant": "vehicle",
+        "categoryIds": ["ceb06fb8-7ab3-5445-9b31-fc780d133298"],
+        "name": "Легковые",
+        "capacity": 30,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      },
+      {
+        "id": "fb2d95b0-37a2-5262-bf70-d177a8b2ba1f",
+        "tenantId": "efe27404-0dfb-5a2c-8481-8f6bba944d4a",
+        "participant": "vehicle",
+        "categoryIds": ["f108064f-2971-531b-bc80-cbb8384aa65e"],
+        "name": "Спецтехника",
+        "capacity": 0,
+        "capacityFromDocks": false,
+        "counting": "on_site",
+        "enforcement": "hard",
+        "overageTariffRub": null,
+        "overageCap": null,
+        "schedule": null,
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "basis": "п. … (ПРОВЕРИТЬ)"
+      }
+    ],
+    "routing": [
+      {
+        "id": "09032d35-014b-5a71-ba60-5267563b9717",
+        "tenantId": null,
+        "participant": "vehicle",
+        "categoryId": "811d550b-09e5-59e8-8a61-1dc16a38caad",
+        "destinationZoneId": null,
+        "gateId": "23d3ffb6-2ee0-5797-8033-292d99b8fb7c",
+        "direction": "in",
+        "priority": 100
+      },
+      {
+        "id": "0a77b589-52cc-578a-99dc-ecd254a57e50",
+        "tenantId": null,
+        "participant": "vehicle",
+        "categoryId": "ceb06fb8-7ab3-5445-9b31-fc780d133298",
+        "destinationZoneId": null,
+        "gateId": "d98c4c2e-8dc9-5b7e-98a4-c3e494639011",
+        "direction": "in",
+        "priority": 100
+      },
+      {
+        "id": "4e479075-d7e9-59ca-946c-80c6d298a4b0",
+        "tenantId": null,
+        "participant": "vehicle",
+        "categoryId": "d420cc64-d57e-5f53-bcc3-79d450043a09",
+        "destinationZoneId": null,
+        "gateId": "d98c4c2e-8dc9-5b7e-98a4-c3e494639011",
+        "direction": "in",
+        "priority": 100
+      },
+      {
+        "id": "5eb4c475-2108-533a-92a8-55ff0c2e5c7a",
+        "tenantId": null,
+        "participant": "vehicle",
+        "categoryId": "ae93890c-cca6-5331-b581-a3fc5f721132",
+        "destinationZoneId": null,
+        "gateId": "23d3ffb6-2ee0-5797-8033-292d99b8fb7c",
+        "direction": "in",
+        "priority": 100
+      },
+      {
+        "id": "811c3a3c-8b3a-54a4-9f81-909c3164aacf",
+        "tenantId": null,
+        "participant": "pedestrian",
+        "categoryId": null,
+        "destinationZoneId": "d871c62a-f06a-526b-a563-fbb01fb8a9ac",
+        "gateId": "fb94127e-a3b8-5622-9b91-f0ccfb52fa81",
+        "direction": "in",
+        "priority": 100
+      },
+      {
+        "id": "a5e866a2-7bb3-5e7c-8d5c-1630cfecd454",
+        "tenantId": null,
+        "participant": "vehicle",
+        "categoryId": "f108064f-2971-531b-bc80-cbb8384aa65e",
+        "destinationZoneId": null,
+        "gateId": "23d3ffb6-2ee0-5797-8033-292d99b8fb7c",
+        "direction": "in",
+        "priority": 100
+      },
+      {
+        "id": "b3ef581c-884e-5276-a0e2-f21d4f6663c0",
+        "tenantId": null,
+        "participant": "pedestrian",
+        "categoryId": null,
+        "destinationZoneId": null,
+        "gateId": "d98c4c2e-8dc9-5b7e-98a4-c3e494639011",
+        "direction": "in",
+        "priority": 100
+      }
+    ],
+    "timeWindows": [
+      {
+        "id": "29eed283-5144-5052-b220-c41508a168d3",
+        "tenantId": null,
+        "categoryIds": [
+          "811d550b-09e5-59e8-8a61-1dc16a38caad",
+          "ae93890c-cca6-5331-b581-a3fc5f721132",
+          "d420cc64-d57e-5f53-bcc3-79d450043a09"
+        ],
+        "windowRequired": true,
+        "earlyToleranceMin": 0,
+        "lateToleranceMin": 60,
+        "onViolation": "hard"
+      }
+    ],
+    "exceptions": [
+      {
+        "id": "ad9ff429-a0eb-53fa-8336-2dbd40fe9991",
+        "tenantId": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+        "name": "Агроторг (X5) — круглосуточно",
+        "match": {
+          "tenant": true
+        },
+        "waives": ["working_hours", "time_window"],
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "guardText": "Агроторг (X5): круглосуточно, окно прибытия не проверяется",
+        "basis": "Договор с Агроторгом, пункт ПРОВЕРИТЬ"
+      },
+      {
+        "id": "be8613a6-0c03-58b6-af70-b02e275d361e",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "name": "Служебный автобус ДНС",
+        "match": {
+          "plates": ["A001AA174"]
+        },
+        "waives": ["inspection", "quota"],
+        "validFrom": 1767207600000,
+        "validTo": null,
+        "guardText": "Служебный автобус ДНС — без досмотра, вне лимита",
+        "basis": "Правила складского комплекса ДНС, п. 13; номер автобуса ПРОВЕРИТЬ"
+      }
+    ],
+    "pedestrianRules": [
+      {
+        "id": "06189f76-0788-5185-ae8f-9f42d2836b6f",
+        "tenantId": "4e5272ea-d0e7-5de3-b4ec-d208fbec5e86",
+        "zoneId": "d871c62a-f06a-526b-a563-fbb01fb8a9ac",
+        "documentRequired": true,
+        "escort": "none",
+        "escortPhone": null,
+        "guardText": "Проверьте документ · откройте дверь 1-го этажа к ДЛ-Транс"
+      },
+      {
+        "id": "4f9466e7-08e2-5ec9-9ef5-c32acb62cd92",
+        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+        "zoneId": null,
+        "documentRequired": true,
+        "escort": "if_no_document",
+        "escortPhone": "+70000000012",
+        "guardText": "Проверьте документ (паспорт, ВУ, Госуслуги) · без документа — позвоните, выйдет ответственный ДНС"
+      },
+      {
+        "id": "fda2e4e6-cc42-5024-855d-05e9188dd1e3",
+        "tenantId": "e10c946f-d919-5ea1-8a4a-b0a33975917e",
+        "zoneId": "d871c62a-f06a-526b-a563-fbb01fb8a9ac",
+        "documentRequired": false,
+        "escort": "always",
+        "escortPhone": "+70000000021",
+        "guardText": "Позвоните в Континент и дождитесь сотрудника — без него дальше не пускать"
+      }
+    ],
+    "blacklist": []
+  },
+  "keys": {
+    "organizationId": "8a1fecea-0934-5546-b3cf-954ab641dd2f",
+    "siteId": "906d17a2-2aae-5ef3-abdd-dbba471d5a7f",
+    "tenants": {
+      "dns": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
+      "dl_trans": "4e5272ea-d0e7-5de3-b4ec-d208fbec5e86",
+      "kontinent": "e10c946f-d919-5ea1-8a4a-b0a33975917e",
+      "relief": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
+      "x5": "af1e9df0-5186-5809-9bf7-65c5869f44ff",
+      "moll": "c7529354-951f-50f2-8343-3c1adc7a09be",
+      "coffee": "f1a01150-8439-5ca9-8cd5-1dd88b1a971b",
+      "canteen": "2d91991c-ddc9-502a-882a-166ee0570515",
+      "multon": "efe27404-0dfb-5a2c-8481-8f6bba944d4a",
+      "energomax": "7d2b4698-354e-5cdb-86de-c39ab71e0067",
+      "mastervent": "96ce78ea-273e-5530-8c04-ea08b260e59e",
+      "integratsiya": "48fcac99-f3be-5032-8ad6-cc842de50e90"
+    },
+    "gates": {
+      "kpp1": "d98c4c2e-8dc9-5b7e-98a4-c3e494639011",
+      "kpp2": "23d3ffb6-2ee0-5797-8033-292d99b8fb7c",
+      "office": "fb94127e-a3b8-5622-9b91-f0ccfb52fa81"
+    },
+    "zones": {
+      "warehouse": "204119ed-f279-5666-80f8-b851fec8b54b",
+      "building5": "6ccdd126-5e5c-57ae-bdd2-e29ab12bfffe",
+      "office": "d871c62a-f06a-526b-a563-fbb01fb8a9ac",
+      "yard": "a45b854a-e6df-56b4-ab05-01bc702d81e6"
+    },
+    "categories": {
+      "car": "ceb06fb8-7ab3-5445-9b31-fc780d133298",
+      "light_truck": "d420cc64-d57e-5f53-bcc3-79d450043a09",
+      "semi": "811d550b-09e5-59e8-8a61-1dc16a38caad",
+      "truck_5t": "ae93890c-cca6-5331-b581-a3fc5f721132",
+      "special": "f108064f-2971-531b-bc80-cbb8384aa65e"
+    },
+    "quotas": {
+      "dns/cars": "f2792d88-bc21-535e-b5a2-ac4585fdc17a",
+      "dns/trucks": "cbca4c51-20b2-52cb-a77a-bd5b9a879e1e",
+      "dns/special": "e6c20210-9d14-5660-a167-7cd3a953b8b3",
+      "dl_trans/cars": "24db0f0d-1576-5d49-b040-2e975a80b358",
+      "dl_trans/trucks": "468fa674-5a4d-5780-b84e-dc6add4d9144",
+      "dl_trans/special": "5d88390c-c82a-5be8-9fd6-2f52c13eee95",
+      "kontinent/cars": "6e8ba748-99f5-57b6-8817-a212c105fa60",
+      "kontinent/special": "482b9b99-8724-557e-9f3a-288948450aa4",
+      "kontinent/light_trucks": "6bffacc9-c9e2-561b-acc2-73e1f793d61e",
+      "kontinent/heavy_trucks": "12234c05-ad28-5c18-ac7b-38941399c0e0",
+      "relief/cars": "662e1e57-fdf4-5cc3-91a9-aaec138a3286",
+      "relief/trucks": "42554945-3b7c-56fa-9550-751f05a3c408",
+      "relief/special": "bf0b637d-b584-5e62-a752-d84953e64971",
+      "x5/cars": "d73a16d9-fb5b-5143-a803-0913317af0e3",
+      "x5/trucks": "7fe4252f-f01d-5bd3-859c-103a68d3aa61",
+      "x5/special": "71451aff-36a1-5b48-950e-007d2e12297b",
+      "moll/cars": "9614872f-05c2-59a2-97d9-ad8f4747ec78",
+      "moll/trucks": "496d1747-5164-5ce4-b6d7-d23f48b90d80",
+      "moll/special": "54f3154d-767d-5500-b294-b020dbc61c5e",
+      "coffee/cars": "88175d90-d97b-518c-b692-8b065cbef86c",
+      "coffee/trucks": "a6066369-9e27-55a5-aa97-51c4d6d81828",
+      "coffee/special": "cc3b4a5f-7e07-52f8-bb9a-d94d161f6b13",
+      "canteen/cars": "3de34ed1-08e4-5c5e-9479-abdac557534f",
+      "canteen/trucks": "ee068461-c1b1-592c-b89a-a42b1714f3ea",
+      "canteen/special": "16c28345-da1d-5321-a005-d60080165ece",
+      "multon/cars": "653d1530-b166-582c-aabe-e2fbc2f5c323",
+      "multon/trucks": "1f8b85e9-e43d-5259-9a44-6754b6d7d0c4",
+      "multon/special": "fb2d95b0-37a2-5262-bf70-d177a8b2ba1f",
+      "energomax/cars": "eb3f810a-c20c-5746-a926-2a4414ee9796",
+      "energomax/trucks": "3d9096d1-d380-5bc4-aeaf-45145d819fd7",
+      "energomax/special": "e58f9633-f729-58ab-a9fb-013b3958cb48",
+      "mastervent/cars": "02965826-e88a-5966-b41f-bd8c4676ca36",
+      "mastervent/trucks": "72a9ac36-4de0-5c64-bcca-8c80ce8ba436",
+      "mastervent/special": "554602c1-70d1-52d0-b246-32f613e9faa6"
+    },
+    "exceptions": {
+      "dns_bus": "be8613a6-0c03-58b6-af70-b02e275d361e",
+      "x5_24_7": "ad9ff429-a0eb-53fa-8336-2dbd40fe9991"
+    },
+    "timeWindowPolicies": {
+      "trucks": "29eed283-5144-5052-b220-c41508a168d3"
+    },
+    "docks": {
+      "1": "39205165-4635-5334-b287-302be7e7d8c1",
+      "2": "629b56a6-589f-5d96-9730-f3a7469ea937",
+      "3": "1a3e6b80-bf24-5023-9263-b3f4357fdac9",
+      "4": "6637a063-2f5d-5f5d-84b4-f14f17216ea0",
+      "5": "3f64582e-9a30-5016-a2e9-2ec4a78f1233",
+      "6": "baf85d53-f403-5fdf-892d-f495630ec898",
+      "7": "93825c11-19eb-5054-ae8b-a3b327d50a12",
+      "8": "67eba5b8-ac41-5b9f-beca-366b563b489e",
+      "9": "1b403c19-d58a-5de6-a8d1-0031aaed2bfd",
+      "10": "7f5b6005-a0fd-514a-9f22-5beb08e3b863",
+      "11": "b74109fd-034e-5da6-a511-909c09297fbf",
+      "12": "af2e0e02-4cee-5c08-8da3-c596affa3891",
+      "13": "8d6a6457-b07d-5926-b7a8-c8067b619fe5",
+      "14": "47e9e12a-5bfd-53b9-b7c6-1ad0fb179eb3",
+      "15": "90c7c524-6119-53a6-87fc-943b9b74e679",
+      "16": "a46cd64d-8285-5d2a-bd5b-c3d246668c6f",
+      "17": "ef5632aa-d703-5008-bb52-f2e27c4e7b22",
+      "18": "328a80a2-a79a-5887-b1ba-e93567ecd373",
+      "19": "7a5b71a1-9cd8-5ef4-88be-0381afc429ff",
+      "20": "93a7333b-7715-5bd3-97ca-00282a8b9b33",
+      "21": "62ac1067-5472-5056-9e79-268dc5a5d4c1",
+      "22": "ff6293ff-6c28-523d-b47d-8d7d6c45eea6",
+      "23": "66ea3b0b-e603-5f28-97c7-aa51fe819767",
+      "24": "5e16b95c-96cf-59d5-8baf-fbdc29af2d7b",
+      "25": "3a7e81a7-ab15-5fa7-856b-d01d3b4d7896",
+      "26": "e92f7fdb-7b4b-5968-a2fd-65d5584b00e7",
+      "27": "9a96c492-5154-5fa1-98b7-cad1af005e52",
+      "28": "2503a112-1139-5101-9b72-5978974166ce",
+      "29": "deaedfd8-4918-5a03-bb00-04bf2039ecc5",
+      "30": "4845b3b2-2e87-5972-b3bf-114cc41425c5",
+      "31": "21c979ef-53f4-5dbe-a669-bc043e9b6dd0",
+      "32": "de150247-6486-5ce7-a852-6b07c98be611",
+      "33": "7bd8ed05-662e-5e29-859d-e15171ab1675",
+      "34": "ddb9243e-ff2e-5453-95ba-401332c7bbab",
+      "35": "211083a4-de4a-581d-acb3-0a79b8bf504c",
+      "36": "e3d96b8a-63cf-54b6-9a2e-4ee459388df8",
+      "37": "33d9034e-7da5-531f-9084-c9e31e1f0fea",
+      "38": "a64ba5cd-2fb0-54cc-8651-5de498e0892c",
+      "39": "8f4ffdae-c424-598f-ba8a-8d2030df0600",
+      "40": "4bfe7115-e949-5f3f-a5dc-51051ba3035a",
+      "41": "804e7407-ba14-55d2-b8e4-615aec0e632c",
+      "42": "1653d582-07fb-5035-aab7-2790252070a5",
+      "43": "9118f09a-d4d3-54c0-9f9f-1296ea361733",
+      "44": "e7977447-4374-5acc-95e2-9723a1789e2d",
+      "45": "6126c82a-127d-56a6-a3bb-43dbfc63e15b",
+      "46": "69af21dc-7d46-5d3c-8e3b-2725b838ede4",
+      "47": "2589c109-68f4-5e4b-8a80-1dec3d063c7e",
+      "48": "aa5e1b11-8a9d-5d6b-86fd-fa79423b24aa",
+      "49": "bed337c9-f0a8-5fa4-a205-867c3dd5a451",
+      "50": "49d01eda-53f4-53b6-94f1-6613f8a8fff7",
+      "51": "93ddd9b4-2b90-58e4-843a-b40d3272793c",
+      "52": "fec1692a-6c84-544a-8f88-e2faaef7f5be",
+      "53": "51bfa383-dd6b-523a-8e1e-755d05cec1c0",
+      "54": "a0a56e80-ff2e-58ae-899f-00fd3d5169ff",
+      "55": "9505eb7e-014d-5d27-9f67-b709139b5ac4",
+      "56": "621d7cb2-2168-5ae7-ba6b-13d79fd6ebfa",
+      "57": "1540d08b-4777-5097-9d97-b53ce0cd16f3",
+      "58": "27697886-23a6-5ae9-853d-926626a5e8bc",
+      "59": "bec0aa08-fc42-50bc-b778-d4f007ba7b66",
+      "60": "0bb82547-6766-5d0c-ae44-65c771aa6c04",
+      "61": "c928bce4-9495-5a0e-9dde-678b6e1baa62",
+      "62": "c2e92565-f0f7-5aee-a890-7f124f622147",
+      "63": "c7c5c87d-1614-500c-823d-aea9d71f1e80",
+      "64": "78197d48-4e51-5469-9027-c15f6d2da546",
+      "65": "529770a1-8bbc-5f59-a195-cecdf5df2b66",
+      "66": "4b7b18da-b2d7-51a7-b940-7d64b01ee81f",
+      "67": "ca639f6c-eba7-554a-aace-1453d0e7afd5",
+      "68": "952d0051-7397-589b-a5b2-a8f2565b6f51",
+      "69": "b4f3d1b4-cb99-5c70-9f42-9e661ab2cbc9",
+      "70": "081c1e11-806d-5db5-8cb1-c4458e5b2d0d",
+      "71": "1ca828ae-0d0b-5e0a-8ac3-c5f7a5c0e08a",
+      "72": "5f135b15-72e2-5efb-ab2a-641f08353441",
+      "З1": "93aa859c-9eed-5e59-8fc6-58ad60f065ad",
+      "З2": "80f4ecc5-67ed-5f80-a2dd-3d339270f973",
+      "З3": "6b7f3658-d8d4-55e0-8cd0-5153e3e314df",
+      "З4": "55fd1a64-2881-5f88-81d1-4ce82cf2900c",
+      "З5": "e79cc3fe-3715-5e23-9fa7-4f731c797e88",
+      "З6": "d4a2eae7-5f15-560c-a621-8e8a08418c08",
+      "З7": "9e0f807b-33a2-58a4-954b-ef98905acc13",
+      "Н1": "3dd5c555-4027-5cbe-a97e-e6e8781a4c88",
+      "Н2": "088ac97e-3ae2-5ae5-a39f-8a9a6fb2284f",
+      "Н3": "c81870f5-62b9-531a-a51e-f0660de018b4",
+      "Н4": "5abcaf36-dbc7-534b-a58c-7cecaed78a2e",
+      "Н5": "66ac0a56-ed10-5a31-82a5-c0f1a68a8247",
+      "Н6": "62e0ea7e-0e64-54c9-b965-f6469d1aeb6a",
+      "Н7": "20a81ff6-62f8-565e-bf74-ad2e77d8198d",
+      "Н8": "1ca235bb-08a2-57a4-8039-e8f2f3251aa2",
+      "Н9": "3f6b5eb8-3baf-58cd-9ee0-195259a5ee4b",
+      "Н10": "ffe767ed-8f4f-5a43-9030-1e07e88c7f24",
+      "Н11": "45ca85c7-b8c7-50c7-8828-9dc8651275a9"
+    }
+  }
+}
