@@ -45,6 +45,7 @@ export const PERMISSIONS = [
   'audit.view',
   'sandbox.use',
   'notification.manage_own',
+  'profile.manage_own', // свои настройки: пояс, «показывать ещё и моё время» (ADR-009)
 ] as const satisfies readonly string[];
 
 export type PermissionCode = (typeof PERMISSIONS)[number];

@@ -57,6 +57,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       'pass.change_request.decide',
       'report.view',
       'occupancy.view',
+      'profile.manage_own',
     ],
   },
   { code: 'gate_post', name: 'Пост КПП', scope: 'gate', permissions: POST_PERMISSIONS },
@@ -70,7 +71,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     code: 'accountant',
     name: 'Бухгалтер',
     scope: 'organization',
-    permissions: ['report.view', 'report.export'],
+    permissions: ['report.view', 'report.export', 'profile.manage_own'],
   },
   {
     code: 'tenant_manager',
@@ -89,6 +90,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       'report.view',
       'report.export',
       'occupancy.view',
+      'profile.manage_own',
     ],
   },
   {
@@ -102,13 +104,14 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       'pass.create.permanent',
       'pass.cancel',
       'pass.change_request.create',
+      'profile.manage_own',
     ],
   },
   {
     code: 'tenant_viewer',
     name: 'Арендатор — наблюдатель',
     scope: 'tenant',
-    permissions: ['pass.view', 'occupancy.view'],
+    permissions: ['pass.view', 'occupancy.view', 'profile.manage_own'],
   },
 ];
 

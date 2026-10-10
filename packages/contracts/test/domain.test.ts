@@ -6,6 +6,7 @@ import {
   PERMISSIONS,
   ROLE_TEMPLATES,
   roleTemplate,
+  SiteSettingsPatchSchema,
   SiteSettingsSchema,
   VEHICLE_CATEGORY_PRESET_CODES,
   VEHICLE_CATEGORY_PRESETS,
@@ -117,5 +118,16 @@ describe('совпадение исключения (RULES_ENGINE §5)', () => {
       false,
     );
     expect(ExceptionMatchSchema.safeParse({ categoryIds: ['not-a-uuid'] }).success).toBe(false);
+  });
+});
+
+describe('настройки объекта: PATCH', () => {
+  it('те же ключи, что у SiteSettingsSchema, и без значений по умолчанию', () => {
+    expect(Object.keys(SiteSettingsPatchSchema.shape).sort()).toEqual(
+      Object.keys(SiteSettingsSchema.shape).sort(),
+    );
+    expect(SiteSettingsPatchSchema.parse({ singlePassMaxHours: 12 })).toEqual({
+      singlePassMaxHours: 12,
+    });
   });
 });
