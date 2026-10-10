@@ -69,4 +69,24 @@
 
 ## Команды
 
-Заполняется на этапе 1. Целевой набор (ADR-010): `pnpm install` · `pnpm db:up` · `pnpm db:migrate` · `pnpm db:seed` · `pnpm db:reset` · `pnpm dev` · `pnpm typecheck` · `pnpm lint` · `pnpm test:unit` · `pnpm test` · `pnpm test:e2e`.
+Всё запускается из корня. Облачная сессия готовит окружение сама (SessionStart-хук: `pnpm install`, `pnpm db:up`, `pnpm db:migrate`); вручную — тот же набор.
+
+| Что | Команда |
+|---|---|
+| Установка зависимостей | `pnpm install` |
+| Поднять PostgreSQL, роли и базу `oxrana`; создать `.env` из `.env.example` | `pnpm db:up` (идемпотентно, ~3 с) |
+| Применить миграции (под `oxrana_owner`) | `pnpm db:migrate` |
+| Пересоздать базу с нуля и мигрировать | `pnpm db:reset` (сид — `pnpm db:seed`, появится на этапе 2) |
+| Запуск для разработки: API :3000, web :5173, gate :5174 | `pnpm dev` |
+| Сборка web, gate и API | `pnpm build` |
+| Дымовая проверка собранного API (после `build`) | `bash scripts/smoke-build.sh` |
+| Типы (`tsc -b` по project references) | `pnpm typecheck` |
+| Линт и формат (Biome) | `pnpm lint` · исправить автоматически: `pnpm format` |
+| Юнит-тесты, без БД | `pnpm test:unit` |
+| Интеграционные тесты на реальном PostgreSQL (сами применяют миграции) | `pnpm test:integration` |
+| Все тесты Vitest | `pnpm test` |
+| E2E Playwright (сами поднимают API, web, gate на портах 3100/5273/5274) | `pnpm test:e2e` |
+| Один тест | `pnpm exec vitest run путь/к/файлу.test.ts` |
+| Проверка «готово» | `pnpm typecheck && pnpm lint && pnpm test` |
+
+Где что: `apps/api` (Fastify), `apps/web` и `apps/gate` (Vite + TanStack Router), `packages/{contracts,engine,plates,db}`, `scripts/` (БД, архитектурные проверки), `e2e/`. Решения по устройству каркаса — ADR-013. Новая внешняя зависимость — только через `catalog:` в `pnpm-workspace.yaml`, версия точная.

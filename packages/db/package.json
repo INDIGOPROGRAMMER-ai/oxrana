@@ -1,0 +1,23 @@
+{
+  "name": "@oxrana/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "migrate": "tsx --env-file-if-exists=../../.env src/migrate-cli.ts",
+    "generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@oxrana/contracts": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@types/pg": "catalog:",
+    "drizzle-kit": "catalog:",
+    "tsx": "catalog:"
+  }
+}

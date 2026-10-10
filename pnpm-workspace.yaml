@@ -1,0 +1,45 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Все внешние зависимости — только отсюда (`catalog:` в package.json пакетов), версии точные,
+# без beta/rc (ADR-001, ADR-002). Обновлять осознанно, одним коммитом с причиной.
+catalog:
+  # язык и инструменты
+  typescript: 7.0.2
+  '@types/node': 22.20.5
+  '@biomejs/biome': 2.5.15
+  vitest: 5.0.3
+  '@playwright/test': 1.64.0
+  tsx: 4.23.15
+  tsup: 8.5.1
+
+  # общие
+  zod: 4.6.5
+
+  # api
+  fastify: 5.12.5
+  fastify-type-provider-zod: 7.0.0
+  '@fastify/swagger': 9.9.2
+  openapi-types: 12.1.3
+  pino: 10.4.0
+
+  # db
+  pg: 8.23.1
+  '@types/pg': 8.23.1
+  drizzle-orm: 0.45.4
+  drizzle-kit: 0.31.11
+
+  # web и gate
+  react: 19.3.0
+  react-dom: 19.3.0
+  '@types/react': 19.3.0
+  '@types/react-dom': 19.3.0
+  vite: 8.3.4
+  '@vitejs/plugin-react': 6.1.2
+  '@tanstack/react-router': 1.170.42
+  '@tanstack/router-plugin': 1.168.43
+
+# pnpm 10 не запускает postinstall-скрипты без разрешения: только эти пакеты и только нужные.
+onlyBuiltDependencies:
+  - esbuild
