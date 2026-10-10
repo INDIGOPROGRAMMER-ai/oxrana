@@ -11,10 +11,9 @@ import type { QuotaSeed, SeedData, TenantSeed } from './types';
 const range = (from: number, to: number): string[] =>
   Array.from({ length: to - from + 1 }, (_, i) => String(from + i));
 
-/** Доки №1–72 основного склада, 7 доков стр. 5 и 11 наземных ворот ДНС. */
+/** Доки №1–72 основного склада и 7 доков стр. 5. */
 const WAREHOUSE_DOCKS = range(1, 72);
 const BUILDING5_DOCKS = range(1, 7).map((n) => `З${n}`);
-const DNS_GROUND_GATES = range(1, 11).map((n) => `Н${n}`);
 
 const CONTRACT_NOTES = 'Демо-данные: договор аренды складских помещений.';
 /** Пункты договора о лимитах — одинаковые у всех демо-договоров. */
@@ -78,8 +77,7 @@ const TENANTS: TenantSeed[] = [
     emergencyPhone: '+70000000011',
     contractNotes: CONTRACT_NOTES,
     quotas: standardQuotas(30, 25, 2, { trucksFromDocks: true }),
-    // 25 доков в лимите + 11 наземных ворот вне лимита (counts_in_quota = false)
-    docks: [...range(1, 18), ...range(66, 72), ...DNS_GROUND_GATES],
+    docks: [...range(1, 18), ...range(66, 72)],
     pedestrianRules: [
       {
         documentRequired: true,
@@ -337,12 +335,6 @@ export const RADONEZHSKY: SeedData = {
       zoneKey: 'building5',
       kind: 'leveller' as const,
       countsInQuota: true,
-    })),
-    // 11 наземных ворот ДНС в лимит не входят
-    ...DNS_GROUND_GATES.map((number) => ({
-      number,
-      kind: 'ground_gate' as const,
-      countsInQuota: false,
     })),
   ],
   tenants: TENANTS,

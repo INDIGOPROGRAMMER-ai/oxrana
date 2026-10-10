@@ -99,7 +99,7 @@ docks
   id uuid PK, organization_id, site_id NN FK, zone_id uuid FK
   number text NN                            -- «19», «З1»
   kind text NN default 'leveller' check in ('leveller','ground_gate','other')
-  counts_in_quota boolean NN default true   -- 11 наземных ворот ДНС = false
+  counts_in_quota boolean NN default true   -- false: ворота не дают места в лимите «по докам»
   size text, deleted_at timestamptz
   unique (site_id, number)
 
@@ -550,7 +550,7 @@ notifications
 |---|---|---|
 | 1 | Убраны `users.pin_hash`, `shifts`, `role_assignments.scope_gate_id`; добавлены `gate_accounts`, `gate_devices` (с привязкой к учётке, не к КПП напрямую), `device_enrollments`, необязательные `shift_marks` | `16_` A11: одна учётка на КПП, без личных PIN |
 | 2 | `gates.kind` (`perimeter`/`internal`), `gates.zone_id`, таблица `gate_passages` | A4: КПП офис — внутренний пост, проход не открывает визит |
-| 3 | `passes.destination jsonb` → `destination_zone_id` + `dock_id` (FK); `tenants.trucks_dock_required`; `docks.counts_in_quota` | A5: док обязателен и выбирается из списка; 11 наземных ворот ДНС не в лимите; маршрут пешехода по месту назначения |
+| 3 | `passes.destination jsonb` → `destination_zone_id` + `dock_id` (FK); `tenants.trucks_dock_required`; `docks.counts_in_quota` | A5: док обязателен и выбирается из списка; ворота, не дающие места в лимите, отмечаются `counts_in_quota = false`; маршрут пешехода по месту назначения |
 | 4 | `tenants.is_operator` | A6: оператор — арендатор без лимитов |
 | 5 | Таблица `pedestrian_rules` | A3: правила пешеходов на арендатора (× зона) |
 | 6 | Таблица `pass_change_requests` | A8: заявка на изменение начавшегося согласованного пропуска |

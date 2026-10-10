@@ -109,13 +109,6 @@
         "countsInQuota": true
       },
       {
-        "id": "088ac97e-3ae2-5ae5-a39f-8a9a6fb2284f",
-        "number": "Н2",
-        "zoneId": null,
-        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
-        "countsInQuota": false
-      },
-      {
         "id": "0bb82547-6766-5d0c-ae44-65c771aa6c04",
         "number": "60",
         "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
@@ -151,25 +144,11 @@
         "countsInQuota": true
       },
       {
-        "id": "1ca235bb-08a2-57a4-8039-e8f2f3251aa2",
-        "number": "Н8",
-        "zoneId": null,
-        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
-        "countsInQuota": false
-      },
-      {
         "id": "1ca828ae-0d0b-5e0a-8ac3-c5f7a5c0e08a",
         "number": "71",
         "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
         "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
         "countsInQuota": true
-      },
-      {
-        "id": "20a81ff6-62f8-565e-bf74-ad2e77d8198d",
-        "number": "Н7",
-        "zoneId": null,
-        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
-        "countsInQuota": false
       },
       {
         "id": "211083a4-de4a-581d-acb3-0a79b8bf504c",
@@ -235,32 +214,11 @@
         "countsInQuota": true
       },
       {
-        "id": "3dd5c555-4027-5cbe-a97e-e6e8781a4c88",
-        "number": "Н1",
-        "zoneId": null,
-        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
-        "countsInQuota": false
-      },
-      {
         "id": "3f64582e-9a30-5016-a2e9-2ec4a78f1233",
         "number": "5",
         "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
         "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
         "countsInQuota": true
-      },
-      {
-        "id": "3f6b5eb8-3baf-58cd-9ee0-195259a5ee4b",
-        "number": "Н9",
-        "zoneId": null,
-        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
-        "countsInQuota": false
-      },
-      {
-        "id": "45ca85c7-b8c7-50c7-8828-9dc8651275a9",
-        "number": "Н11",
-        "zoneId": null,
-        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
-        "countsInQuota": false
       },
       {
         "id": "47e9e12a-5bfd-53b9-b7c6-1ad0fb179eb3",
@@ -319,13 +277,6 @@
         "countsInQuota": true
       },
       {
-        "id": "5abcaf36-dbc7-534b-a58c-7cecaed78a2e",
-        "number": "Н4",
-        "zoneId": null,
-        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
-        "countsInQuota": false
-      },
-      {
         "id": "5e16b95c-96cf-59d5-8baf-fbdc29af2d7b",
         "number": "24",
         "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
@@ -368,25 +319,11 @@
         "countsInQuota": true
       },
       {
-        "id": "62e0ea7e-0e64-54c9-b965-f6469d1aeb6a",
-        "number": "Н6",
-        "zoneId": null,
-        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
-        "countsInQuota": false
-      },
-      {
         "id": "6637a063-2f5d-5f5d-84b4-f14f17216ea0",
         "number": "4",
         "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
         "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
         "countsInQuota": true
-      },
-      {
-        "id": "66ac0a56-ed10-5a31-82a5-c0f1a68a8247",
-        "number": "Н5",
-        "zoneId": null,
-        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
-        "countsInQuota": false
       },
       {
         "id": "66ea3b0b-e603-5f28-97c7-aa51fe819767",
@@ -627,13 +564,6 @@
         "countsInQuota": true
       },
       {
-        "id": "c81870f5-62b9-531a-a51e-f0660de018b4",
-        "number": "Н3",
-        "zoneId": null,
-        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
-        "countsInQuota": false
-      },
-      {
         "id": "c928bce4-9495-5a0e-9dde-678b6e1baa62",
         "number": "61",
         "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
@@ -723,13 +653,6 @@
         "zoneId": "204119ed-f279-5666-80f8-b851fec8b54b",
         "tenantId": "9fd0e2d4-44bd-5b38-aa33-f99c759d05ad",
         "countsInQuota": true
-      },
-      {
-        "id": "ffe767ed-8f4f-5a43-9030-1e07e88c7f24",
-        "number": "Н10",
-        "zoneId": null,
-        "tenantId": "a930cfd1-2490-5d43-9ccb-8503179e15b1",
-        "countsInQuota": false
       }
     ],
     "tenants": [
@@ -1756,18 +1679,7 @@
       "З4": "55fd1a64-2881-5f88-81d1-4ce82cf2900c",
       "З5": "e79cc3fe-3715-5e23-9fa7-4f731c797e88",
       "З6": "d4a2eae7-5f15-560c-a621-8e8a08418c08",
-      "З7": "9e0f807b-33a2-58a4-954b-ef98905acc13",
-      "Н1": "3dd5c555-4027-5cbe-a97e-e6e8781a4c88",
-      "Н2": "088ac97e-3ae2-5ae5-a39f-8a9a6fb2284f",
-      "Н3": "c81870f5-62b9-531a-a51e-f0660de018b4",
-      "Н4": "5abcaf36-dbc7-534b-a58c-7cecaed78a2e",
-      "Н5": "66ac0a56-ed10-5a31-82a5-c0f1a68a8247",
-      "Н6": "62e0ea7e-0e64-54c9-b965-f6469d1aeb6a",
-      "Н7": "20a81ff6-62f8-565e-bf74-ad2e77d8198d",
-      "Н8": "1ca235bb-08a2-57a4-8039-e8f2f3251aa2",
-      "Н9": "3f6b5eb8-3baf-58cd-9ee0-195259a5ee4b",
-      "Н10": "ffe767ed-8f4f-5a43-9030-1e07e88c7f24",
-      "Н11": "45ca85c7-b8c7-50c7-8828-9dc8651275a9"
+      "З7": "9e0f807b-33a2-58a4-954b-ef98905acc13"
     }
   }
 }
