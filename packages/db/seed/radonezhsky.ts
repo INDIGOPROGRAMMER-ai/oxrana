@@ -276,7 +276,12 @@ const TENANTS: TenantSeed[] = [
 const DAILY_08_20 = [['08:00', '20:00']] as [string, string][];
 
 export const RADONEZHSKY: SeedData = {
-  organization: { key: 'integratsiya', name: 'ООО «Интеграция»', slug: 'integratsiya' },
+  organization: {
+    key: 'integratsiya',
+    name: 'ООО «Интеграция»',
+    slug: 'integratsiya',
+    defaultTimezone: 'Asia/Yekaterinburg',
+  },
   site: {
     key: 'radonezhsky',
     name: 'ЛЦ «Радонежский»',

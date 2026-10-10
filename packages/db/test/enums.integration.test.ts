@@ -43,6 +43,8 @@ const ENUM_COLUMNS: [table: string, column: string, schema: EnumSchema][] = [
   ['gate_decisions', 'direction', c.PassageDirectionSchema],
   ['gate_decisions', 'verdict', c.VerdictCodeSchema],
   ['gate_decisions', 'action', c.GateActionSchema],
+  ['gate_actions', 'type', c.GateActionTypeSchema],
+  ['gate_actions', 'outcome', c.GateActionOutcomeSchema],
   ['gate_passages', 'direction', c.PassageDirectionSchema],
   ['gate_queue', 'left_reason', c.QueueLeaveReasonSchema],
   ['gate_requests', 'participant', c.ParticipantSchema],

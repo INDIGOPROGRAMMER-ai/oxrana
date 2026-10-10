@@ -55,10 +55,15 @@ export const users = pgTable(
     locale: text('locale').notNull().default('ru'),
     lastLoginAt: tstz('last_login_at'),
     mustChangePassword: boolean('must_change_password').notNull().default(false),
+    /** «Показывать ещё и моё время» мелкой второй строкой (ADR-009, дополнение). */
+    showOwnTime: boolean('show_own_time').notNull().default(false),
+    /** Свой пояс пользователя (IANA), выбирается из списка; пояс браузера не читается. */
+    ownTimezone: text('own_timezone'),
     ...timestamps(),
   },
   (t) => [
     check('users_contact_check', sql`${t.email} is not null or ${t.phone} is not null`),
+    check('users_own_time_check', sql`not ${t.showOwnTime} or ${t.ownTimezone} is not null`),
     enumCheck('users', t.status, USER_STATUSES),
   ],
 );

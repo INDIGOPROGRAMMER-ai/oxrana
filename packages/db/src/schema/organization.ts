@@ -37,6 +37,8 @@ export const organizations = pgTable(
     name: text('name').notNull(),
     /** Для URL и логов без ПДн. */
     slug: text('slug').notNull().unique(),
+    /** IANA-пояс, которым предзаполняется новый объект (ADR-009, дополнение); null — не задан. */
+    defaultTimezone: text('default_timezone'),
     /** OrganizationSettings (zod) — ключи появятся вместе с экранами организации. */
     settings: jsonb('settings').notNull().default({}),
     deletedAt: deletedAt(),

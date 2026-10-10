@@ -22,7 +22,8 @@ import type {
  * справочников, ссылки — по ключам (`key`), id получаются из ключей (`seedId`).
  */
 export interface SeedData {
-  organization: { key: string; name: string; slug: string };
+  /** `defaultTimezone` — пояс, которым предзаполняется новый объект (ADR-009). */
+  organization: { key: string; name: string; slug: string; defaultTimezone: string };
   site: {
     key: string;
     name: string;

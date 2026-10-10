@@ -312,8 +312,8 @@ visits
   hardware_event_in_id bigint FK, hardware_event_out_id bigint FK
   decision_in_id bigint FK gate_decisions, decision_out_id bigint FK
   overage boolean NN default false, overage_quota_id uuid FK
-  exception_id uuid FK, override_id uuid FK override_requests
-  flags text[] NN default '{}'              -- 'no_checkin','after_expiry','over_stay','offline_over_quota','undone'
+  exception_id uuid FK, override_id uuid FK override_requests   -- exception_id — только исключение, снявшее лимит: такой визит место не занимает
+  flags text[] NN default '{}'              -- 'no_checkin','after_expiry','over_stay','offline_over_quota','undone','pass_cancelled_meanwhile'
   client_time_in timestamptz, client_time_out timestamptz   -- время устройства при офлайн-отметке
   index (site_id, tenant_id, category_id) where time_out is null    -- подсчёт лимитов
   index (site_id, plate_norm) where time_out is null
@@ -326,7 +326,7 @@ gate_decisions                              -- каждый вердикт, вк
   pass_id uuid FK, plate_query text, hardware_event_id bigint FK
   verdict text NN check in ('allow','allow_overage','wait','wrong_gate','deny','no_pass')
   reasons jsonb NN, trace jsonb NN, engine_version text NN
-  action text check in ('check_in','check_out','refuse','redirect','request','override_request','none','undo')
+  action text check in ('check_in','check_out','refuse','redirect','request','override_request','none','undo','passage')
   visit_id uuid FK, override_id uuid FK
   gate_account_id uuid FK, device_id uuid FK, user_id uuid FK   -- user_id: админ в песочнице/при переопределении
   offline boolean NN default false
@@ -337,6 +337,20 @@ gate_passages                               -- A4: внутренние пост
   id bigint identity PK, organization_id, site_id, gate_id NN FK
   at timestamptz NN, pass_id uuid FK, direction text
   decision_id bigint FK, gate_account_id uuid FK, device_id uuid FK, snapshot jsonb NN
+
+gate_actions                                -- действия поста с идемпотентным id (ADR-005, ADR-017); только insert
+  id uuid PK                                -- id, присланный устройством: повтор с тем же id не выполняет действие второй раз
+  organization_id, site_id, gate_id NN FK
+  type text NN check in ('check_in','check_out','refuse','redirect','undo','passage')
+  gate_account_id uuid FK, device_id uuid FK, user_id uuid FK
+  client_at timestamptz, received_at timestamptz NN
+  offline boolean NN default false          -- пришло из офлайн-очереди (POST /gate/actions/sync)
+  request_hash text NN                      -- отпечаток тела: тот же id с другими данными — ошибка idempotency_conflict
+  outcome text NN check in ('applied','merged','rejected')
+  pass_id uuid FK, visit_id uuid FK, decision_id bigint FK gate_decisions
+  undo_of uuid FK gate_actions               -- для undo: какое действие отменено
+  response jsonb NN                         -- ответ клиенту; повтор получает его же
+  unique (undo_of) where undo_of is not null -- действие отменяется не больше одного раза
 
 gate_queue                                  -- B5: очередь у ворот
   id uuid PK, organization_id, site_id, tenant_id NN FK, gate_id NN FK

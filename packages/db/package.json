@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./seed": "./seed/index.ts",
+    "./testing": "./test/fixtures.ts"
   },
   "scripts": {
     "migrate": "tsx --env-file-if-exists=../../.env src/migrate-cli.ts",
