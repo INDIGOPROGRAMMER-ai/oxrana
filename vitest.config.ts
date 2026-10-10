@@ -17,13 +17,15 @@ export default defineConfig({
         },
       },
       {
-        // С реальным PostgreSQL (ADR-003 п. 6): нужен `pnpm db:up && pnpm db:migrate`.
+        // С реальным PostgreSQL (ADR-003 п. 6): нужен `pnpm db:up`. Глобальный setup пересоздаёт
+        // шаблон oxrana_test_template с миграциями, worker-setup даёт каждому файлу свежую копию.
         test: {
           name: 'integration',
           include: ['{apps,packages}/*/test/**/*.integration.test.ts'],
           exclude: ['**/node_modules/**'],
           env,
           globalSetup: ['./packages/db/test/global-setup.ts'],
+          setupFiles: ['./packages/db/test/worker-setup.ts'],
         },
       },
     ],
