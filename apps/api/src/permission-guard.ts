@@ -32,6 +32,18 @@ declare module 'fastify' {
   interface FastifyRequest {
     actor: Actor | null;
   }
+  interface FastifyInstance {
+    /** Реестр маршрутов и их доступа — для тест-матрицы прав (ADR-007, B12) и документации. */
+    routeAccess: RouteAccess[];
+  }
+}
+
+/** Как защищён маршрут: открыт, нужен вход или нужно право (любое из списка). */
+export interface RouteAccess {
+  readonly method: string;
+  readonly url: string;
+  readonly access: 'public' | 'authenticated' | 'permission';
+  readonly permissions: readonly string[];
 }
 
 /** Куда вести человека, чтобы выдать недостающее право (путь экрана веб-интерфейса). */
@@ -71,6 +83,8 @@ export function registerPermissionGuard(
   const resolveActor: ActorResolver = options.resolveActor ?? (() => null);
 
   app.decorateRequest('actor', null);
+  const routeAccess: RouteAccess[] = [];
+  app.decorate('routeAccess', routeAccess);
 
   app.addHook('onRoute', (route) => {
     const { permission, public: isPublic, authenticated } = route.config ?? {};
@@ -84,8 +98,18 @@ export function registerPermissionGuard(
         `Маршрут ${where} объявляет сразу несколько режимов доступа (public, authenticated, permission) — оставьте один.`,
       );
     }
-    if (isPublic === true) return;
+    const record = (access: RouteAccess['access']) => {
+      for (const method of methods) {
+        if (method !== 'HEAD')
+          routeAccess.push({ method, url: route.url, access, permissions: list });
+      }
+    };
+    if (isPublic === true) {
+      record('public');
+      return;
+    }
     if (authenticated === true) {
+      record('authenticated');
       if (methods.some((m) => m !== 'GET' && m !== 'HEAD')) {
         throw new Error(
           `Маршрут ${where}: authenticated: true допустим только для чтения (GET). Изменения требуют права (ADR-007).`,
@@ -106,6 +130,7 @@ export function registerPermissionGuard(
         );
       }
     }
+    record('permission');
   });
 
   app.addHook('onRequest', async (request) => {

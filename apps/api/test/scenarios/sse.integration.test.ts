@@ -134,7 +134,7 @@ beforeEach(async () => {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
 
 describe('сценарий 3: фура выехала — жёлтая карточка на КПП-2 становится зелёной без F5', () => {
-  it('пост получает quota.changed и сигнал очереди, повторная проверка — зелёная', async () => {
+  it('сценарий 3: пост получает quota.changed и сигнал очереди без F5, повторная проверка — зелёная', async () => {
     await fillVisits(dns, categoryKey('semi'), 24);
     const leaving = await dnsTruck(t);
     await action(t, kpp2, { type: 'check_in', passId: leaving });
