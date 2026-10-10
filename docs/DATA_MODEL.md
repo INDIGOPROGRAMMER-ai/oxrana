@@ -65,13 +65,15 @@ organizations
   id uuid PK
   name text NN
   slug text NN unique                       -- для URL и логов без ПДн
+  default_timezone text                     -- IANA; предзаполняет пояс нового объекта (ADR-009, дополнение); null — не задан
   settings jsonb NN default '{}'            -- OrganizationSettings (zod): срок хранения ПДн по умолчанию и т. п.
   deleted_at timestamptz
 
 sites
   id uuid PK, organization_id uuid NN FK
   name text NN, address text, geo point
-  timezone text NN                          -- IANA: 'Asia/Yekaterinburg'; проверяется Intl.supportedValuesOf('timeZone')
+  timezone text NN                          -- IANA: 'Asia/Yekaterinburg'; проверяется Intl.supportedValuesOf('timeZone');
+                                            -- меняется только отдельным действием с правом site.manage, причиной и аудитом (ADR-009)
   working_hours jsonb                       -- WorkingHours (zod): {"mon":[["08:00","20:00"]],...}; null = круглосуточно
   settings jsonb NN default '{}'            -- SiteSettings (zod), см. раздел 3
   deleted_at timestamptz
@@ -391,6 +393,8 @@ users                                       -- платформенные: од�
   status text NN default 'invited' check in ('invited','active','disabled')
   locale text NN default 'ru', last_login_at timestamptz
   must_change_password boolean NN default false
+  show_own_time boolean NN default false    -- «показывать ещё и моё время» второй строкой (ADR-009, дополнение)
+  own_timezone text                         -- IANA, выбирает пользователь; check: show_own_time → own_timezone not null
 
 roles
   id uuid PK, organization_id NN FK
