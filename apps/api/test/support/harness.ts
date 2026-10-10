@@ -142,6 +142,8 @@ export interface TestApp {
   readonly db: Db;
   /** Запрос от имени актора. */
   as(actor: Actor | null, options: InjectOptions): Promise<LightMyRequestResponse>;
+  /** Заголовки для настоящего HTTP-запроса от имени актора (SSE через fetch). */
+  headersFor(actor: Actor): Record<string, string>;
   close(): Promise<void>;
 }
 
@@ -171,6 +173,11 @@ export async function startTestApp(
         headers['x-test-actor'] = key;
       }
       return app.inject({ ...inject, headers });
+    },
+    headersFor(actor) {
+      const key = `a${++counter}`;
+      actors.set(key, actor);
+      return { 'x-test-actor': key };
     },
     close: () => app.close(),
   };

@@ -51,9 +51,18 @@ export class EventListener {
 
   constructor(private readonly options: ListenerOptions) {}
 
+  /**
+   * Запуск не бросает: без БД (дымовые E2E без Postgres, рестарт сервера БД) слушатель пишет ошибку
+   * и переподключается в фоне, а API продолжает отвечать.
+   */
   async start(): Promise<void> {
     this.stopped = false;
-    await this.connect();
+    try {
+      await this.connect();
+    } catch (error) {
+      this.options.onError?.(error);
+      this.scheduleReconnect();
+    }
   }
 
   async stop(): Promise<void> {
@@ -97,6 +106,7 @@ export class EventListener {
     this.attempt++;
     const delay = Math.min(10_000, 500 * 2 ** this.attempt);
     this.retryTimer = setTimeout(() => {
+      if (this.stopped) return;
       this.connect().catch((error: unknown) => {
         this.options.onError?.(error);
         this.scheduleReconnect();
