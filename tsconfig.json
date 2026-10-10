@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/contracts" },
+    { "path": "./packages/engine" },
+    { "path": "./packages/plates" },
+    { "path": "./packages/db" },
+    { "path": "./apps/api" },
+    { "path": "./apps/web" },
+    { "path": "./apps/gate" },
+    { "path": "./tsconfig.tools.json" }
+  ]
+}
