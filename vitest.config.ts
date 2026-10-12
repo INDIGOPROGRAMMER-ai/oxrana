@@ -24,6 +24,17 @@ export default defineConfig({
         },
       },
       {
+        // Компонентные тесты (этап 6a): React в jsdom, без БД и сети.
+        test: {
+          name: 'components',
+          include: ['{apps,packages}/*/test/**/*.test.tsx'],
+          exclude: ['**/node_modules/**'],
+          environment: 'jsdom',
+          setupFiles: ['./packages/ui/test/setup.ts'],
+          env,
+        },
+      },
+      {
         // С реальным PostgreSQL (ADR-003 п. 6): нужен `pnpm db:up`. Глобальный setup пересоздаёт
         // шаблон oxrana_test_template с миграциями, worker-setup даёт каждому файлу свежую копию.
         test: {

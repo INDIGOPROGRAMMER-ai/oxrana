@@ -6,7 +6,13 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/routeTree.gen.ts", "!**/migrations/meta", "!docs", "!pnpm-lock.yaml"]
+    "includes": [
+      "**",
+      "!**/routeTree.gen.ts",
+      "!**/migrations/meta",
+      "!docs",
+      "!pnpm-lock.yaml"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -39,6 +45,11 @@
       "source": {
         "organizeImports": "on"
       }
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
     }
   }
 }

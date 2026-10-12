@@ -5,6 +5,7 @@
     { "path": "./packages/engine" },
     { "path": "./packages/plates" },
     { "path": "./packages/db" },
+    { "path": "./packages/ui" },
     { "path": "./apps/api" },
     { "path": "./apps/web" },
     { "path": "./apps/gate" },
