@@ -142,6 +142,20 @@ jobs:
         run: |
           # скрипты и compose.yml — в той же версии, что образы
           tar -C deploy -cz compose.yml oxranactl | ssh stand 'tar -xz --no-same-owner -C /opt/oxrana && chmod 755 /opt/oxrana/oxranactl'
+          # PostgreSQL тоже везём с runner: Docker Hub отвечает 403 на запросы с российских IP.
+          # Передаём, только если такой версии на сервере ещё нет.
+          pg_image="$(awk '$1 == "image:" && $2 ~ /^postgres:/ { print $2; exit }' deploy/compose.yml)"
+          if [ -z "$pg_image" ]; then
+            echo "::error title=Нет образа PostgreSQL::В deploy/compose.yml не найдена строка image: postgres:…"
+            exit 1
+          fi
+          # shellcheck disable=SC2029 # имя образа взято из compose.yml репозитория, подстановка на стороне runner намеренна
+          if ssh stand "docker image inspect $pg_image >/dev/null 2>&1"; then
+            echo "Образ $pg_image уже есть на сервере."
+          else
+            docker pull "$pg_image"
+            docker save "$pg_image" | gzip -1 | ssh stand '/opt/oxrana/oxranactl load'
+          fi
           docker save "oxrana-api:$TAG" "oxrana-proxy:$TAG" | gzip -1 | ssh stand '/opt/oxrana/oxranactl load'
 
       - name: Обновление, миграции, проверка

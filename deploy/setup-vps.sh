@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Первичная настройка VPS стенда (ADR-019, docs/STAND.md). Запускается один раз вставкой одной
-# команды в веб-консоль хостера (под root) на чистой Ubuntu 24.04:
+# команды в окно SSH под root (ssh root@IP) на чистой Ubuntu 24.04:
 #
 #   curl -fsSL https://raw.githubusercontent.com/INDIGOPROGRAMMER-ai/oxrana/main/deploy/setup-vps.sh | bash -s -- ДОМЕН E-MAIL
 #
@@ -185,17 +185,28 @@ write_env() {
 }
 
 fetch_files() {
-  local f
+  local f missing=0
   log "Файлы обслуживания (oxranactl, compose.yml)"
   for f in compose.yml oxranactl; do
-    # дальше их обновляет каждый деплой; здесь — только первоначальная копия
+    # Дальше их привозит каждый деплой; здесь — только первоначальная копия. Из РФ
+    # raw.githubusercontent.com временами недоступен — тогда файлы привезёт первый деплой.
     if [ ! -f "$HOME_DIR/$f" ]; then
-      curl -fsSL --max-time 60 "$REPO_RAW/deploy/$f" -o "$HOME_DIR/$f" || die "не удалось скачать $REPO_RAW/deploy/$f"
-      chown "$DEPLOY_USER:$DEPLOY_USER" "$HOME_DIR/$f"
+      if curl -fsSL --max-time 60 "$REPO_RAW/deploy/$f" -o "$HOME_DIR/$f.part"; then
+        mv "$HOME_DIR/$f.part" "$HOME_DIR/$f"
+        chown "$DEPLOY_USER:$DEPLOY_USER" "$HOME_DIR/$f"
+      else
+        rm -f "$HOME_DIR/$f.part"
+        missing=1
+      fi
     fi
   done
-  chmod 755 "$HOME_DIR/oxranactl"
+  if [ -f "$HOME_DIR/oxranactl" ]; then
+    chmod 755 "$HOME_DIR/oxranactl"
+  fi
   ln -sf "$HOME_DIR/oxranactl" /usr/local/bin/oxranactl
+  if [ "$missing" -eq 1 ]; then
+    note "GitHub сейчас не отдаёт файлы — их привезёт первый деплой (docs/STAND.md, шаг 5)"
+  fi
 }
 
 harden_ssh() {
@@ -313,7 +324,8 @@ report() {
   local ip dns_ip host_key
   ip="$(public_ip || true)"
   dns_ip="$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk 'NR == 1 { print $1 }' || true)"
-  host_key="$(awk '{ print $1 " " $2 }' /etc/ssh/ssh_host_ed25519_key.pub)"
+  # Строка known_hosts: «адрес тип ключ». Без адреса в начале ssh её не сопоставит с сервером.
+  host_key="${ip:-IP_СЕРВЕРА} $(awk '{ print $1 " " $2 }' /etc/ssh/ssh_host_ed25519_key.pub)"
 
   cat <<EOF
 
@@ -352,7 +364,7 @@ EOF
  2) Имя:    STAND_KNOWN_HOSTS
     Значение (одна строка):
 $host_key
-    (строка должна начинаться с IP сервера; если IP выше определён неверно — замените первое слово на верный IP)
+    (строка начинается с IP сервера; если IP выше определён неверно — замените первое слово на верный IP)
 
  3) Имя:    STAND_SSH_KEY
     Значение (всё, от строки BEGIN до строки END включительно):
