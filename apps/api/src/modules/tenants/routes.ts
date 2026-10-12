@@ -1,24 +1,31 @@
 import {
+  BatchResultSchema,
   ClauseCreateSchema,
   ClausePatchSchema,
   ClauseViewSchema,
   ContractCreateSchema,
   ContractPatchSchema,
   ContractViewSchema,
+  DockAssignmentBatchSchema,
   DockAssignmentCreateSchema,
   DockAssignmentPatchSchema,
   DockAssignmentViewSchema,
   PedestrianRuleCreateSchema,
   PedestrianRulePatchSchema,
   PedestrianRuleViewSchema,
+  SiteParamsSchema,
+  TenantBatchSchema,
   TenantCreateSchema,
+  TenantParamsSchema,
   TenantPatchSchema,
   TenantViewSchema,
 } from '@oxrana/contracts';
 import { schema } from '@oxrana/db';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { assertSiteAccess, assertTenantAccess, type Scope } from '../../core/context';
+import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { runBatch } from '../../core/batch';
+import { assertSiteAccess, assertTenantAccess, ctxOf, type Scope } from '../../core/context';
 import { registerResource, type ScopeInfo } from '../../core/crud';
 import { loadTenant, notFound } from '../../core/loaders';
 import { assertRef } from '../../core/refs';
@@ -75,7 +82,7 @@ async function assertClauseOfTenant(
 }
 
 export function registerTenantsModule(app: FastifyInstance): void {
-  registerResource(app, {
+  const tenants = registerResource(app, {
     entity: 'tenant',
     title: 'Арендатор',
     table: schema.tenants,
@@ -168,7 +175,7 @@ export function registerTenantsModule(app: FastifyInstance): void {
     orderBy: (c) => [asc(c('ref'))],
   });
 
-  registerResource(app, {
+  const assignments = registerResource(app, {
     entity: 'tenant_dock_assignment',
     title: 'Назначение дока',
     table: schema.tenantDockAssignments,
@@ -257,4 +264,89 @@ export function registerTenantsModule(app: FastifyInstance): void {
     },
     scopeOf: tenantRowScope,
   });
+
+  // Пакетное добавление арендаторов (вставка из Excel): строки независимы, повторы названий — ошибка строки.
+  app.withTypeProvider<ZodTypeProvider>().post(
+    '/sites/:siteId/tenants/batch',
+    {
+      config: { permission: 'tenant.manage' },
+      schema: {
+        tags: ['tenant'],
+        summary: 'Арендаторы: добавить пакетом (dryRun — предпросмотр)',
+        params: SiteParamsSchema,
+        body: TenantBatchSchema,
+        response: { 200: BatchResultSchema },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      const { items, dryRun } = request.body;
+      return ctx.tx(async (s) => {
+        const existing = await s.db
+          .select({ shortName: schema.tenants.shortName })
+          .from(schema.tenants)
+          .where(
+            and(
+              eq(schema.tenants.organizationId, s.organizationId),
+              eq(schema.tenants.siteId, request.params.siteId),
+              isNull(schema.tenants.deletedAt),
+            ),
+          );
+        const names = new Set(existing.map((t) => t.shortName.toLowerCase()));
+        return runBatch(s, items, {
+          dryRun: dryRun ?? false,
+          precheck: (item) => {
+            const key = item.shortName.toLowerCase();
+            if (names.has(key)) {
+              return new AppError('conflict', {
+                field: 'shortName',
+                message: `Арендатор «${item.shortName}» уже есть на объекте (или повторяется в списке). Измените название или уберите строку.`,
+              });
+            }
+            names.add(key);
+            return null;
+          },
+          create: (scope, item) =>
+            tenants.create(scope, request.params.siteId, item as Record<string, unknown>),
+        });
+      });
+    },
+  );
+
+  // Несколько доков арендатору сразу («доки 1–10»): общий срок и основание.
+  app.withTypeProvider<ZodTypeProvider>().post(
+    '/tenants/:tenantId/dock-assignments/batch',
+    {
+      config: { permission: 'tenant.manage' },
+      schema: {
+        tags: ['tenant_dock_assignment'],
+        summary: 'Назначения доков: закрепить пакетом (dryRun — предпросмотр)',
+        params: TenantParamsSchema,
+        body: DockAssignmentBatchSchema,
+        response: { 200: BatchResultSchema },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      const { dockIds, dryRun, ...common } = request.body;
+      const seen = new Set<string>();
+      return ctx.tx((s) =>
+        runBatch(s, dockIds, {
+          dryRun: dryRun ?? false,
+          precheck: (dockId) => {
+            if (seen.has(dockId)) {
+              return new AppError('conflict', {
+                field: 'dockId',
+                message: 'Док повторяется в списке. Оставьте один.',
+              });
+            }
+            seen.add(dockId);
+            return null;
+          },
+          create: (scope, dockId) =>
+            assignments.create(scope, request.params.tenantId, { ...common, dockId }),
+        }),
+      );
+    },
+  );
 }

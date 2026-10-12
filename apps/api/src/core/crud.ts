@@ -174,7 +174,17 @@ function provided(input: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
 }
 
-export function registerResource(app: FastifyInstance, spec: ResourceSpec): void {
+/** Что отдаёт `registerResource` другим маршрутам модуля (пакетный ввод). */
+export interface ResourceHandle {
+  /** Создать запись как POST коллекции; для пакетов вызывается внутри `s.nested`. */
+  readonly create: (
+    s: Scope,
+    parentId: string,
+    body: Record<string, unknown>,
+  ) => Promise<{ id: string } & Record<string, unknown>>;
+}
+
+export function registerResource(app: FastifyInstance, spec: ResourceSpec): ResourceHandle {
   const typed = app.withTypeProvider<ZodTypeProvider>();
   const parentParam = `${spec.parent}Id`;
   const parentSegment = { site: 'sites', tenant: 'tenants', contract: 'contracts' }[spec.parent];
@@ -274,6 +284,47 @@ export function registerResource(app: FastifyInstance, spec: ResourceSpec): void
     },
   );
 
+  /** Создание одной записи: проверка, вставка, связанные записи, аудит, событие. Общий путь для POST и пакетов. */
+  const createRecord = async (
+    s: Scope,
+    parentId: string,
+    body: Record<string, unknown>,
+  ): Promise<unknown> => {
+    const input = provided(body);
+    const scope = await resolveParent(s, spec.parent, parentId);
+    const prepared = spec.prepare ? await spec.prepare(s, input, null, scope) : input;
+    const values = {
+      ...prepared,
+      organizationId: s.organizationId,
+      [spec.parentField]: parentId,
+    };
+    const [row] = (await s.db
+      .insert(spec.table)
+      .values(values as PgInsertValue<PgTable>)
+      .returning()
+      .catch((error: unknown) => {
+        throw translateWriteError(spec, error);
+      })) as Row[];
+    if (!row) throw new Error(`${spec.entity}: insert не вернул строку`);
+    const related = spec.afterWrite ? await spec.afterWrite(s, row, input, null) : {};
+    const written = Object.keys(prepared);
+    const diff = await labelDiff(
+      s,
+      { ...diffOf(null, row, written), ...related },
+      spec.labels ?? {},
+    );
+    await s.audit({
+      siteId: scope.siteId,
+      entity: spec.entity,
+      entityId: row.id,
+      action: 'create',
+      diff,
+    });
+    await emitChange(s, row, scope, written);
+    const [created] = await views(s, spec, [row]);
+    return created;
+  };
+
   typed.post(
     listPath,
     {
@@ -289,41 +340,9 @@ export function registerResource(app: FastifyInstance, spec: ResourceSpec): void
     async (request, reply) => {
       const ctx = ctxOf(request);
       const parentId = (request.params as Record<string, string>)[parentParam] ?? '';
-      const input = provided(request.body as Record<string, unknown>);
-      const view = await ctx.tx(async (s) => {
-        const scope = await resolveParent(s, spec.parent, parentId);
-        const prepared = spec.prepare ? await spec.prepare(s, input, null, scope) : input;
-        const values = {
-          ...prepared,
-          organizationId: s.organizationId,
-          [spec.parentField]: parentId,
-        };
-        const [row] = (await s.db
-          .insert(spec.table)
-          .values(values as PgInsertValue<PgTable>)
-          .returning()
-          .catch((error: unknown) => {
-            throw translateWriteError(spec, error);
-          })) as Row[];
-        if (!row) throw new Error(`${spec.entity}: insert не вернул строку`);
-        const related = spec.afterWrite ? await spec.afterWrite(s, row, input, null) : {};
-        const written = Object.keys(prepared);
-        const diff = await labelDiff(
-          s,
-          { ...diffOf(null, row, written), ...related },
-          spec.labels ?? {},
-        );
-        await s.audit({
-          siteId: scope.siteId,
-          entity: spec.entity,
-          entityId: row.id,
-          action: 'create',
-          diff,
-        });
-        await emitChange(s, row, scope, written);
-        const [created] = await views(s, spec, [row]);
-        return created;
-      });
+      const view = await ctx.tx((s) =>
+        createRecord(s, parentId, request.body as Record<string, unknown>),
+      );
       return reply.status(201).send(view);
     },
   );
@@ -388,7 +407,10 @@ export function registerResource(app: FastifyInstance, spec: ResourceSpec): void
     },
   );
 
-  if (spec.deletable === false) return;
+  const handle: ResourceHandle = {
+    create: createRecord as ResourceHandle['create'],
+  };
+  if (spec.deletable === false) return handle;
 
   typed.get(
     `${itemPath}/usages`,
@@ -467,4 +489,5 @@ export function registerResource(app: FastifyInstance, spec: ResourceSpec): void
       });
     },
   );
+  return handle;
 }

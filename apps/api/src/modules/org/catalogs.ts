@@ -1,10 +1,13 @@
 import {
+  BatchResultSchema,
+  DockBatchSchema,
   DockCreateSchema,
   DockPatchSchema,
   DockViewSchema,
   GateCreateSchema,
   GatePatchSchema,
   GateViewSchema,
+  SiteParamsSchema,
   ZoneCreateSchema,
   ZonePatchSchema,
   ZoneViewSchema,
@@ -12,7 +15,9 @@ import {
 import { schema } from '@oxrana/db';
 import { asc } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { assertSiteAccess, type Scope } from '../../core/context';
+import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { runBatch } from '../../core/batch';
+import { assertSiteAccess, ctxOf, type Scope } from '../../core/context';
 import { registerResource, type ScopeInfo } from '../../core/crud';
 import { assertRef } from '../../core/refs';
 import { AppError } from '../../errors';
@@ -85,7 +90,7 @@ export function registerCatalogRoutes(app: FastifyInstance): void {
     orderBy: (c) => [asc(c('sort')), asc(c('name'))],
   });
 
-  registerResource(app, {
+  const docks = registerResource(app, {
     entity: 'dock',
     title: 'Док',
     table: schema.docks,
@@ -123,4 +128,41 @@ export function registerCatalogRoutes(app: FastifyInstance): void {
     scopeOf: siteScope,
     orderBy: (c) => [asc(c('number'))],
   });
+
+  // Пакетное добавление доков: «1–72» клиент раскрывает в список, сервер проверяет каждый номер.
+  app.withTypeProvider<ZodTypeProvider>().post(
+    '/sites/:siteId/docks/batch',
+    {
+      config: { permission: 'site.manage' },
+      schema: {
+        tags: ['dock'],
+        summary: 'Доки: добавить пакетом (dryRun — предпросмотр «добавится N, ошибки в M»)',
+        params: SiteParamsSchema,
+        body: DockBatchSchema,
+        response: { 200: BatchResultSchema },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      const { numbers, dryRun, ...common } = request.body;
+      const seen = new Set<string>();
+      return ctx.tx((s) =>
+        runBatch(s, numbers, {
+          dryRun: dryRun ?? false,
+          precheck: (number) => {
+            if (seen.has(number)) {
+              return new AppError('conflict', {
+                field: 'number',
+                message: `Док «${number}» повторяется в списке. Оставьте один.`,
+              });
+            }
+            seen.add(number);
+            return null;
+          },
+          create: (scope, number) =>
+            docks.create(scope, request.params.siteId, { ...common, number }),
+        }),
+      );
+    },
+  );
 }
