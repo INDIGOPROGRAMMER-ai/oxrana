@@ -1,0 +1,16 @@
+# Контекст сборки образов стенда (deploy/Dockerfile): только исходники, нужные для сборки.
+.git
+.github
+.claude
+**/node_modules
+**/dist
+**/dist-types
+**/*.tsbuildinfo
+coverage
+test-results
+playwright-report
+docs
+e2e
+.env
+.env.*
+!.env.example
