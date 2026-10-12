@@ -72,6 +72,24 @@ jobs:
   e2e:
     name: E2E (Playwright, Chromium)
     runs-on: ubuntu-24.04
+    # Сценарий «чистый старт → вход → приглашение → привязка устройства» идёт на своей чистой базе.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v5
@@ -80,7 +98,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: cp .env.example .env # API требует DATABASE_URL; для smoke-тестов подключение не открывается
+      - run: pnpm db:up # роли и .env из .env.example; базу oxrana_e2e пересоздаёт scripts/e2e-db.sh
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v6

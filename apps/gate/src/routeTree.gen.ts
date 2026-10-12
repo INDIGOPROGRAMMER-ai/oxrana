@@ -10,33 +10,43 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as EnrollRouteImport } from './routes/enroll'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EnrollRoute = EnrollRouteImport.update({
+  id: '/enroll',
+  path: '/enroll',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/enroll': typeof EnrollRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/enroll': typeof EnrollRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/enroll': typeof EnrollRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/enroll'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/enroll'
+  id: '__root__' | '/' | '/enroll'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  EnrollRoute: typeof EnrollRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +58,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/enroll': {
+      id: '/enroll'
+      path: '/enroll'
+      fullPath: '/enroll'
+      preLoaderRoute: typeof EnrollRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  EnrollRoute: EnrollRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
