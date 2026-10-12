@@ -496,6 +496,79 @@ describe('администратор не получает больше прав
     expect(ok.json().link).toMatch(/\/password#/);
   });
 
+  it('выдача ссылок (Q-59): кто и когда — в аудите, самих ссылок в аудите нет; ссылка сброса — сутки и один раз', async () => {
+    const admin = roleActor('site_admin');
+    const { user: logist } = await createUser('tenant_viewer', {
+      siteId: KEYS.siteId,
+      tenantId: dns,
+    });
+    const reset = await t.as(admin, { method: 'POST', url: `/users/${logist.id}/password-reset` });
+    expect(reset.statusCode).toBe(200);
+    const { link, expiresAt } = reset.json();
+    const token = String(link).split('#')[1] ?? '';
+    expect(Date.parse(expiresAt)).toBe(t.clock.now() + 24 * 3_600_000);
+
+    const invite = await t.as(admin, {
+      method: 'POST',
+      url: '/invitations',
+      payload: {
+        email: 'audit.link@example.test',
+        fullName: 'Иванов Иван',
+        roleId: roleId('tenant_manager'),
+        tenantId: dns,
+      },
+    });
+    const invitation = invite.json();
+    const resend = await t.as(admin, {
+      method: 'POST',
+      url: `/invitations/${invitation.invitation.id}/resend`,
+    });
+    expect(resend.statusCode).toBe(200);
+
+    const audit = await ownerDb()
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actorUserId, admin.id));
+    const issued = audit.filter(
+      (a) =>
+        (a.entity === 'user' && a.action === 'password_reset_link' && a.entityId === logist.id) ||
+        (a.entity === 'invitation' &&
+          a.entityId === invitation.invitation.id &&
+          ['create', 'resend'].includes(a.action)),
+    );
+    expect(issued.map((a) => `${a.entity}:${a.action}`).sort()).toEqual([
+      'invitation:create',
+      'invitation:resend',
+      'user:password_reset_link',
+    ]);
+    const invitationToken = String(invitation.link).split('#')[1] ?? '';
+    const dump = JSON.stringify(audit);
+    for (const secret of [token, invitationToken, String(resend.json().link).split('#')[1] ?? '']) {
+      expect(secret).not.toBe('');
+      expect(dump).not.toContain(secret);
+    }
+
+    // ссылка сброса одноразовая и со сроком
+    const use = (password: string) =>
+      t.as(null, { method: 'POST', url: '/auth/password/reset', payload: { token, password } });
+    expect((await use('Новый-надёжный-пароль-7')).statusCode).toBe(200);
+    expect(error(await use('Ещё-один-надёжный-пароль-8')).code).toBe('link_invalid');
+    const second = await t.as(admin, { method: 'POST', url: `/users/${logist.id}/password-reset` });
+    t.clock.advance(24 * 3_600_000 + 1);
+    expect(
+      error(
+        await t.as(null, {
+          method: 'POST',
+          url: '/auth/password/reset',
+          payload: {
+            token: String(second.json().link).split('#')[1],
+            password: 'Просроченная-ссылка-9',
+          },
+        }),
+      ).code,
+    ).toBe('link_invalid');
+  });
+
   it('приглашение на e-mail работающей учётки без пароля не задаёт ей пароль', async () => {
     const [owner] = await ownerDb()
       .insert(schema.users)
