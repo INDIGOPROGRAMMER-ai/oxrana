@@ -80,7 +80,7 @@ export interface TestPrincipal {
 }
 
 const testId = (...parts: string[]) => seedId('test', ...parts);
-const roleIdOf = (code: string) => seedId(DEMO_SEED.organization.key, 'role', code);
+export const roleIdOf = (code: string) => seedId(DEMO_SEED.organization.key, 'role', code);
 
 async function userSession(
   db: Db,

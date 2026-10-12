@@ -196,6 +196,8 @@ export async function createPass(
             options.gateAccountId ?? (actor.kind === 'gate_account' ? actor.id : null),
           batchId: options.batchId ?? null,
           approvedAt: status === 'approved' ? now : null,
+          // Время подачи — по часам сервиса (ADR-009): от него считается срок согласования.
+          createdAt: now,
         })
         .returning(),
     () => duplicateError(s, values, tenant.id, ctx.site.timezone),

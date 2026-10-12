@@ -96,6 +96,8 @@ export async function createOverrideRequest(
       status: 'pending',
       requestedByGateAccountId: actor.id,
       deviceId: actor.deviceId,
+      // по часам сервиса (ADR-009): от него считается, устарел ли запрос
+      createdAt: new Date(s.ctx.now()),
     })
     .returning();
   if (!row) throw new Error('override insert');

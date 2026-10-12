@@ -52,9 +52,10 @@ UPDATE roles SET template_code = t.code
  WHERE roles.is_template AND roles.template_code IS NULL AND roles.name = t.name;
 --> statement-breakpoint
 -- 4. Q-56: «Арендатор — заказчик» отменяет только свои пропуска (новое право pass.cancel_own);
---    владелец и администратор объекта получают новое право, как и все права, кроме действий поста.
+--    владелец, администратор объекта и ответственный арендатора получают и его (иначе не смогут
+--    пригласить заказчика: роль не шире своих прав).
 UPDATE roles SET permissions = array_replace(permissions, 'pass.cancel', 'pass.cancel_own')
  WHERE template_code = 'tenant_requester';
 --> statement-breakpoint
 UPDATE roles SET permissions = array_append(permissions, 'pass.cancel_own')
- WHERE template_code IN ('org_owner', 'site_admin') AND NOT ('pass.cancel_own' = ANY (permissions));
+ WHERE template_code IN ('org_owner', 'site_admin', 'tenant_manager') AND NOT ('pass.cancel_own' = ANY (permissions));
