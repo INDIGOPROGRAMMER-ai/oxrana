@@ -295,6 +295,9 @@ importers:
       uqr:
         specifier: 'catalog:'
         version: 0.1.3
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
     devDependencies:
       '@tailwindcss/vite':
         specifier: 'catalog:'

@@ -10,16 +10,25 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ForgotRouteImport } from './routes/forgot'
 import { Route as InviteRouteImport } from './routes/invite'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PasswordRouteImport } from './routes/password'
 import { Route as AdminDevicesRouteImport } from './routes/admin.devices'
+import { Route as AdminGatesRouteImport } from './routes/admin.gates'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
+import { Route as AdminSitesSiteIdIndexRouteImport } from './routes/admin.sites.$siteId.index'
+import { Route as AdminSitesSiteIdTimezoneRouteImport } from './routes/admin.sites.$siteId.timezone'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ForgotRoute = ForgotRouteImport.update({
@@ -43,82 +52,121 @@ const PasswordRoute = PasswordRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminDevicesRoute = AdminDevicesRouteImport.update({
-  id: '/admin/devices',
-  path: '/admin/devices',
-  getParentRoute: () => rootRouteImport,
+  id: '/devices',
+  path: '/devices',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminGatesRoute = AdminGatesRouteImport.update({
+  id: '/gates',
+  path: '/gates',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
-  id: '/admin/users',
-  path: '/admin/users',
-  getParentRoute: () => rootRouteImport,
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AdminRoute,
 } as any)
+const AdminSitesSiteIdIndexRoute = AdminSitesSiteIdIndexRouteImport.update({
+  id: '/sites/$siteId/',
+  path: '/sites/$siteId/',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSitesSiteIdTimezoneRoute =
+  AdminSitesSiteIdTimezoneRouteImport.update({
+    id: '/sites/$siteId/timezone',
+    path: '/sites/$siteId/timezone',
+    getParentRoute: () => AdminRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteWithChildren
   '/forgot': typeof ForgotRoute
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/password': typeof PasswordRoute
   '/admin/devices': typeof AdminDevicesRoute
+  '/admin/gates': typeof AdminGatesRoute
   '/admin/users': typeof AdminUsersRoute
+  '/admin/sites/$siteId/timezone': typeof AdminSitesSiteIdTimezoneRoute
+  '/admin/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteWithChildren
   '/forgot': typeof ForgotRoute
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/password': typeof PasswordRoute
   '/admin/devices': typeof AdminDevicesRoute
+  '/admin/gates': typeof AdminGatesRoute
   '/admin/users': typeof AdminUsersRoute
+  '/admin/sites/$siteId/timezone': typeof AdminSitesSiteIdTimezoneRoute
+  '/admin/sites/$siteId': typeof AdminSitesSiteIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteWithChildren
   '/forgot': typeof ForgotRoute
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/password': typeof PasswordRoute
   '/admin/devices': typeof AdminDevicesRoute
+  '/admin/gates': typeof AdminGatesRoute
   '/admin/users': typeof AdminUsersRoute
+  '/admin/sites/$siteId/timezone': typeof AdminSitesSiteIdTimezoneRoute
+  '/admin/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/forgot'
     | '/invite'
     | '/login'
     | '/password'
     | '/admin/devices'
+    | '/admin/gates'
     | '/admin/users'
+    | '/admin/sites/$siteId/timezone'
+    | '/admin/sites/$siteId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin'
     | '/forgot'
     | '/invite'
     | '/login'
     | '/password'
     | '/admin/devices'
+    | '/admin/gates'
     | '/admin/users'
+    | '/admin/sites/$siteId/timezone'
+    | '/admin/sites/$siteId'
   id:
     | '__root__'
     | '/'
+    | '/admin'
     | '/forgot'
     | '/invite'
     | '/login'
     | '/password'
     | '/admin/devices'
+    | '/admin/gates'
     | '/admin/users'
+    | '/admin/sites/$siteId/timezone'
+    | '/admin/sites/$siteId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRouteWithChildren
   ForgotRoute: typeof ForgotRoute
   InviteRoute: typeof InviteRoute
   LoginRoute: typeof LoginRoute
   PasswordRoute: typeof PasswordRoute
-  AdminDevicesRoute: typeof AdminDevicesRoute
-  AdminUsersRoute: typeof AdminUsersRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -128,6 +176,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/forgot': {
@@ -160,29 +215,67 @@ declare module '@tanstack/react-router' {
     }
     '/admin/devices': {
       id: '/admin/devices'
-      path: '/admin/devices'
+      path: '/devices'
       fullPath: '/admin/devices'
       preLoaderRoute: typeof AdminDevicesRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/gates': {
+      id: '/admin/gates'
+      path: '/gates'
+      fullPath: '/admin/gates'
+      preLoaderRoute: typeof AdminGatesRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/users': {
       id: '/admin/users'
-      path: '/admin/users'
+      path: '/users'
       fullPath: '/admin/users'
       preLoaderRoute: typeof AdminUsersRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/sites/$siteId/': {
+      id: '/admin/sites/$siteId/'
+      path: '/sites/$siteId'
+      fullPath: '/admin/sites/$siteId/'
+      preLoaderRoute: typeof AdminSitesSiteIdIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/sites/$siteId/timezone': {
+      id: '/admin/sites/$siteId/timezone'
+      path: '/sites/$siteId/timezone'
+      fullPath: '/admin/sites/$siteId/timezone'
+      preLoaderRoute: typeof AdminSitesSiteIdTimezoneRouteImport
+      parentRoute: typeof AdminRoute
     }
   }
 }
 
+interface AdminRouteChildren {
+  AdminDevicesRoute: typeof AdminDevicesRoute
+  AdminGatesRoute: typeof AdminGatesRoute
+  AdminUsersRoute: typeof AdminUsersRoute
+  AdminSitesSiteIdTimezoneRoute: typeof AdminSitesSiteIdTimezoneRoute
+  AdminSitesSiteIdIndexRoute: typeof AdminSitesSiteIdIndexRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminDevicesRoute: AdminDevicesRoute,
+  AdminGatesRoute: AdminGatesRoute,
+  AdminUsersRoute: AdminUsersRoute,
+  AdminSitesSiteIdTimezoneRoute: AdminSitesSiteIdTimezoneRoute,
+  AdminSitesSiteIdIndexRoute: AdminSitesSiteIdIndexRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRouteWithChildren,
   ForgotRoute: ForgotRoute,
   InviteRoute: InviteRoute,
   LoginRoute: LoginRoute,
   PasswordRoute: PasswordRoute,
-  AdminDevicesRoute: AdminDevicesRoute,
-  AdminUsersRoute: AdminUsersRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
