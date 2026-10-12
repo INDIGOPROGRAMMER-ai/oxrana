@@ -142,13 +142,42 @@ function assertCanAssign(ctx: Ctx, role: RoleRow, scope: AssignScope): void {
 }
 
 /** Пользователь только этой организации: глобальные действия (отключить, сбросить пароль) — здесь. */
-async function assertOnlyHere(s: Scope, userId: string): Promise<void> {
+/**
+ * Глобальные действия над человеком (отключить, сбросить пароль): только если он работает лишь в
+ * этой организации и все его роли здесь не шире прав того, кто действует, — иначе администратор
+ * объекта мог бы сбросить пароль владельцу и войти под ним.
+ */
+async function assertCanManageUser(s: Scope, userId: string): Promise<void> {
   const orgs = await userOrganizations(s.db, userId);
   if (!orgs.includes(s.organizationId)) throw notFound('Пользователь');
   if (orgs.length > 1) {
     throw new AppError('conflict', {
       message:
         'Пользователь работает и в других организациях. Здесь можно только убрать его роли в вашей организации.',
+    });
+  }
+  const rows = await s.db
+    .select({ assignment: schema.roleAssignments, role: schema.roles })
+    .from(schema.roleAssignments)
+    .innerJoin(schema.roles, eq(schema.roles.id, schema.roleAssignments.roleId))
+    .where(
+      and(
+        eq(schema.roleAssignments.organizationId, s.organizationId),
+        eq(schema.roleAssignments.userId, userId),
+      ),
+    );
+  for (const { assignment, role } of rows) {
+    assertCanAssign(s.ctx, role, { siteId: assignment.siteId, tenantId: assignment.tenantId });
+  }
+}
+
+/** Роль меняет или удаляет только тот, у кого есть все её права: иначе — урезать права старшего. */
+function assertCanEditRole(ctx: Ctx, role: RoleRow): void {
+  const missing = role.permissions.filter((p) => !ctx.actor.permissions.has(p));
+  if (missing.length > 0) {
+    throw new AppError('role_too_broad', {
+      details: { missing },
+      message: `Роль «${role.name}» шире ваших прав — изменить её может владелец организации.`,
     });
   }
 }
@@ -591,7 +620,7 @@ export function registerUserRoutes(app: FastifyInstance): void {
           if (request.params.id === ctx.actor.id) {
             throw new AppError('conflict', { message: 'Свою учётную запись отключить нельзя.' });
           }
-          await assertOnlyHere(s, request.params.id);
+          await assertCanManageUser(s, request.params.id);
           const [user] = await s.db
             .update(schema.users)
             .set({ status: action === 'disable' ? 'disabled' : 'active' })
@@ -636,7 +665,7 @@ export function registerUserRoutes(app: FastifyInstance): void {
       const ctx = ctxOf(request);
       const userId = request.params.id;
       await ctx.tx(async (s) => {
-        await assertOnlyHere(s, userId);
+        await assertCanManageUser(s, userId);
         await s.audit({
           siteId: null,
           entity: 'user',
@@ -749,6 +778,7 @@ export function registerUserRoutes(app: FastifyInstance): void {
       const ctx = ctxOf(request);
       return ctx.tx(async (s) => {
         const role = await loadRole(s, request.params.id);
+        assertCanEditRole(ctx, role);
         const next: Record<string, unknown> = {};
         if (request.body.name !== undefined) next.name = request.body.name;
         if (request.body.permissions !== undefined) {
@@ -798,6 +828,7 @@ export function registerUserRoutes(app: FastifyInstance): void {
       const ctx = ctxOf(request);
       await ctx.tx(async (s) => {
         const role = await loadRole(s, request.params.id);
+        assertCanEditRole(ctx, role);
         const usages = (await findUsages(s.db, schema.roles, role.id)).map(usageView);
         const inGateAccounts = usages.some((u) => u.table === 'gate_accounts');
         if (inGateAccounts) {

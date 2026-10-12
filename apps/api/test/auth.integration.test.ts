@@ -468,6 +468,66 @@ describe('приглашения', () => {
   });
 });
 
+describe('администратор не получает больше прав, чем имеет', () => {
+  it('администратор объекта не сбрасывает пароль и не отключает владельца, не меняет роль владельца', async () => {
+    const { user: owner } = await createUser('org_owner', { siteId: null });
+    const admin = roleActor('site_admin');
+    const reset = await t.as(admin, { method: 'POST', url: `/users/${owner.id}/password-reset` });
+    expect(error(reset).code).toBe('role_too_broad');
+    const disable = await t.as(admin, {
+      method: 'POST',
+      url: `/users/${owner.id}/disable`,
+      payload: { reason: 'Попытка' },
+    });
+    expect(error(disable).code).toBe('role_too_broad');
+    const edit = await t.as(admin, {
+      method: 'PATCH',
+      url: `/roles/${roleId('org_owner')}`,
+      payload: { permissions: ['report.view'] },
+    });
+    expect(error(edit).code).toBe('role_too_broad');
+    // а своего уровня — может: ссылка выдаётся один раз
+    const { user: logist } = await createUser('tenant_viewer', {
+      siteId: KEYS.siteId,
+      tenantId: dns,
+    });
+    const ok = await t.as(admin, { method: 'POST', url: `/users/${logist.id}/password-reset` });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().link).toMatch(/\/password#/);
+  });
+
+  it('приглашение на e-mail работающей учётки без пароля не задаёт ей пароль', async () => {
+    const [owner] = await ownerDb()
+      .insert(schema.users)
+      .values({ fullName: 'Владелец без пароля', email: 'nopass@example.test', status: 'active' })
+      .returning();
+    await ownerDb()
+      .insert(schema.roleAssignments)
+      .values({
+        organizationId: KEYS.organizationId,
+        userId: owner?.id ?? '',
+        roleId: roleId('org_owner'),
+      });
+    const res = await t.as(roleActor('org_owner'), {
+      method: 'POST',
+      url: '/invitations',
+      payload: { email: 'nopass@example.test', roleId: roleId('tenant_viewer'), tenantId: dns },
+    });
+    const token = String(res.json().link).split('#')[1] ?? '';
+    const accept = await t.as(null, {
+      method: 'POST',
+      url: '/auth/invitations/accept',
+      payload: { token, password: 'Захват-учётки-123', consent: true },
+    });
+    expect(error(accept).code).toBe('account_exists');
+    const [after] = await ownerDb()
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, owner?.id ?? ''));
+    expect(after?.passwordHash).toBeNull();
+  });
+});
+
 describe('секреты не попадают в журналы', () => {
   it('пароль, токен сессии, ссылка приглашения и код входа не пишутся в лог', async () => {
     const lines: string[] = [];

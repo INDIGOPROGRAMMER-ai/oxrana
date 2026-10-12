@@ -669,6 +669,14 @@ export function registerAuthRoutes(app: FastifyInstance): void {
           .where(eq(schema.users.id, user.id))
           .returning();
       } else {
+        // Учётная запись уже работает, но пароль ещё не задан (владелец после чистого старта):
+        // приглашение не задаёт ей пароль — иначе пригласивший мог бы войти под ней.
+        if (user && (await userOrganizations(d.db, user.id)).length > 0) {
+          throw new AppError('account_exists', {
+            message:
+              'У этой учётной записи ещё не задан пароль. Задайте его по своей ссылке установки пароля, затем примите приглашение.',
+          });
+        }
         assertPasswordStrong(request.body.password);
         const fullName = request.body.fullName ?? invitation.fullName;
         if (!fullName) {
