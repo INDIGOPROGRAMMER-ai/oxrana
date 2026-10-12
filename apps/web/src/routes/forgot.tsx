@@ -55,9 +55,7 @@ function Forgot() {
         <form noValidate className="space-y-4" onSubmit={(e) => void submit(e)}>
           <Field
             label="E-mail или телефон"
-            error={
-              empty ? { message: 'Укажите e-mail или телефон' } : fieldErrorOf(error, 'login')
-            }
+            error={empty ? { message: 'Укажите e-mail или телефон' } : fieldErrorOf(error, 'login')}
           >
             <Input
               name="login"

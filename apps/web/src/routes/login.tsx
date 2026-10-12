@@ -141,7 +141,9 @@ function Login() {
               label="Код из сообщения"
               hint="6 цифр, действует 10 минут"
               error={
-                empty === 'code' ? { message: 'Введите код из сообщения' } : fieldErrorOf(error, 'code')
+                empty === 'code'
+                  ? { message: 'Введите код из сообщения' }
+                  : fieldErrorOf(error, 'code')
               }
             >
               <Input

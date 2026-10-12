@@ -1,6 +1,6 @@
 import {
-  type QuotaEnforcement,
   QuotaCreateSchema,
+  type QuotaEnforcement,
   QuotaPatchSchema,
   type VehicleCategoryPresetCode,
   vehicleCategoryPreset,
@@ -54,11 +54,11 @@ import {
 } from './tenant-rule-helpers';
 
 // Тексты ошибок схем лимита — по-русски (стандартные сообщения zod английские).
-const CAPACITY = z.int('Число мест — целое число.').min(0, 'Число мест не может быть отрицательным.');
+const CAPACITY = z
+  .int('Число мест — целое число.')
+  .min(0, 'Число мест не может быть отрицательным.');
 const TARIFF = z.number('Тариф — число.').min(0, 'Тариф не может быть отрицательным.');
-const OVERAGE_CAP = z
-  .int('Потолок — целое число.')
-  .min(0, 'Потолок не может быть отрицательным.');
+const OVERAGE_CAP = z.int('Потолок — целое число.').min(0, 'Потолок не может быть отрицательным.');
 
 const QuotaFormCreateSchema = QuotaCreateSchema.extend({
   capacity: CAPACITY.optional(),
@@ -320,7 +320,9 @@ function QuotaFields({ f, env }: { f: FormController<QuotaValues>; env: QuotaEnv
           label="Число мест"
           required
           hint="0 — «не предусмотрено договором»: машины этих типов не въедут. Если лимита нет совсем — ограничения нет."
-          disabledReason={fromDocks ? 'Считается по докам арендатора — число вводить не нужно.' : undefined}
+          disabledReason={
+            fromDocks ? 'Считается по докам арендатора — число вводить не нужно.' : undefined
+          }
           error={f.fieldError('capacity')}
         >
           {fromDocks ? (
@@ -360,13 +362,11 @@ function QuotaFields({ f, env }: { f: FormController<QuotaValues>; env: QuotaEnv
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Тариф за сверхлимит, ₽ за сутки"
-          hint={
-            enforcement === 'soft'
-              ? 'Пусто — сверхлимит записывается без суммы.'
-              : undefined
-          }
+          hint={enforcement === 'soft' ? 'Пусто — сверхлимит записывается без суммы.' : undefined}
           disabledReason={
-            enforcement === 'soft' ? undefined : 'Тариф есть только у мягкого лимита — выберите режим «мягкий».'
+            enforcement === 'soft'
+              ? undefined
+              : 'Тариф есть только у мягкого лимита — выберите режим «мягкий».'
           }
           error={f.fieldError('overageTariffRub')}
         >
@@ -380,9 +380,13 @@ function QuotaFields({ f, env }: { f: FormController<QuotaValues>; env: QuotaEnv
         </Field>
         <Field
           label="Потолок сверхлимита, машин"
-          hint={enforcement === 'soft' ? 'Пусто — без потолка. Сверх потолка машина ждёт.' : undefined}
+          hint={
+            enforcement === 'soft' ? 'Пусто — без потолка. Сверх потолка машина ждёт.' : undefined
+          }
           disabledReason={
-            enforcement === 'soft' ? undefined : 'Потолок есть только у мягкого лимита — выберите режим «мягкий».'
+            enforcement === 'soft'
+              ? undefined
+              : 'Потолок есть только у мягкого лимита — выберите режим «мягкий».'
           }
           error={f.fieldError('overageCap')}
         >
@@ -533,10 +537,9 @@ function guardLine(q: QuotaView): string {
   if (q.enforcement === 'hard') return `${head} — машина будет ждать`;
   if (q.enforcement === 'soft') {
     const tariff =
-      q.overageTariffRub === null
-        ? 'тариф не задан'
-        : `${rub(q.overageTariffRub)} ₽ за сутки`;
-    const ceiling = q.overageCap === null ? '' : `; сверх лимита не больше ${q.overageCap}, дальше ждать`;
+      q.overageTariffRub === null ? 'тариф не задан' : `${rub(q.overageTariffRub)} ₽ за сутки`;
+    const ceiling =
+      q.overageCap === null ? '' : `; сверх лимита не больше ${q.overageCap}, дальше ждать`;
     return `${head} — пропустит, сверхлимит запишется (${tariff})${ceiling}`;
   }
   return `${head} — предупреждение, пропустит`;
@@ -548,7 +551,9 @@ function guardLine(q: QuotaView): string {
  */
 export function QuotasCard({ tenantId }: { tenantId: string }) {
   return (
-    <RequireSite>{(site) => <QuotasBody siteId={site.id} timezone={site.timezone} tenantId={tenantId} />}</RequireSite>
+    <RequireSite>
+      {(site) => <QuotasBody siteId={site.id} timezone={site.timezone} tenantId={tenantId} />}
+    </RequireSite>
   );
 }
 
@@ -588,7 +593,9 @@ function QuotasBody({
   const items = (quotas.items ?? []).filter(
     (q) => q.tenantId === tenantId && q.participant === 'vehicle',
   );
-  const countingDocks = new Set((docks.items ?? []).filter((d) => d.countsInQuota).map((d) => d.id));
+  const countingDocks = new Set(
+    (docks.items ?? []).filter((d) => d.countsInQuota).map((d) => d.id),
+  );
   const dockCount =
     canTenant && assignments.items && docks.items
       ? assignments.items.filter((a) => countingDocks.has(a.dockId) && isActiveOn(a, today)).length

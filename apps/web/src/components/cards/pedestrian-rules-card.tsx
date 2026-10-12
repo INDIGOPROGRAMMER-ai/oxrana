@@ -1,7 +1,7 @@
 import {
   PEDESTRIAN_ESCORTS,
-  PedestrianRuleCreateSchema,
   type PedestrianEscort,
+  PedestrianRuleCreateSchema,
 } from '@oxrana/contracts';
 import {
   Alert,
@@ -22,9 +22,9 @@ import {
   Table,
   TBody,
   TD,
+  Textarea,
   TH,
   THead,
-  Textarea,
   TR,
   useCreateForm,
   useEditForm,
@@ -35,8 +35,8 @@ import { useState } from 'react';
 import { z } from 'zod';
 import {
   type PedestrianRuleView,
-  usePedestrianRules,
   useMutate,
+  usePedestrianRules,
   useTenants,
   useZones,
 } from '../../lib/data';
@@ -55,8 +55,8 @@ interface RuleValues {
 const NULLABLE = ['zoneId', 'escortPhone', 'guardText'] as const;
 
 /** Пустая строка → `null`; при «сопровождение не нужно» телефон не отправляется как значение. */
-function ruleBody<T extends object>(input: T): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...input };
+function ruleBody(input: object): Record<string, unknown> {
+  const out = { ...input } as Record<string, unknown>;
   for (const key of NULLABLE) {
     const value = out[key];
     if (typeof value === 'string') out[key] = value.trim() === '' ? null : value.trim();
@@ -83,7 +83,10 @@ const CreateFormSchema = PedestrianRuleCreateSchema.extend({
   escortPhone: PhoneField,
   guardText: GuardTextField,
 });
-const PatchFormSchema = z.preprocess(ruleBody, CreateFormSchema.partial());
+const PatchFormSchema = z.preprocess(
+  (v) => (typeof v === 'object' && v !== null ? ruleBody(v) : v),
+  CreateFormSchema.partial(),
+);
 
 /**
  * Строка, как она появится в карточке пешехода на посту. Повторяет сборку строки движка:
@@ -290,7 +293,9 @@ export function PedestrianRulesCard({ tenantId }: { tenantId: string }) {
   const items = rules.items ?? [];
   const zoneList = zones.items ?? [];
   const zoneName = (id: string | null) =>
-    id === null ? 'везде у арендатора' : (zoneList.find((z) => z.id === id)?.name ?? 'зона удалена');
+    id === null
+      ? 'везде у арендатора'
+      : (zoneList.find((z) => z.id === id)?.name ?? 'зона удалена');
   const taken = new Set(items.map((r) => r.zoneId ?? ''));
   return (
     <>
@@ -422,7 +427,8 @@ export function PedestrianRulesStep() {
 function StepBody({ siteId }: { siteId: string }) {
   const tenants = useTenants(siteId);
   const [tenantId, setTenantId] = useState('');
-  if (tenants.error) return <LoadError error={tenants.error} retry={() => void tenants.refetch()} />;
+  if (tenants.error)
+    return <LoadError error={tenants.error} retry={() => void tenants.refetch()} />;
   const items = tenants.items ?? [];
   const chosen = items.find((t) => t.id === tenantId);
   return (

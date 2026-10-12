@@ -19,7 +19,8 @@ export interface TenantClauses {
   readonly refOf: (id: string | null) => string | null;
 }
 
-const shorten = (text: string, max = 60) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+const shorten = (text: string, max = 60) =>
+  text.length > max ? `${text.slice(0, max - 1)}…` : text;
 
 /**
  * Пункты всех договоров арендатора одним списком (основание лимита и назначения дока).

@@ -41,8 +41,8 @@ export interface TenantFormValues {
 const NULLABLE_KEYS = ['inn', 'responsiblePhone', 'emergencyPhone', 'defaultCategoryId'] as const;
 
 /** Пустая строка → `null` у необязательных полей (так сервер понимает «очистить»). */
-export function blankToNull<T extends object>(input: T): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...input };
+export function blankToNull(input: object): Record<string, unknown> {
+  const out = { ...input } as Record<string, unknown>;
   for (const key of NULLABLE_KEYS) {
     const value = out[key];
     if (typeof value === 'string') out[key] = value.trim() === '' ? null : value.trim();
@@ -64,7 +64,10 @@ const TenantFormShape = TenantCreateSchema.extend({
 });
 export const TenantCreateFormSchema = TenantFormShape;
 /** Проверка изменённых полей перед PATCH: пустые строки приводятся к `null` до проверки. */
-export const TenantPatchFormSchema = z.preprocess(blankToNull, TenantFormShape.partial());
+export const TenantPatchFormSchema = z.preprocess(
+  (v) => (typeof v === 'object' && v !== null ? blankToNull(v) : v),
+  TenantFormShape.partial(),
+);
 
 /** Поля арендатора — общие для окна создания и карточки «Общее». */
 export function TenantFields({

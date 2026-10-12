@@ -24,6 +24,7 @@ import { Building2, ExternalLink, FileText, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { type TenantView, useCategories, useMutate, useTenants } from '../../lib/data';
+import { useSite } from '../../lib/site-context';
 import { DeleteAction, Empty, GuardPreview, LoadError, RequireSite } from '../common';
 import { TenantContractCard } from './tenant-contract-card';
 import {
@@ -188,14 +189,12 @@ function TenantsBody({
                   key={t.id}
                   aria-selected={pickedId === t.id || undefined}
                   className={pickedId === t.id ? 'bg-accent/50' : undefined}
-                  onClick={onPickContract ? () => onPickContract(t) : undefined}
                 >
                   <TD className="font-medium">
                     <Link
                       to="/admin/tenants/$tenantId"
                       params={{ tenantId: t.id }}
                       className="text-primary hover:underline"
-                      onClick={(e) => e.stopPropagation()}
                     >
                       {t.shortName}
                     </Link>
@@ -211,11 +210,7 @@ function TenantsBody({
                     <TenantStatusBadge status={t.status} />
                   </TD>
                   <TD>
-                    <div
-                      className="flex items-center justify-end gap-1"
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={(e) => e.stopPropagation()}
-                    >
+                    <div className="flex items-center justify-end gap-1">
                       {onPickContract ? (
                         <Button
                           variant={pickedId === t.id ? 'secondary' : 'outline'}
@@ -280,6 +275,37 @@ function TenantsBody({
           <CreateTenantForm siteId={siteId} onDone={() => setCreating(false)} />
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+/**
+ * Шаг мастера «Арендаторы»: список и, ниже, договор и пункты выбранного арендатора. Выбрать
+ * арендатора — кнопка «Договор».
+ */
+export function TenantsStep() {
+  const { site } = useSite();
+  const tenants = useTenants(site?.id ?? null);
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  // удалённый арендатор из выбора пропадает сам
+  const picked = tenants.items?.find((t) => t.id === pickedId) ?? null;
+  return (
+    <>
+      <TenantsCard onPickContract={(t) => setPickedId(t.id)} pickedId={picked?.id} />
+      {picked ? (
+        <>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Договор арендатора:{' '}
+            <span className="font-medium text-foreground">{picked.shortName}</span>
+          </p>
+          <TenantContractCard tenantId={picked.id} />
+        </>
+      ) : (
+        <Empty
+          title="Выберите арендатора, чтобы заполнить договор"
+          hint="Нажмите «Договор» в строке арендатора. Договор и его пункты — основание лимитов; их можно заполнить позже."
+        />
+      )}
     </>
   );
 }

@@ -1,6 +1,6 @@
 import {
-  InvitationCreateSchema,
   type InvitationCreatedSchema,
+  InvitationCreateSchema,
   type InvitationViewSchema,
   ROLE_TEMPLATES,
   type RoleViewSchema,
@@ -11,6 +11,8 @@ import {
   Badge,
   Button,
   EditForm,
+  ErrorAlert,
+  type ErrorView,
   errorView,
   Field,
   Input,
@@ -113,6 +115,7 @@ function RowAction({
 /** Ссылка показывается один раз: после «Закрыть» её нельзя вернуть, только выдать новую. */
 function IssuedLinkPanel({ issued, onClose }: { issued: IssuedLink; onClose: () => void }) {
   const toast = useToast();
+  const { site } = useSite();
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     panel.current?.querySelector('input')?.focus();
@@ -132,8 +135,14 @@ function IssuedLinkPanel({ issued, onClose }: { issued: IssuedLink; onClose: () 
       <Alert tone="warning" title={issued.title}>
         <p>
           Письмо не отправляется — передайте человеку ссылку сами. Она одноразовая, действует{' '}
-          {issued.lifetime} (до <SiteTime value={issued.expiresAt} />) и показывается только сейчас:
-          после закрытия вернуть её нельзя, можно выдать новую.
+          {issued.lifetime}
+          {site ? (
+            <>
+              {' '}
+              (до <SiteTime value={issued.expiresAt} />)
+            </>
+          ) : null}{' '}
+          и показывается только сейчас: после закрытия вернуть её нельзя, можно выдать новую.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Input
@@ -310,7 +319,9 @@ function InviteSection({
               error={f.fieldError('tenantId')}
             >
               <Select {...register('tenantId')}>
-                <option value="">{tenants.isLoading && siteId ? 'Загрузка…' : '— не выбран —'}</option>
+                <option value="">
+                  {tenants.isLoading && siteId ? 'Загрузка…' : '— не выбран —'}
+                </option>
                 {(tenants.items ?? []).map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.shortName}
@@ -343,7 +354,7 @@ function UsersSection({
     null,
   );
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [failure, setFailure] = useState<ReturnType<typeof errorView> | null>(null);
+  const [failure, setFailure] = useState<ErrorView | null>(null);
 
   async function resetPassword(user: UserView) {
     setBusyId(user.id);
@@ -373,11 +384,7 @@ function UsersSection({
       title="Пользователи"
       description="Кто работает в организации, с какими ролями и в какой области."
     >
-      {failure ? (
-        <Alert tone="danger" className="mb-4">
-          {failure.message}
-        </Alert>
-      ) : null}
+      <ErrorAlert error={failure} className="mb-4" />
       {users.error ? (
         <LoadError error={users.error} retry={() => void users.refetch()} />
       ) : users.isLoading ? (
@@ -511,17 +518,14 @@ function InvitationsSection({
   const toast = useToast();
   const { site } = useSite();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [failure, setFailure] = useState<ReturnType<typeof errorView> | null>(null);
+  const [failure, setFailure] = useState<ErrorView | null>(null);
 
   async function act(invitation: InvitationView, action: 'resend' | 'revoke') {
     setBusyId(invitation.id);
     setFailure(null);
     try {
       if (action === 'resend') {
-        const res = await mutate<InvitationCreated>(
-          `/invitations/${invitation.id}/resend`,
-          'POST',
-        );
+        const res = await mutate<InvitationCreated>(`/invitations/${invitation.id}/resend`, 'POST');
         onIssued({
           title: `Новая ссылка приглашения: ${invitation.fullName ?? invitation.email ?? invitation.phone ?? ''}`,
           ariaLabel: 'Ссылка приглашения',
@@ -547,11 +551,7 @@ function InvitationsSection({
       title="Приглашения"
       description="Кого пригласили и что с приглашением. Ссылка действует 7 дней; «Отправить заново» выдаёт новую, прежняя перестаёт работать."
     >
-      {failure ? (
-        <Alert tone="danger" className="mb-4">
-          {failure.message}
-        </Alert>
-      ) : null}
+      <ErrorAlert error={failure} className="mb-4" />
       {invitations.error ? (
         <LoadError error={invitations.error} retry={() => void invitations.refetch()} />
       ) : invitations.isLoading ? (
@@ -649,7 +649,9 @@ export function UsersCard() {
   return (
     <>
       <InviteSection canInvite={canInvite} onIssued={setIssued} />
-      {issued ? <IssuedLinkPanel issued={issued} onClose={() => setIssued(null)} /> : null}
+      {issued ? (
+        <IssuedLinkPanel key={issued.link} issued={issued} onClose={() => setIssued(null)} />
+      ) : null}
       <UsersSection canManage={can('user.manage')} selfId={me?.id} onIssued={setIssued} />
       <InvitationsSection canInvite={canInvite} onIssued={setIssued} />
     </>

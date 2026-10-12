@@ -60,15 +60,18 @@ const CONTRACT_STATUS_TONE: Record<ContractStatus, 'success' | 'warning' | 'dang
 const CONTRACT_NULLABLE = ['number', 'signedOn', 'validFrom', 'validTo', 'notes'] as const;
 
 /** Пустая строка → `null` (так сервер понимает «очистить»). */
-function contractBody<T extends object>(input: T): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...input };
+function contractBody(input: object): Record<string, unknown> {
+  const out = { ...input } as Record<string, unknown>;
   for (const key of CONTRACT_NULLABLE) {
     const value = out[key];
     if (typeof value === 'string') out[key] = value.trim() === '' ? null : value.trim();
   }
   return out;
 }
-const ContractPatchFormSchema = z.preprocess(contractBody, ContractPatchSchema);
+const ContractPatchFormSchema = z.preprocess(
+  (v) => (typeof v === 'object' && v !== null ? contractBody(v) : v),
+  ContractPatchSchema,
+);
 
 interface ContractValues {
   number: string;

@@ -11,6 +11,7 @@ import { Fragment, useState } from 'react';
 import type { z } from 'zod';
 import { useApi } from '../../lib/data';
 import { Empty, LoadError } from '../common';
+import { UsersCard } from './users-card';
 
 type RoleView = z.infer<typeof RoleViewSchema>;
 type PermissionView = z.infer<typeof PermissionViewSchema>;
@@ -156,5 +157,15 @@ export function RolesCard() {
         </Table>
       )}
     </Section>
+  );
+}
+
+/** Шаг мастера «Люди»: приглашения и пользователи, ниже — роли только для просмотра. */
+export function PeopleCard() {
+  return (
+    <>
+      <UsersCard />
+      <RolesCard />
+    </>
   );
 }

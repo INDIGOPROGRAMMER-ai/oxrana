@@ -1,4 +1,5 @@
 import { AppShell, Button, type NavGroup, Select, Skeleton, ThemeToggle } from '@oxrana/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   Building2,
@@ -50,6 +51,7 @@ function AdminLayout() {
 
 function Shell() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { me, can } = useMe();
   const { site, sites, select, loading } = useSite();
@@ -169,6 +171,8 @@ function Shell() {
 
   async function logout() {
     await api('/auth/logout', { method: 'POST' });
+    // данные прежнего пользователя не должны остаться в кэше
+    queryClient.clear();
     await navigate({ to: '/login' });
   }
 

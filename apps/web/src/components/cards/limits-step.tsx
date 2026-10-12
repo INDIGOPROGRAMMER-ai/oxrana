@@ -25,7 +25,8 @@ function LimitsBody({ siteId, timezone }: { siteId: string; timezone: string }) 
   const quotas = useQuotas(!perms.loaded || perms.can('quota.manage') ? siteId : null);
   const [chosen, setChosen] = useState<string | null>(null);
 
-  if (tenants.error) return <LoadError error={tenants.error} retry={() => void tenants.refetch()} />;
+  if (tenants.error)
+    return <LoadError error={tenants.error} retry={() => void tenants.refetch()} />;
   if (tenants.isLoading) {
     return (
       <p className="text-sm text-muted-foreground" role="status">
@@ -107,7 +108,9 @@ function TenantRow({
   onSelect: () => void;
 }) {
   const perms = usePermissions();
-  const assignments = useDockAssignments(!perms.loaded || perms.can('tenant.manage') ? tenant.id : null);
+  const assignments = useDockAssignments(
+    !perms.loaded || perms.can('tenant.manage') ? tenant.id : null,
+  );
   const today = siteToday(timezone);
   const docks = assignments.items?.filter((a) => isActiveOn(a, today)).length;
   return (
@@ -132,12 +135,12 @@ function TenantRow({
         ) : (
           <Badge tone="warning">нет лимитов</Badge>
         )}
-        {docks === undefined ? null : (
-          <Badge tone="outline">доки: {docks}</Badge>
-        )}
+        {docks === undefined ? null : <Badge tone="outline">доки: {docks}</Badge>}
       </span>
       {docks !== undefined && docks > 0 ? (
-        <span className="sr-only">{count(docks, 'док закреплён', 'дока закреплено', 'доков закреплено')}</span>
+        <span className="sr-only">
+          {count(docks, 'док закреплён', 'дока закреплено', 'доков закреплено')}
+        </span>
       ) : null}
     </button>
   );

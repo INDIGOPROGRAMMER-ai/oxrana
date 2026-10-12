@@ -26,10 +26,10 @@ import {
   Table,
   TBody,
   TD,
+  Textarea,
   TH,
   THead,
   TR,
-  Textarea,
   useEditForm,
   useLinkComponent,
   useToast,
@@ -412,7 +412,10 @@ function AddDocks({
       const path = `/tenants/${tenantId}/dock-assignments/batch`;
       if (dryRun) {
         // предпросмотр ничего не меняет — данные экранов не обновляем
-        setOutcome({ applied: false, result: await api<BatchResult>(path, { method: 'POST', body: payload.data }) });
+        setOutcome({
+          applied: false,
+          result: await api<BatchResult>(path, { method: 'POST', body: payload.data }),
+        });
         return;
       }
       const result = await mutate<BatchResult>(path, 'POST', payload.data);
@@ -465,15 +468,15 @@ function AddDocks({
               <p className="text-sm text-muted-foreground">Загружаем доки объекта…</p>
             ) : (
               <p className="text-sm">
-                Закрепится: <strong>{found.length}</strong>{' '}
-                {found.length === 1 ? 'док' : 'доков'} из {parsed.values.length} введённых.
+                Закрепится: <strong>{found.length}</strong> {found.length === 1 ? 'док' : 'доков'}{' '}
+                из {parsed.values.length} введённых.
               </p>
             )}
             {!loading && missing.length > 0 ? (
               <Alert tone="warning">
                 Доков с номерами {missing.slice(0, 20).join(', ')}
-                {missing.length > 20 ? ` и ещё ${missing.length - 20}` : ''} нет на объекте — добавьте
-                их в «Доки и зоны». Они не будут закреплены.{' '}
+                {missing.length > 20 ? ` и ещё ${missing.length - 20}` : ''} нет на объекте —
+                добавьте их в «Доки и зоны». Они не будут закреплены.{' '}
                 <Link href="/admin/docks" className="font-medium underline">
                   Открыть «Доки и зоны»
                 </Link>
