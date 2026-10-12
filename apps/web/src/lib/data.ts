@@ -66,6 +66,12 @@ export function useMutate() {
   );
 }
 
+/** Обновить все данные экранов — после цепочки запросов, выполненных напрямую через `api`. */
+export function useRefresh() {
+  const client = useQueryClient();
+  return useCallback(() => client.invalidateQueries({ queryKey: ['data'] }), [client]);
+}
+
 export function useMe() {
   const query = useQuery({ queryKey: ['me'], queryFn: loadMe });
   const me: Me | null | undefined = query.data;

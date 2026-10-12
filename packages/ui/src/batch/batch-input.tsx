@@ -28,6 +28,7 @@ export function BatchInput<T>({
   parse,
   columns,
   check,
+  checkKey = '',
   commit,
   commitLabel = (n: number) => `Добавить ${n}`,
   onDone,
@@ -41,6 +42,8 @@ export function BatchInput<T>({
   columns: readonly BatchColumn<T>[];
   /** Проверка сервером без сохранения (`dryRun`). Номера строк в ответе — по допустимым строкам. */
   check?: (values: T[]) => Promise<BatchResult>;
+  /** Меняется, когда меняются внешние параметры проверки (зона, вид): проверка повторяется. */
+  checkKey?: string;
   commit: (values: T[]) => Promise<BatchResult>;
   commitLabel?: (count: number) => string;
   onDone?: (result: BatchResult) => void;
@@ -49,6 +52,9 @@ export function BatchInput<T>({
   const inputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState('');
+  const checkRef = useRef(check);
+  checkRef.current = check;
+  const stamp = `${checkKey}\u0000${text}`;
   const [serverCheck, setServerCheck] = useState<{
     text: string;
     result: BatchResult | null;
@@ -63,25 +69,27 @@ export function BatchInput<T>({
   const localErrors = parsed.length - valid.length;
 
   // Проверка сервером: после паузы в наборе, только если локально есть что проверять.
-  const checking = Boolean(check) && valid.length > 0 && serverCheck?.text !== text;
+  const checking = Boolean(check) && valid.length > 0 && serverCheck?.text !== stamp;
   useEffect(() => {
-    if (!check || valid.length === 0) return;
+    const run = checkRef.current;
+    if (!run || valid.length === 0) return;
     let cancelled = false;
     const timer = setTimeout(() => {
-      check(valid.map((r) => r.value))
-        .then((result) => !cancelled && setServerCheck({ text, result, error: null }))
+      run(valid.map((r) => r.value))
+        .then((result) => !cancelled && setServerCheck({ text: stamp, result, error: null }))
         .catch(
-          (e: unknown) => !cancelled && setServerCheck({ text, result: null, error: errorView(e) }),
+          (e: unknown) =>
+            !cancelled && setServerCheck({ text: stamp, result: null, error: errorView(e) }),
         );
     }, 350);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-    // `valid` пересоздаётся на каждый рендер, а меняется только вместе с `text`
-  }, [text, check]);
+    // проверка повторяется только при смене текста или внешних параметров (`checkKey`)
+  }, [stamp]);
 
-  const current = serverCheck?.text === text ? serverCheck : null;
+  const current = serverCheck?.text === stamp ? serverCheck : null;
   const serverErrors = new Map<number, string>();
   for (const e of current?.result?.errors ?? []) {
     const row = valid[e.row - 1];

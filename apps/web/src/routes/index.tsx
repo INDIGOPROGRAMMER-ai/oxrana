@@ -1,78 +1,121 @@
-import type { Me } from '@oxrana/contracts';
+import { Alert, Button, ErrorAlert, type ErrorView, errorView, Skeleton } from '@oxrana/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { LogOut, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { api, loadMe } from '../lib/api';
-import { ErrorText, Page } from '../lib/ui';
+import { AuthLayout } from '../components/auth-layout';
+import { LoadError } from '../components/common';
+import { api } from '../lib/api';
+import { useMe } from '../lib/data';
 
 export const Route = createFileRoute('/')({
   component: Home,
 });
 
+/** Права, с которыми у пользователя есть что настраивать в админке. */
+const ADMIN_PERMISSIONS = [
+  'site.manage',
+  'tenant.manage',
+  'rule.manage',
+  'quota.manage',
+  'user.manage',
+  'device.manage',
+] as const;
+
 /** Главная: кто вошёл, куда можно пойти; не вошёл — на вход. */
 function Home() {
   const navigate = useNavigate();
-  const [me, setMe] = useState<Me | null | undefined>(undefined);
-  const [error, setError] = useState<unknown>(null);
+  const client = useQueryClient();
+  const { me, isLoading, error: loadError, refetch, can } = useMe();
+  const [error, setError] = useState<ErrorView | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    loadMe()
-      .then((m) => {
-        if (m === null) void navigate({ to: '/login' });
-        else setMe(m);
-      })
-      .catch(setError);
-  }, [navigate]);
+    if (me === null) void navigate({ to: '/login' });
+  }, [me, navigate]);
 
   async function logout(all: boolean) {
+    setBusy(true);
+    setError(null);
     try {
       await api(all ? '/auth/logout-all' : '/auth/logout', { method: 'POST' });
       await navigate({ to: '/login' });
+      client.clear();
     } catch (e) {
-      setError(e);
+      setError(errorView(e));
+      setBusy(false);
     }
   }
 
-  if (!me) {
+  if (loadError) {
     return (
-      <Page title="Платформа пропускного режима">
-        {error ? <ErrorText error={error} /> : <p>Загрузка…</p>}
-      </Page>
+      <AuthLayout title="Главная">
+        <LoadError error={loadError} retry={() => void refetch()} />
+      </AuthLayout>
     );
   }
-  const can = (p: string) => me.permissions.includes(p);
+  if (isLoading || !me) {
+    return (
+      <AuthLayout title="Главная">
+        <div role="status" aria-label="Загрузка" className="space-y-2">
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-5 w-1/2" />
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  const name = me.user?.fullName ?? me.gate?.name ?? '';
+  const assignments = me.user?.assignments ?? [];
+  const canAdmin = ADMIN_PERMISSIONS.some((p) => can(p));
   return (
-    <Page title="Платформа пропускного режима">
+    <AuthLayout title="Главная" wide>
       <p>
-        Вы вошли как <strong>{me.user?.fullName}</strong> · {me.organization.name}
+        Вы вошли как <strong>{name}</strong> · {me.organization.name}
       </p>
-      <ul>
-        {(me.user?.assignments ?? []).map((a) => (
-          <li key={a.id}>
-            {a.roleName}
-            {a.tenantName
-              ? ` — ${a.tenantName}`
-              : a.siteName
-                ? ` — ${a.siteName}`
-                : ' — вся организация'}
-          </li>
-        ))}
-      </ul>
-      <nav>
-        {can('user.manage') || can('tenant_user.manage') ? (
-          <Link to="/admin/users">Пользователи и приглашения</Link>
-        ) : null}
-        {can('device.manage') ? <Link to="/admin/devices">Устройства КПП</Link> : null}
-      </nav>
-      <p>Кабинет арендатора и админка появятся на следующих этапах.</p>
-      <ErrorText error={error} />
-      <p>
-        <button type="button" onClick={() => void logout(false)}>
-          Выйти
-        </button>{' '}
-        <button type="button" onClick={() => void logout(true)}>
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Ваши роли</p>
+        {assignments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Ролей пока нет — обратитесь к администратору, чтобы вам выдали доступ.
+          </p>
+        ) : (
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            {assignments.map((a) => (
+              <li key={a.id}>
+                {a.roleName} — {a.tenantName ?? a.siteName ?? 'вся организация'}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {canAdmin ? (
+          <Button asChild>
+            <Link to="/admin">
+              <Settings aria-hidden /> Открыть админку
+            </Link>
+          </Button>
+        ) : (
+          <Button disabled>
+            <Settings aria-hidden /> Открыть админку
+          </Button>
+        )}
+        <Button variant="outline" disabled={busy} onClick={() => void logout(false)}>
+          <LogOut aria-hidden /> Выйти
+        </Button>
+        <Button variant="ghost" disabled={busy} onClick={() => void logout(true)}>
           Выйти на всех устройствах
-        </button>
-      </p>
-    </Page>
+        </Button>
+      </div>
+      {canAdmin ? null : (
+        <p className="text-xs text-muted-foreground">
+          Админка недоступна: у вашей роли нет прав настройки объекта, арендаторов, правил, лимитов,
+          пользователей или устройств.
+        </p>
+      )}
+      <Alert tone="info">Кабинет арендатора появится на следующем этапе.</Alert>
+      <ErrorAlert error={error} />
+    </AuthLayout>
   );
 }
