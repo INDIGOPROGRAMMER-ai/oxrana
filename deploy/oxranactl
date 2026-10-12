@@ -1,0 +1,437 @@
+#!/usr/bin/env bash
+# oxranactl — обслуживание стенда одной командой (ADR-011 §6, ADR-019): обновление, откат,
+# копии базы, чистый старт, состояние и журналы. Работает с docker compose в $OXRANA_HOME
+# (по умолчанию /opt/oxrana). От root перезапускает себя от пользователя deploy.
+#
+#   oxranactl help
+set -euo pipefail
+umask 077
+
+HOME_DIR="${OXRANA_HOME:-/opt/oxrana}"
+DEPLOY_USER="${OXRANA_DEPLOY_USER:-deploy}"
+
+# Консоль хостера открыта под root, а файлы и docker принадлежат deploy: не плодим root-файлов.
+if [ "$(id -u)" -eq 0 ] && [ "${OXRANA_NO_REEXEC:-}" != 1 ] && id "$DEPLOY_USER" >/dev/null 2>&1; then
+  exec runuser -u "$DEPLOY_USER" -- bash "$(readlink -f "$0")" "$@"
+fi
+cd "$HOME_DIR" 2>/dev/null || {
+  echo "Нет каталога $HOME_DIR. Сначала выполните deploy/setup-vps.sh (docs/STAND.md, шаг 3)." >&2
+  exit 1
+}
+
+say() { printf '%s\n' "$*"; }
+die() {
+  printf 'Ошибка: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+oxranactl — обслуживание стенда
+
+  oxranactl status                 версия, контейнеры, последняя копия базы
+  oxranactl logs [сервис] [строк]  журнал: api (по умолчанию), proxy, postgres; строк — 200
+  oxranactl bootstrap              чистый старт: организация и владелец (вопросы по шагам);
+                                   печатает ссылку установки пароля — только в этот терминал
+  oxranactl bootstrap --new-owner-link --owner-email АДРЕС
+                                   новая ссылка владельцу, если прежняя истекла
+  oxranactl update ТЕГ             обновить до версии ТЕГ (образы уже загружены); при сбое
+                                   проверки вернёт прежнюю версию
+  oxranactl rollback [ТЕГ]         вернуться на предыдущую (или указанную) версию
+  oxranactl backup                 копия базы сейчас (по расписанию — раз в сутки, хранится 7)
+  oxranactl restore ФАЙЛ --yes     восстановить базу из копии (текущая заменяется!)
+  oxranactl health                 проверить, что стенд отвечает
+  oxranactl load                   (служебная) принять образы со стандартного ввода
+EOF
+}
+
+# ---------------------------------------------------------------------------------------------
+# Окружение и состояние
+# ---------------------------------------------------------------------------------------------
+
+# Значение переменной из .env (без выполнения файла).
+env_value() {
+  [ -f .env ] || return 0
+  grep -E "^$1=" .env | tail -n 1 | cut -d= -f2- || true
+}
+
+need_env() {
+  [ -f .env ] || die "нет $HOME_DIR/.env — сначала выполните deploy/setup-vps.sh (docs/STAND.md, шаг 3)."
+  [ -f compose.yml ] || die "нет $HOME_DIR/compose.yml — запустите первый деплой (docs/STAND.md, шаг 5)."
+  local key
+  for key in STAND_DOMAIN ACME_EMAIL POSTGRES_PASSWORD OXRANA_OWNER_PASSWORD OXRANA_APP_PASSWORD; do
+    [ -n "$(env_value "$key")" ] || die "в $HOME_DIR/.env не задано $key."
+  done
+}
+
+# Текущая и предыдущая версии (state.env пишет только эта программа).
+CUR_TAG=''
+PREV_TAG=''
+read_state() {
+  CUR_TAG=''
+  PREV_TAG=''
+  if [ -f state.env ]; then
+    CUR_TAG="$(grep -E '^OXRANA_TAG=' state.env | tail -n 1 | cut -d= -f2- || true)"
+    PREV_TAG="$(grep -E '^OXRANA_PREV_TAG=' state.env | tail -n 1 | cut -d= -f2- || true)"
+  fi
+}
+
+write_state() {
+  printf 'OXRANA_TAG=%s\nOXRANA_PREV_TAG=%s\n' "$1" "$2" >state.env.tmp
+  mv -f state.env.tmp state.env
+}
+
+valid_tag() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || die "недопустимая версия «$1» (буквы, цифры, точка, дефис, подчёркивание)."
+  printf '%s' "$1"
+}
+
+# docker compose с нашими файлами окружения. Версию можно подменить: OXRANA_TAG=... dc ...
+dc() {
+  local args=(--project-directory "$HOME_DIR" --env-file "$HOME_DIR/.env")
+  if [ -f "$HOME_DIR/state.env" ]; then
+    args+=(--env-file "$HOME_DIR/state.env")
+  fi
+  docker compose "${args[@]}" -f "$HOME_DIR/compose.yml" "$@"
+}
+
+# Одна операция за раз: обновление, откат, восстановление и копии не пересекаются.
+lock() {
+  exec 9>"$HOME_DIR/.lock"
+  flock -w "${1:-0}" 9 || die "уже выполняется другая операция oxranactl; дождитесь её окончания."
+}
+
+image_present() {
+  docker image inspect "oxrana-api:$1" >/dev/null 2>&1 && docker image inspect "oxrana-proxy:$1" >/dev/null 2>&1
+}
+
+# ---------------------------------------------------------------------------------------------
+# Проверка после деплоя: /healthz и /readyz через Caddy (TLS, маршрут /api) и версия в ответе
+# ---------------------------------------------------------------------------------------------
+
+wait_healthy() {
+  local tag=$1 domain deadline cid status='' body
+  domain="$(env_value STAND_DOMAIN)"
+
+  # 1. контейнер api: собственная проверка образа (/readyz изнутри) прошла
+  deadline=$((SECONDS + ${OXRANA_API_TIMEOUT:-90}))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    cid="$(dc ps -q api 2>/dev/null || true)"
+    if [ -n "$cid" ]; then
+      status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" 2>/dev/null || echo unknown)"
+      [ "$status" = healthy ] && break
+    fi
+    sleep 2
+  done
+  if [ "$status" != healthy ]; then
+    say "api не стал готовым за отведённое время (состояние: ${status:-нет контейнера})."
+    return 1
+  fi
+
+  # 2. снаружи: домен → Caddy → /api/healthz с нужной версией и /api/readyz. При первом запуске
+  # Caddy выпускает сертификат — даём время; без рабочей DNS-записи проверка не пройдёт.
+  local curl_opts=(-fsS --max-time 8 --resolve "$domain:443:127.0.0.1")
+  if [ "${OXRANA_CURL_INSECURE:-}" = 1 ]; then
+    curl_opts+=(-k) # только для проверки на машине CI с самоподписанным сертификатом
+  fi
+  deadline=$((SECONDS + ${OXRANA_PROXY_TIMEOUT:-120}))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if body="$(curl "${curl_opts[@]}" "https://$domain/api/healthz" 2>/dev/null)" &&
+      [[ $body == *"\"version\":\"$tag\""* ]] &&
+      curl "${curl_opts[@]}" "https://$domain/api/readyz" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 3
+  done
+  say "https://$domain/api/healthz не ответил версией $tag за отведённое время."
+  say "Проверьте DNS-запись домена и журнал: oxranactl logs proxy"
+  return 1
+}
+
+# ---------------------------------------------------------------------------------------------
+# База: роли, миграции, копии
+# ---------------------------------------------------------------------------------------------
+
+# Роли и база создаются при каждом обновлении: идемпотентно (как scripts/db-up.sh, ADR-010).
+ensure_database() {
+  local tag=$1
+  OXRANA_TAG="$tag" dc up -d --wait postgres >/dev/null
+  # Пароли — переменными окружения процесса в контейнере, не аргументами docker (видны в ps).
+  # shellcheck disable=SC2016 # $OWNER_PW и $APP_PW раскрывает sh внутри контейнера, не мы
+  OWNER_PW="$(env_value OXRANA_OWNER_PASSWORD)" APP_PW="$(env_value OXRANA_APP_PASSWORD)" \
+    OXRANA_TAG="$tag" dc exec -T -e OWNER_PW -e APP_PW postgres sh -c \
+    'exec psql -U postgres -v ON_ERROR_STOP=1 -q -v owner_pw="$OWNER_PW" -v app_pw="$APP_PW"' >/dev/null <<'SQL'
+select 'create role oxrana_owner login'
+  where not exists (select from pg_roles where rolname = 'oxrana_owner') \gexec
+select 'create role oxrana_app login'
+  where not exists (select from pg_roles where rolname = 'oxrana_app') \gexec
+alter role oxrana_owner password :'owner_pw';
+alter role oxrana_app password :'app_pw';
+select 'create database oxrana owner oxrana_owner'
+  where not exists (select from pg_database where datname = 'oxrana') \gexec
+SQL
+}
+
+run_migrations() {
+  local tag=$1
+  OXRANA_TAG="$tag" dc run --rm -T cli node dist/migrate.js </dev/null
+}
+
+prune_backups() {
+  local kind=$1 keep=$2 files n
+  shopt -s nullglob
+  files=("$HOME_DIR/backups/$kind"-*.dump) # имена с временем UTC: по алфавиту = по возрасту
+  shopt -u nullglob
+  n=${#files[@]}
+  if [ "$n" -gt "$keep" ]; then
+    rm -f -- "${files[@]:0:$((n - keep))}"
+  fi
+}
+
+# Копия базы: pg_dump -Fc в backups/. Виды: daily (хранится 7), pre-update и pre-restore (по 3).
+do_backup() {
+  local kind=$1 keep=$2 name tmp
+  mkdir -p "$HOME_DIR/backups"
+  chmod 700 "$HOME_DIR/backups"
+  name="$kind-$(date -u +%Y%m%d-%H%M%S).dump"
+  tmp="$HOME_DIR/backups/.$name.partial"
+  if ! dc exec -T postgres pg_dump -U postgres -Fc oxrana >"$tmp"; then
+    rm -f -- "$tmp"
+    die "копия базы не получилась (pg_dump). Журнал: oxranactl logs postgres"
+  fi
+  if [ ! -s "$tmp" ] || ! dc exec -T postgres pg_restore --list <"$tmp" >/dev/null 2>&1; then
+    rm -f -- "$tmp"
+    die "копия базы пустая или повреждена."
+  fi
+  mv -f -- "$tmp" "$HOME_DIR/backups/$name"
+  chmod 600 "$HOME_DIR/backups/$name"
+  prune_backups "$kind" "$keep"
+  say "Копия базы: $HOME_DIR/backups/$name"
+}
+
+cmd_backup() {
+  if [ ! -f state.env ]; then
+    say "Стенд ещё не развёрнут — копировать нечего."
+    return 0
+  fi
+  need_env
+  lock 600 # копию по расписанию не роняем из-за идущего обновления — ждём его
+  do_backup daily 7
+}
+
+cmd_restore() {
+  local file=${1:-} confirm=${2:-}
+  if [ -z "$file" ] || [ "$confirm" != --yes ]; then
+    die "использование: oxranactl restore ФАЙЛ --yes (текущая база будет заменена; файлы копий — $HOME_DIR/backups/)."
+  fi
+  [ -f "$file" ] || die "нет файла $file."
+  need_env
+  read_state
+  [ -n "$CUR_TAG" ] || die "стенд ещё не развёрнут."
+  lock 0
+  say "Страховочная копия текущей базы перед восстановлением…"
+  do_backup pre-restore 3
+  say "Останавливаем api и proxy, заменяем базу…"
+  dc stop proxy api >/dev/null
+  dc exec -T postgres psql -U postgres -v ON_ERROR_STOP=1 -q \
+    -c 'drop database if exists oxrana with (force)' \
+    -c 'create database oxrana owner oxrana_owner' </dev/null
+  dc exec -T postgres pg_restore -U postgres -d oxrana --exit-on-error <"$file"
+  dc up -d api proxy >/dev/null
+  wait_healthy "$CUR_TAG" || die "после восстановления стенд не отвечает: oxranactl logs api"
+  say "База восстановлена из $file."
+}
+
+# ---------------------------------------------------------------------------------------------
+# Команды
+# ---------------------------------------------------------------------------------------------
+
+cmd_load() {
+  docker load
+}
+
+prune_images() {
+  local repo tag kept
+  for repo in oxrana-api oxrana-proxy; do
+    kept=0
+    while read -r tag; do
+      [ -n "$tag" ] || continue
+      if [ "$tag" = "$CUR_TAG" ] || [ "$tag" = "$PREV_TAG" ]; then continue; fi
+      kept=$((kept + 1))
+      # кроме текущей и предыдущей хранятся ещё три свежих — для отката на выбранную версию
+      if [ "$kept" -gt 3 ]; then
+        docker image rm "$repo:$tag" >/dev/null 2>&1 || true
+      fi
+    done < <(docker images "$repo" --format '{{.Tag}}')
+  done
+  docker image prune -f >/dev/null 2>&1 || true
+}
+
+cmd_update() {
+  [ $# -eq 1 ] || die "использование: oxranactl update ТЕГ"
+  local tag cur prev new_prev
+  tag="$(valid_tag "$1")"
+  need_env
+  image_present "$tag" || die "образы oxrana-api:$tag и oxrana-proxy:$tag не загружены на сервер (oxranactl load)."
+  lock 0
+  read_state
+  cur=$CUR_TAG
+  prev=$PREV_TAG
+  say "Обновление стенда: ${cur:-ничего} → $tag"
+
+  ensure_database "$tag"
+  if [ -n "$cur" ] && [ "$cur" != "$tag" ]; then
+    say "Копия базы перед обновлением…"
+    do_backup pre-update 3
+  fi
+  say "Миграции…"
+  run_migrations "$tag" || die "миграции не применены; стенд остался на версии ${cur:-—}. Подробности выше."
+
+  # Повторное обновление до той же версии ничего не ломает: предыдущая версия не затирается.
+  new_prev=$prev
+  if [ -n "$cur" ] && [ "$cur" != "$tag" ]; then
+    new_prev=$cur
+  fi
+  write_state "$tag" "$new_prev"
+  say "Запуск версии $tag…"
+  dc up -d --remove-orphans api proxy
+
+  if wait_healthy "$tag"; then
+    say "Готово: стенд работает на версии $tag."
+    read_state
+    prune_images
+    return 0
+  fi
+
+  say "Версия $tag не прошла проверку. Последние строки журнала api:"
+  dc logs --tail 40 api 2>&1 || true
+  if [ -n "$cur" ] && [ "$cur" != "$tag" ]; then
+    say "Возвращаем версию $cur…"
+    write_state "$cur" "$prev"
+    dc up -d --remove-orphans api proxy
+    if wait_healthy "$cur"; then
+      say "Стенд остался на прежней версии $cur. Обновление до $tag не выполнено."
+    else
+      say "ВНИМАНИЕ: прежняя версия $cur тоже не отвечает. Смотрите: oxranactl logs api"
+    fi
+  fi
+  exit 1
+}
+
+cmd_rollback() {
+  local target cur
+  need_env
+  lock 0
+  read_state
+  cur=$CUR_TAG
+  [ -n "$cur" ] || die "стенд ещё не развёрнут."
+  target="${1:-$PREV_TAG}"
+  [ -n "$target" ] || die "предыдущей версии нет — откатываться некуда."
+  target="$(valid_tag "$target")"
+  [ "$target" != "$cur" ] || die "стенд уже работает на версии $cur."
+  image_present "$target" || die "образов версии $target на сервере нет (старые удаляются автоматически, хранятся пять последних)."
+  say "Откат: $cur → $target"
+  write_state "$target" "$cur"
+  dc up -d --remove-orphans api proxy
+  if wait_healthy "$target"; then
+    say "Готово: стенд работает на версии $target."
+    say "База данных не откатывается (миграции совместимы на одну версию назад, ADR-003)."
+    say "Вернуть данные из копии — oxranactl restore (копии: $HOME_DIR/backups/)."
+  else
+    dc logs --tail 40 api 2>&1 || true
+    die "версия $target не отвечает. Состояние: oxranactl status"
+  fi
+}
+
+cmd_status() {
+  need_env
+  read_state
+  say "Версия:           ${CUR_TAG:-не развёрнут}"
+  say "Предыдущая:       ${PREV_TAG:--}"
+  say "Домен:            $(env_value STAND_DOMAIN)"
+  say ""
+  dc ps || true
+  say ""
+  local last=''
+  if [ -d backups ]; then
+    last="$(find backups -maxdepth 1 -name 'daily-*.dump' -printf '%f\n' | sort | tail -n 1)"
+  fi
+  say "Последняя ночная копия базы: ${last:-ещё нет}"
+}
+
+cmd_health() {
+  need_env
+  read_state
+  [ -n "$CUR_TAG" ] || die "стенд ещё не развёрнут."
+  OXRANA_API_TIMEOUT=10 OXRANA_PROXY_TIMEOUT=15 wait_healthy "$CUR_TAG" && say "Стенд отвечает (версия $CUR_TAG)."
+}
+
+cmd_logs() {
+  need_env
+  dc logs --tail "${2:-200}" "${1:-api}"
+}
+
+ask() {
+  # ask ПЕРЕМЕННАЯ "Вопрос" [значение по умолчанию]
+  local __var=$1 prompt=$2 default=${3:-} answer
+  while true; do
+    if [ -n "$default" ]; then
+      read -r -p "$prompt [$default]: " answer
+      answer=${answer:-$default}
+    else
+      read -r -p "$prompt: " answer
+    fi
+    [ -n "$answer" ] && break
+    say "Нужно ввести значение."
+  done
+  printf -v "$__var" '%s' "$answer"
+}
+
+cmd_bootstrap() {
+  need_env
+  read_state
+  [ -n "$CUR_TAG" ] || die "стенд ещё не развёрнут: сначала первый деплой (docs/STAND.md, шаг 5)."
+  if [ $# -eq 0 ]; then
+    local org slug tz owner_name owner_email answer
+    say "Чистый старт: создадим организацию и владельца. Данные объекта владелец введёт сам в кабинете."
+    ask org "Название организации (как оно будет показано)"
+    ask slug "Короткое имя латиницей, без пробелов (например, integraciya)"
+    ask tz "Часовой пояс объекта" "Asia/Yekaterinburg"
+    ask owner_name "ФИО владельца"
+    ask owner_email "E-mail владельца (это его логин)"
+    say ""
+    say "Организация: $org ($slug), пояс $tz"
+    say "Владелец:    $owner_name <$owner_email>"
+    read -r -p "Создать? [д/Н]: " answer
+    case "$answer" in
+      д | Д | y | Y | да | Да) ;;
+      *) die "отменено, ничего не создано." ;;
+    esac
+    set -- --org "$org" --slug "$slug" --timezone "$tz" --owner-name "$owner_name" --owner-email "$owner_email"
+  fi
+  # Ссылка установки пароля выводится только в этот терминал и нигде не сохраняется.
+  OXRANA_TAG="$CUR_TAG" dc run --rm -T cli node dist/bootstrap.js "$@" </dev/null
+}
+
+main() {
+  local cmd=${1:-help}
+  shift || true
+  case "$cmd" in
+    status) cmd_status "$@" ;;
+    logs) cmd_logs "$@" ;;
+    bootstrap) cmd_bootstrap "$@" ;;
+    update) cmd_update "$@" ;;
+    rollback) cmd_rollback "$@" ;;
+    backup) cmd_backup "$@" ;;
+    restore) cmd_restore "$@" ;;
+    health) cmd_health "$@" ;;
+    load) cmd_load "$@" ;;
+    help | -h | --help) usage ;;
+    *)
+      usage >&2
+      die "неизвестная команда «$cmd»."
+      ;;
+  esac
+}
+
+main "$@"

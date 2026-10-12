@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Поддельный curl для deploy/test/oxranactl.test.sh: отвечает как API версии из $FAKE_DIR/proxy_tag.
+set -euo pipefail
+url="${*: -1}"
+tag="$(cat "$FAKE_DIR/proxy_tag" 2>/dev/null || true)"
+if [ -z "$tag" ] || [ "$tag" = "${FAKE_BAD_TAG:-}" ]; then
+  echo "curl: (22) The requested URL returned error: 502" >&2
+  exit 22
+fi
+case "$url" in
+  */api/healthz | */api/readyz) printf '{"status":"ok","version":"%s"}' "$tag" ;;
+  *) exit 22 ;;
+esac
