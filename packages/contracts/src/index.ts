@@ -1,4 +1,5 @@
 export * from './api';
+export * from './batch';
 export * from './enums';
 export * from './errors';
 export * from './events';

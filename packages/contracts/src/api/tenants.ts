@@ -41,6 +41,11 @@ export const TenantCreateSchema = z.strictObject({
   color: z.string().trim().max(20).nullable().optional(),
 });
 export const TenantPatchSchema = TenantCreateSchema.partial();
+/** Пакетное добавление арендаторов (вставка из Excel); строки независимы. */
+export const TenantBatchSchema = z.strictObject({
+  items: z.array(TenantCreateSchema).min(1, 'Добавьте хотя бы одного арендатора').max(500),
+  dryRun: z.boolean().optional(),
+});
 
 export const ContractViewSchema = z.object({
   id: IdSchema,
@@ -87,6 +92,14 @@ export const DockAssignmentCreateSchema = z.strictObject({
   validFrom: LocalDateSchema,
   validTo: LocalDateSchema.nullable().optional(),
   basisClauseId: IdSchema.nullable().optional(),
+});
+/** Назначение нескольких доков арендатору одним действием («доки 1–10»). */
+export const DockAssignmentBatchSchema = z.strictObject({
+  dockIds: z.array(IdSchema).min(1, 'Выберите хотя бы один док').max(1000),
+  validFrom: LocalDateSchema,
+  validTo: LocalDateSchema.nullable().optional(),
+  basisClauseId: IdSchema.nullable().optional(),
+  dryRun: z.boolean().optional(),
 });
 export const DockAssignmentPatchSchema = z.strictObject({
   validFrom: LocalDateSchema.optional(),

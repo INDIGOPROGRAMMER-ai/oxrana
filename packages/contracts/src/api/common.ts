@@ -37,3 +37,26 @@ export const SiteTimeSchema = z.object({
   timezone: z.string(),
   timezoneLabel: z.string(),
 });
+
+/**
+ * Итог пакетного ввода (доки, арендаторы, назначения): как у пакета пропусков — строки независимы,
+ * ошибка строки не мешает остальным; `dryRun` проходит тот же путь и откатывается (предпросмотр).
+ */
+export const BatchRowErrorSchema = z.object({
+  /** Номер строки пакета, с 1. */
+  row: z.int(),
+  field: z.string().nullable(),
+  code: z.string(),
+  message: z.string(),
+});
+export const BatchResultSchema = z.object({
+  dryRun: z.boolean(),
+  total: z.int(),
+  created: z.int(),
+  /** «Добавится 70 из 72» / «Добавлено 70 из 72». */
+  summary: z.string(),
+  errors: z.array(BatchRowErrorSchema),
+  /** Идентификаторы созданных записей по порядку строк; `null` — строка с ошибкой или предпросмотр. */
+  ids: z.array(z.uuid().nullable()),
+});
+export type BatchResult = z.infer<typeof BatchResultSchema>;

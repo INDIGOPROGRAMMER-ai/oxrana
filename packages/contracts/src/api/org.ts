@@ -146,6 +146,16 @@ export const DockCreateSchema = z.strictObject({
   size: z.string().trim().max(50).nullable().optional(),
 });
 export const DockPatchSchema = DockCreateSchema.partial();
+/** Пакетное добавление доков: номера (клиент раскрывает «1–72»), общие для всех зона и вид. */
+export const DockBatchSchema = z.strictObject({
+  numbers: z.array(TextSchema(20)).min(1, 'Укажите хотя бы один номер дока').max(1000),
+  zoneId: IdSchema.nullable().optional(),
+  kind: DockKindSchema.optional(),
+  countsInQuota: z.boolean().optional(),
+  size: z.string().trim().max(50).nullable().optional(),
+  /** Предпросмотр: проверить все строки без сохранения. */
+  dryRun: z.boolean().optional(),
+});
 
 export const VehicleCategoryViewSchema = z.object({
   id: IdSchema,
