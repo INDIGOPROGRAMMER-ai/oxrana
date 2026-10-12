@@ -16,6 +16,8 @@ beforeAll(async () => {
 afterAll(() => t.close());
 
 const key = (r: RouteAccess) => `${r.method} ${r.url}`;
+/** Выход завершает сессию субъекта матрицы — эти маршруты проверяет auth-тест. */
+const SESSION_ENDING = new Set(['POST /auth/logout', 'POST /auth/logout-all']);
 const describeAccess = (r: RouteAccess) =>
   r.access === 'permission' ? r.permissions.join(' | ') : r.access;
 
@@ -25,7 +27,7 @@ describe('тест-матрица прав (ADR-007, B12)', () => {
       .sort((a, b) => a.url.localeCompare(b.url) || a.method.localeCompare(b.method))
       .map((r) => `${key(r)} → ${describeAccess(r)}`);
     expect(table).toMatchSnapshot();
-    expect(routes.length).toBeGreaterThan(80);
+    expect(routes.length).toBeGreaterThan(110);
   });
 
   it('без входа каждый закрытый маршрут отвечает 401 unauthenticated', async () => {
@@ -44,8 +46,12 @@ describe('тест-матрица прав (ADR-007, B12)', () => {
     const failures: string[] = [];
     for (const { role, actor } of matrixActors()) {
       for (const route of routes) {
+        if (SESSION_ENDING.has(key(route))) continue;
         const allowed =
-          route.access !== 'permission' || route.permissions.some((p) => actor.permissions.has(p));
+          route.access === 'self'
+            ? actor.kind === 'user'
+            : route.access !== 'permission' ||
+              route.permissions.some((p) => actor.permissions.has(p));
         if (allowed && isStream(route.url)) continue;
         const res = await t.as(actor, {
           method: route.method as 'GET',
@@ -60,6 +66,17 @@ describe('тест-матрица прав (ADR-007, B12)', () => {
         if (allowed && (res.statusCode === 401 || guardDenied)) {
           failures.push(`${role}: ${key(route)} — ожидался доступ, получено ${res.statusCode}`);
         }
+        if (route.access === 'self') {
+          if (!allowed && res.statusCode !== 403) {
+            failures.push(
+              `${role}: ${key(route)} — устройству ожидался 403, получено ${res.statusCode}`,
+            );
+          }
+          if (allowed && (res.statusCode === 401 || res.statusCode === 403)) {
+            failures.push(`${role}: ${key(route)} — ожидался доступ, получено ${res.statusCode}`);
+          }
+          continue;
+        }
         if (!allowed && !guardDenied) {
           failures.push(
             `${role}: ${key(route)} — ожидался 403 (${route.permissions.join(' | ')}), получено ${res.statusCode}`,
@@ -70,7 +87,7 @@ describe('тест-матрица прав (ADR-007, B12)', () => {
       }
     }
     expect(failures).toEqual([]);
-  });
+  }, 120_000);
 
   it('действия поста: право своего вида, у каждой роли-шаблона', async () => {
     const failures: string[] = [];
@@ -94,7 +111,7 @@ describe('тест-матрица прав (ADR-007, B12)', () => {
       }
     }
     expect(failures).toEqual([]);
-  });
+  }, 120_000);
 
   it('администратор объекта не выполняет действий поста (A7), пост не правит пропуска (A11)', () => {
     const actors = Object.fromEntries(matrixActors().map((m) => [m.role, m.actor]));

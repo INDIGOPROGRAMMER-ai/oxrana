@@ -102,7 +102,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       'pass.create.single',
       'pass.create.multi',
       'pass.create.permanent',
-      'pass.cancel',
+      'pass.cancel_own',
       'pass.change_request.create',
       'profile.manage_own',
     ],

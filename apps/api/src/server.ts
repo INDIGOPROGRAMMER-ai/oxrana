@@ -24,7 +24,7 @@ const app = await buildApp({
   version: process.env.npm_package_version ?? '0.0.0',
   readiness: () => pingDb(pool),
   exposeOpenApi: config.NODE_ENV !== 'production',
-  services: { db, hub },
+  services: { db, hub, publicUrl: config.PUBLIC_URL, gateUrl: config.GATE_URL },
 });
 // Outbox → LISTEN/NOTIFY → SSE (ADR-004): одно выделенное соединение на процесс.
 const listener = new EventListener({

@@ -47,6 +47,8 @@ export const SiteSettingsSchema = z.strictObject({
   gateRequestTimeoutMin: z.int().min(1).default(10),
   overrideValidMin: z.int().min(1).default(15),
   undoWindowSec: z.int().min(0).default(120),
+  /** Допуск на «начало пропуска в прошлом» при создании и изменении начала (Q-58). */
+  pastStartToleranceMin: z.int().min(0).max(1440).default(10),
   shiftMarkEnabled: z.boolean().default(false),
   seniorPinHash: z.string().min(1).nullable().default(null),
   /** Телефон дежурного администратора внизу экрана поста; `null` — строка не показывается. */
@@ -79,6 +81,7 @@ export const SiteSettingsPatchSchema = z.strictObject({
   gateRequestTimeoutMin: z.int().min(1).optional(),
   overrideValidMin: z.int().min(1).optional(),
   undoWindowSec: z.int().min(0).optional(),
+  pastStartToleranceMin: z.int().min(0).max(1440).optional(),
   shiftMarkEnabled: z.boolean().optional(),
   seniorPinHash: z.string().min(1).nullable().optional(),
   dutyAdminPhone: z.string().min(1).nullable().optional(),

@@ -3,6 +3,7 @@ import {
   ChangeRequestStatusSchema,
   GateActionSchema,
   GateRequestStatusSchema,
+  OverrideStatusSchema,
   ParticipantSchema,
   PassStatusSchema,
   PassTypeSchema,
@@ -123,6 +124,27 @@ export const DOMAIN_EVENT_PAYLOADS = {
     status: GateRequestStatusSchema,
     passId: id.nullable(),
   }),
+
+  /** Согласование не рассмотрено за срок политики (on_timeout = escalate) — уведомить следующего. */
+  'pass.approval_escalated': z.strictObject({ passId: id, tenantId: id }),
+
+  /** Запрос исключения с поста (A11, сценарий 42): администраторам с правом gate.override. */
+  'override.requested': z.strictObject({
+    overrideRequestId: id,
+    gateId: id,
+    passId: id.nullable(),
+    tenantId: id.nullable(),
+  }),
+  'override.decided': z.strictObject({
+    overrideRequestId: id,
+    gateId: id,
+    passId: id.nullable(),
+    tenantId: id.nullable(),
+    status: OverrideStatusSchema,
+  }),
+
+  /** Устройство поста отозвано: открытые потоки SSE этого устройства закрываются сразу. */
+  'gate_device.revoked': z.strictObject({ deviceId: id, gateId: id }),
 } as const;
 
 export type DomainEventType = keyof typeof DOMAIN_EVENT_PAYLOADS;

@@ -142,15 +142,15 @@ describe('сценарий 3: фура выехала — жёлтая карт�
     const wait = await action(t, kpp2, { type: 'check_in', passId: waitingPass });
     expect(wait.json().code).toBe('wait');
 
-    const post2 = await subscribe('/gate/events', t.headersFor(kpp2));
-    const post1 = await subscribe('/gate/events', t.headersFor(kpp1));
+    const post2 = await subscribe('/gate/events', await t.headersFor(kpp2));
+    const post1 = await subscribe('/gate/events', await t.headersFor(kpp1));
     const dnsUser = await subscribe(
       `/sites/${KEYS.siteId}/events`,
-      t.headersFor(roleActor('tenant_viewer', { tenantIds: [dns] })),
+      await t.headersFor(roleActor('tenant_viewer', { tenantIds: [dns] })),
     );
     const x5User = await subscribe(
       `/sites/${KEYS.siteId}/events`,
-      t.headersFor(roleActor('tenant_viewer', { tenantIds: [tenantKey('x5')] })),
+      await t.headersFor(roleActor('tenant_viewer', { tenantIds: [tenantKey('x5')] })),
     );
     await settle();
     try {
@@ -197,7 +197,7 @@ describe('сценарий 3: фура выехала — жёлтая карт�
   });
 
   it('переподключение с Last-Event-ID — пропущенные события дочитываются из таблицы', async () => {
-    const first = await subscribe('/gate/events', t.headersFor(kpp2));
+    const first = await subscribe('/gate/events', await t.headersFor(kpp2));
     await settle();
     const passId = await dnsTruck(t);
     await action(t, kpp2, { type: 'check_in', passId });
@@ -206,7 +206,7 @@ describe('сценарий 3: фура выехала — жёлтая карт�
     // пока поста нет — выезд
     await action(t, kpp1, { type: 'check_out', passId });
     const again = await subscribe('/gate/events', {
-      ...t.headersFor(kpp2),
+      ...(await t.headersFor(kpp2)),
       'last-event-id': String(opened.id),
     });
     try {
@@ -220,7 +220,7 @@ describe('сценарий 3: фура выехала — жёлтая карт�
 
   it('без права на события объекта — 403; без входа — 401', async () => {
     const accountant = await fetch(`${base}/sites/${KEYS.siteId}/events`, {
-      headers: t.headersFor(roleActor('accountant')),
+      headers: await t.headersFor(roleActor('accountant')),
     });
     expect(accountant.status).toBe(403);
     const anonymous = await fetch(`${base}/gate/events`);

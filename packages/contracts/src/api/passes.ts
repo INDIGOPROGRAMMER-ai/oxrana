@@ -90,6 +90,13 @@ export const PassViewSchema = z.object({
   createdVia: PassSourceSchema,
   batchId: IdSchema.nullable(),
   approvedAt: InstantSchema.nullable(),
+  approvedBy: IdSchema.nullable(),
+  /** Комментарий согласующего и «одобрено с изменениями»: что изменил согласующий (видно арендатору). */
+  approvalNote: z.string().nullable(),
+  approvalChanges: z
+    .record(z.string(), z.object({ from: z.unknown(), to: z.unknown() }))
+    .nullable(),
+  approvalEscalatedAt: InstantSchema.nullable(),
   cancelledReason: z.string().nullable(),
   createdAt: InstantSchema,
   updatedAt: InstantSchema,
@@ -252,4 +259,37 @@ export const VisitListQuerySchema = z.strictObject({
   open: z.enum(['true', 'false']).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+/**
+ * «Одобрить с изменениями» (`10_` §6, сценарий 24): согласующий меняет срок, окно, тип, док или
+ * комментарий; изменённые поля сохраняются в `approvalChanges` и видны арендатору.
+ */
+export const PassApproveSchema = z.strictObject({
+  note: z.string().trim().max(1000).optional(),
+  changes: z
+    .strictObject({
+      categoryId: IdSchema.nullable().optional(),
+      dockId: IdSchema.nullable().optional(),
+      destinationZoneId: IdSchema.nullable().optional(),
+      validFrom: InstantInputSchema.optional(),
+      validTo: InstantInputSchema.nullable().optional(),
+      windowFrom: InstantInputSchema.nullable().optional(),
+      windowTo: InstantInputSchema.nullable().optional(),
+      comment: z.string().trim().max(2000).nullable().optional(),
+    })
+    .optional(),
+});
+
+export const ApprovalListQuerySchema = z.strictObject({
+  tenantId: IdSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+/** Карточка согласования: все поля будущего пропуска, кто и когда создал (`10_` §6). */
+export const ApprovalViewSchema = z.object({
+  pass: PassViewSchema,
+  tenantName: z.string(),
+  createdByName: z.string().nullable(),
 });

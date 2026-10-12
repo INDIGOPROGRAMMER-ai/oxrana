@@ -62,9 +62,6 @@ export interface PassValues {
 
 export type PassField = keyof PassValues;
 
-/** «На сейчас» из формы приходит с задержкой сети и секундами — допуск на начало в прошлом. */
-export const NOW_TOLERANCE_MS = 10 * 60_000;
-
 const date = (value: string | null | undefined): Date | null =>
   value === null || value === undefined ? null : new Date(value);
 
@@ -336,7 +333,9 @@ export async function validatePass(
   const from = values.validFrom;
   const to = values.validTo;
   if (!from) throw fail('invalid_period', 'validFrom', 'Укажите начало действия пропуска.');
-  if (touched('validFrom') && from.getTime() < ctx.now - NOW_TOLERANCE_MS) {
+  // «На сейчас» из формы приходит с задержкой сети — допуск задаёт объект (Q-58).
+  const tolerance = settings.pastStartToleranceMin * 60_000;
+  if (touched('validFrom') && from.getTime() < ctx.now - tolerance) {
     throw fail(
       'starts_in_past',
       'validFrom',

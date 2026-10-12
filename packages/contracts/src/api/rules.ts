@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import {
+  type ApprovalCreatorKind,
   ApprovalCreatorKindSchema,
+  type ApprovalMode,
   ApprovalModeSchema,
   ApprovalTimeoutActionSchema,
   DirectionSchema,
   ExceptionWaiveSchema,
   ParticipantSchema,
+  type PassType,
   PassTypeSchema,
   QuotaCountingSchema,
   QuotaEnforcementSchema,
@@ -154,3 +157,32 @@ export const ApprovalPolicyPatchSchema = ApprovalPolicyCreateSchema.omit({
   creatorKind: true,
   passType: true,
 }).partial();
+
+/**
+ * Политики согласования нового объекта (Q-55): все 9 сочетаний «кто создаёт × тип пропуска»
+ * заполняются при создании объекта. Разовый от арендатора — без согласования, многоразовый и
+ * постоянный от арендатора — на согласование; администратор — без согласования; охрана
+ * оформляет только разовый по запросу «без пропуска», и он идёт на согласование.
+ */
+export const DEFAULT_APPROVAL_POLICIES: readonly {
+  readonly creatorKind: ApprovalCreatorKind;
+  readonly passType: PassType;
+  readonly mode: ApprovalMode;
+}[] = [
+  { creatorKind: 'tenant', passType: 'single', mode: 'allow' },
+  { creatorKind: 'tenant', passType: 'multi', mode: 'on_request' },
+  { creatorKind: 'tenant', passType: 'permanent', mode: 'on_request' },
+  { creatorKind: 'admin', passType: 'single', mode: 'allow' },
+  { creatorKind: 'admin', passType: 'multi', mode: 'allow' },
+  { creatorKind: 'admin', passType: 'permanent', mode: 'allow' },
+  { creatorKind: 'gate', passType: 'single', mode: 'on_request' },
+  { creatorKind: 'gate', passType: 'multi', mode: 'deny' },
+  { creatorKind: 'gate', passType: 'permanent', mode: 'deny' },
+];
+
+/** Незаданное сочетание политики: такие пропуска уходят на согласование (Q-55). */
+export const ApprovalPolicyGapSchema = z.object({
+  creatorKind: ApprovalCreatorKindSchema,
+  passType: PassTypeSchema,
+  message: z.string(),
+});

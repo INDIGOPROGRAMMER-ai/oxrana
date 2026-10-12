@@ -28,6 +28,11 @@ declare module 'fastify' {
      * пояса) и свои настройки. Сервис всё равно ограничивает ответ областью актора. Только GET.
      */
     authenticated?: boolean;
+    /**
+     * Нужен вход пользователя (не устройства поста), действие только над собой: свои сессии,
+     * свой пароль, выход везде (ADR-018). Отдельного права не требует — у любой роли.
+     */
+    self?: boolean;
   }
   interface FastifyRequest {
     actor: Actor | null;
@@ -42,7 +47,7 @@ declare module 'fastify' {
 export interface RouteAccess {
   readonly method: string;
   readonly url: string;
-  readonly access: 'public' | 'authenticated' | 'permission';
+  readonly access: 'public' | 'authenticated' | 'self' | 'permission';
   readonly permissions: readonly string[];
 }
 
@@ -87,15 +92,20 @@ export function registerPermissionGuard(
   app.decorate('routeAccess', routeAccess);
 
   app.addHook('onRoute', (route) => {
-    const { permission, public: isPublic, authenticated } = route.config ?? {};
+    const { permission, public: isPublic, authenticated, self } = route.config ?? {};
     const methods = Array.isArray(route.method) ? route.method : [route.method];
     const where = `${methods.join(',')} ${route.url}`;
     const list = permissionList(permission);
-    const modes = [isPublic === true, authenticated === true, list.length > 0].filter(Boolean);
+    const modes = [
+      isPublic === true,
+      authenticated === true,
+      self === true,
+      list.length > 0,
+    ].filter(Boolean);
 
     if (modes.length > 1) {
       throw new Error(
-        `Маршрут ${where} объявляет сразу несколько режимов доступа (public, authenticated, permission) — оставьте один.`,
+        `Маршрут ${where} объявляет сразу несколько режимов доступа (public, authenticated, self, permission) — оставьте один.`,
       );
     }
     const record = (access: RouteAccess['access']) => {
@@ -106,6 +116,10 @@ export function registerPermissionGuard(
     };
     if (isPublic === true) {
       record('public');
+      return;
+    }
+    if (self === true) {
+      record('self');
       return;
     }
     if (authenticated === true) {
@@ -135,12 +149,18 @@ export function registerPermissionGuard(
 
   app.addHook('onRequest', async (request) => {
     if (request.is404) return;
-    const { permission, public: isPublic, authenticated } = request.routeOptions.config;
+    const { permission, public: isPublic, authenticated, self } = request.routeOptions.config;
     if (isPublic === true) return;
 
     const actor = await resolveActor(request);
     if (!actor) throw new AppError('unauthenticated');
-    if (authenticated !== true) {
+    if (self === true) {
+      if (actor.kind !== 'user') {
+        throw new AppError('forbidden', {
+          message: 'Это действие доступно только пользователю, а не устройству поста.',
+        });
+      }
+    } else if (authenticated !== true) {
       // список заведомо не пуст: иначе маршрут не прошёл бы проверку при регистрации
       const list = permissionList(permission);
       if (!list.some((p) => actor.permissions.has(p))) throw forbiddenFor(list);
