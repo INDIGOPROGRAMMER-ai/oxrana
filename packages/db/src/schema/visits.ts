@@ -1,4 +1,6 @@
 import {
+  GATE_ACTION_OUTCOMES,
+  GATE_ACTION_TYPES,
   GATE_ACTIONS,
   GATE_REQUEST_STATUSES,
   OVERRIDE_STATUSES,
@@ -168,6 +170,48 @@ export const gatePassages = pgTable(
     snapshot: jsonb('snapshot').notNull(),
   },
   (t) => [enumCheck('gate_passages', t.direction, PASSAGE_DIRECTIONS), organizationIsolation()],
+);
+
+/**
+ * Действия поста с идемпотентным id устройства (ADR-005, ADR-017): онлайн и из офлайн-очереди —
+ * один путь. Только insert: повтор с тем же id возвращает сохранённый `response`.
+ */
+export const gateActions = pgTable(
+  'gate_actions',
+  {
+    id: uuid('id').primaryKey(),
+    organizationId: organizationId(),
+    siteId: siteId(),
+    gateId: uuid('gate_id')
+      .notNull()
+      .references(() => gates.id),
+    type: text('type', { enum: GATE_ACTION_TYPES }).notNull(),
+    gateAccountId: uuid('gate_account_id').references(() => gateAccounts.id),
+    deviceId: uuid('device_id').references(() => gateDevices.id),
+    userId: uuid('user_id').references(() => users.id),
+    clientAt: tstz('client_at'),
+    receivedAt: tstz('received_at').notNull(),
+    offline: boolean('offline').notNull().default(false),
+    /** Отпечаток тела запроса: тот же id с другими данными — idempotency_conflict. */
+    requestHash: text('request_hash').notNull(),
+    outcome: text('outcome', { enum: GATE_ACTION_OUTCOMES }).notNull(),
+    passId: uuid('pass_id').references(() => passes.id),
+    visitId: uuid('visit_id').references((): AnyPgColumn => visits.id),
+    decisionId: bigint('decision_id', { mode: 'number' }).references(
+      (): AnyPgColumn => gateDecisions.id,
+    ),
+    /** Для undo: какое действие отменено. */
+    undoOf: uuid('undo_of').references((): AnyPgColumn => gateActions.id),
+    /** Ответ клиенту; повтор с тем же id получает его же. */
+    response: jsonb('response').notNull(),
+  },
+  (t) => [
+    uniqueIndex('gate_actions_undo_of_key').on(t.undoOf).where(sql`${t.undoOf} is not null`),
+    index('gate_actions_gate_id_received_at_idx').on(t.gateId, t.receivedAt.desc()),
+    enumCheck('gate_actions', t.type, GATE_ACTION_TYPES),
+    enumCheck('gate_actions', t.outcome, GATE_ACTION_OUTCOMES),
+    organizationIsolation(),
+  ],
 );
 
 /** B5: очередь у ворот, FIFO по лимиту. */

@@ -63,9 +63,12 @@ flowchart LR
 
 ```
 apps/api/src/
-├─ app.ts                 сборка Fastify: плагины, хуки (requestId, auth, permission, org-scope), ошибки, OpenAPI
-├─ plugins/               db (пул + tx с SET LOCAL), sse, clock, files, mailer, push, telegram, sms, boss
-├─ modules/               по агрегатам; в каждом routes.ts (zod-схемы из contracts) + service.ts + queries.ts
+├─ app.ts                 сборка Fastify: хук прав, ошибки, OpenAPI, зависимости сервисов (deps), модули
+├─ actor.ts, clock.ts     актор и его область (ADR-017), инжектируемые часы (ADR-009)
+├─ core/                  Ctx.tx (транзакция с RLS, аудит, outbox), кэш RuleSet, фабрика справочников, diff, подписи
+├─ realtime/              хаб событий, слушатель LISTEN site_events, маршруты SSE (ADR-004)
+├─ plugins/               (этапы 10+) files, mailer, push, telegram, sms, boss
+├─ modules/               по агрегатам; в каждом routes.ts (zod-схемы из contracts) + сервис
 │  ├─ auth/               сессии, приглашения, коды входа, устройства и привязка
 │  ├─ org/                организация, объекты, зоны, КПП, доки, справочники, настройки
 │  ├─ tenants/            арендаторы, договоры, назначения, пользователи арендатора, правила пешеходов, автопарк
@@ -79,12 +82,13 @@ apps/api/src/
 │  ├─ import/             импорт из выгрузок PASS24
 │  └─ audit/              журнал аудита, журнал КПП
 ├─ jobs/                  pg-boss: dispatch-events, overage-charges, expire-passes, retention, contract-reminders, acs-sync
-└─ test/                  permissions.matrix.ts, фикстуры сида, harness БД
+└─ ../test/               permissions.matrix.ts + матрица по реестру маршрутов, scenarios/ (сценарии приёмки на демо-объекте), support/ (harness)
 ```
 
 Правила слоя:
-- Маршрут объявляет `config.permission` (ADR-007) и zod-схемы запроса/ответа; из них же — OpenAPI (`/docs` только в dev).
-- Сервис получает `ctx` (`{organizationId, siteId?, actor, clock, tx}`); всё, что меняет данные, выполняется в `db.transaction(ctx, async tx => { …; tx.audit(…); tx.emit(…) })`.
+- Маршрут объявляет `config.permission` — одно право или «любое из» с уточнением в сервисе (ADR-007, ADR-017), либо `authenticated: true` для чтения справочников, либо `public: true`; и zod-схемы запроса/ответа; из них же — OpenAPI (`/openapi.json` только вне production).
+- Действие над записью — подресурсом (`POST /passes/:id/cancel`, `POST /passes/batch`): запись `:verb` из ТЗ в Fastify после параметра невозможна (ADR-017 п. 3).
+- Сервис получает `ctx` (актор, часы, зависимости); всё, что меняет данные, выполняется в `ctx.tx(async scope => { …; scope.audit(…); scope.emit(…) })` — одна транзакция с RLS; внутри неё — только её соединение (ADR-017 п. 4).
 - Ошибки — `AppError(code, message, {field, settingLink})` → HTTP `{code, message, field, settingLink, requestId}`; коды и русские тексты — в `contracts/errors.ts`. Непредвиденное — `500 internal` с `requestId`, подробности только в логах.
 - Валидация номеров и времени — одинаково на клиенте и сервере через те же схемы `contracts`.
 
@@ -98,7 +102,7 @@ sequenceDiagram
   participant API as API (gate module)
   participant E as engine
   participant DB as PostgreSQL
-  P->>API: POST /gate/check {plateQuery | passId, direction}
+  P->>API: POST /gate/check {plateQuery | passId | personQuery, direction}
   API->>DB: кандидаты по plate_norm (trgm), RuleSet (кэш), занятость
   API->>E: evaluate(input)
   E-->>API: Verdict (code, headline, trace, actions)
@@ -120,8 +124,8 @@ sequenceDiagram
 
 ### 3.2 Создание пропуска арендатором
 
-1. Форма в кабинете подгружает «подсказки» (`GET /tenants/{id}/pass-hints?category=…&type=…`): маршрут («Фура → КПП-2»), текущая занятость («Грузовые 25/25 — машина будет ждать»), политика согласования («уйдёт директору ЛЦ»), обязательность дока и окна. Подсказки считаются тем же `engine` в режиме «предпросмотр» (`evaluate` с `now = window_from`).
-2. `POST /passes` (или `POST /passes:batch` для пакета): нормализация номера, проверка дублей (exclusion-constraint), политика согласования → статус `approved` или `pending_approval`; событие и аудит.
+1. Форма в кабинете подгружает «подсказки» (`GET /tenants/{id}/pass-hints?participant=…&categoryId=…&passType=…`): маршрут («Фура → КПП-2»), текущая занятость («Грузовые 25/25 — машина будет ждать»), политика согласования («уйдёт директору ЛЦ»), обязательность дока и окна. Подсказки считаются тем же `engine` в режиме «предпросмотр» (`evaluate` с `now = window_from`).
+2. `POST /passes` (или `POST /passes/batch` для пакета): нормализация номера, проверка дублей (exclusion-constraint), политика согласования → статус `approved` или `pending_approval`; событие и аудит.
 3. Токен страницы водителя создаётся сразу; ссылка — в ответе и в уведомлении.
 
 ### 3.3 Машина без пропуска, запрос исключения, очередь

@@ -50,7 +50,7 @@ describe('сид демо-объекта', () => {
     expect(firstReport.gate_accounts?.described).toBe(3);
     expect(firstReport.tenants?.described).toBe(12);
     expect(firstReport.vehicle_categories?.described).toBe(5);
-    expect(firstReport.docks?.described).toBe(72 + 7 + 11);
+    expect(firstReport.docks?.described).toBe(72 + 7);
     expect(firstReport.roles?.described).toBe(9);
   });
 

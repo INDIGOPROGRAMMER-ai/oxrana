@@ -29,6 +29,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test:unit
+      - name: Покрытие engine и plates (порог 95 % строк)
+        run: pnpm test:coverage
       - run: pnpm build
 
   integration:

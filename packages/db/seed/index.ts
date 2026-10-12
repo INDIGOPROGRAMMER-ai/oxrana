@@ -1,4 +1,5 @@
 export { applySeed, type SeedReport } from './apply';
+export { fixtureKeys, type RuleSetFixture } from './fixture';
 export { seedId } from './ids';
 export { RADONEZHSKY } from './radonezhsky';
 export type { QuotaSeed, SeedData, TenantSeed } from './types';

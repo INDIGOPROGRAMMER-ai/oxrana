@@ -3,15 +3,17 @@ import type { FastifyInstance } from 'fastify';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app';
 import type { Actor } from '../src/permission-guard';
+import { testActor } from './support/actor';
 
 const REGISTRY = ['report.view', 'pass.edit'] as const;
 
-const viewer: Actor = { id: 'u1', permissions: new Set(['report.view']) };
-const nobody: Actor = { id: 'u2', permissions: new Set() };
+const viewer: Actor = testActor({ id: 'u1', permissions: new Set(['report.view']) });
+const nobody: Actor = testActor({ id: 'u2' });
+const editor: Actor = testActor({ id: 'u3', permissions: new Set(['pass.edit']) });
 
 /** Собирает приложение с тестовым реестром прав; актор берётся из заголовка x-actor. */
 async function startApp(register: (app: FastifyInstance) => void): Promise<FastifyInstance> {
-  const actors: Record<string, Actor> = { viewer, nobody };
+  const actors: Record<string, Actor> = { viewer, nobody, editor };
   const app = await buildApp({
     permissions: REGISTRY,
     resolveActor: (request) => actors[String(request.headers['x-actor'])] ?? null,
@@ -53,7 +55,38 @@ describe('хук прав: регистрация маршрутов', () => {
       startApp((app) =>
         app.get('/v', { config: { public: true, permission: 'report.view' } }, async () => ({})),
       ),
-    ).rejects.toThrow(/и public: true, и config\.permission/);
+    ).rejects.toThrow(/сразу несколько режимов доступа/);
+  });
+
+  it('authenticated: true вместе с permission не стартует', async () => {
+    await expect(
+      startApp((app) =>
+        app.get(
+          '/t',
+          { config: { authenticated: true, permission: 'report.view' } },
+          async () => ({}),
+        ),
+      ),
+    ).rejects.toThrow(/сразу несколько режимов доступа/);
+  });
+
+  it('authenticated: true допустим только для чтения: POST с ним не стартует', async () => {
+    await expect(
+      startApp((app) => app.post('/s', { config: { authenticated: true } }, async () => ({}))),
+    ).rejects.toThrow(/только для чтения \(GET\)/);
+  });
+
+  it('в списке прав пустая строка или неизвестное право не проходят', async () => {
+    await expect(
+      startApp((app) =>
+        app.get('/r', { config: { permission: ['report.view', ''] } }, async () => ({})),
+      ),
+    ).rejects.toThrow(/не объявляет config\.permission/);
+    await expect(
+      startApp((app) =>
+        app.get('/q', { config: { permission: ['report.view', 'nope.x'] } }, async () => ({})),
+      ),
+    ).rejects.toThrow(/неизвестное право «nope\.x»/);
   });
 
   it('public: false без права тоже не стартует', async () => {
@@ -77,6 +110,10 @@ describe('хук прав: запросы', () => {
         actor: request.actor?.id,
       }));
       app.post('/pass', { config: { permission: 'pass.edit' } }, async () => ({ ok: true }));
+      app.get('/either', { config: { permission: ['report.view', 'pass.edit'] } }, async () => ({
+        ok: true,
+      }));
+      app.get('/catalog', { config: { authenticated: true } }, async () => ({ ok: true }));
     });
   }
 
@@ -138,6 +175,28 @@ describe('хук прав: запросы', () => {
       payload: '{ не json',
     });
     expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('список прав: достаточно любого из них; без всех — 403 со списком', async () => {
+    const app = await appWithRoutes();
+    for (const who of ['viewer', 'editor']) {
+      const res = await app.inject({ url: '/either', headers: { 'x-actor': who } });
+      expect(res.statusCode, who).toBe(200);
+    }
+    const res = await app.inject({ url: '/either', headers: { 'x-actor': 'nobody' } });
+    expect(res.statusCode).toBe(403);
+    const body = ErrorBodySchema.parse(res.json());
+    expect(body.permission).toBe('report.view | pass.edit');
+    expect(body.message).toContain('одно из прав');
+    await app.close();
+  });
+
+  it('authenticated: нужен вход, но не право', async () => {
+    const app = await appWithRoutes();
+    expect((await app.inject('/catalog')).statusCode).toBe(401);
+    const res = await app.inject({ url: '/catalog', headers: { 'x-actor': 'nobody' } });
+    expect(res.statusCode).toBe(200);
     await app.close();
   });
 });

@@ -65,13 +65,15 @@ organizations
   id uuid PK
   name text NN
   slug text NN unique                       -- для URL и логов без ПДн
+  default_timezone text                     -- IANA; предзаполняет пояс нового объекта (ADR-009, дополнение); null — не задан
   settings jsonb NN default '{}'            -- OrganizationSettings (zod): срок хранения ПДн по умолчанию и т. п.
   deleted_at timestamptz
 
 sites
   id uuid PK, organization_id uuid NN FK
   name text NN, address text, geo point
-  timezone text NN                          -- IANA: 'Asia/Yekaterinburg'; проверяется Intl.supportedValuesOf('timeZone')
+  timezone text NN                          -- IANA: 'Asia/Yekaterinburg'; проверяется Intl.supportedValuesOf('timeZone');
+                                            -- меняется только отдельным действием с правом site.manage, причиной и аудитом (ADR-009)
   working_hours jsonb                       -- WorkingHours (zod): {"mon":[["08:00","20:00"]],...}; null = круглосуточно
   settings jsonb NN default '{}'            -- SiteSettings (zod), см. раздел 3
   deleted_at timestamptz
@@ -99,7 +101,7 @@ docks
   id uuid PK, organization_id, site_id NN FK, zone_id uuid FK
   number text NN                            -- «19», «З1»
   kind text NN default 'leveller' check in ('leveller','ground_gate','other')
-  counts_in_quota boolean NN default true   -- 11 наземных ворот ДНС = false
+  counts_in_quota boolean NN default true   -- false: ворота не дают места в лимите «по докам»
   size text, deleted_at timestamptz
   unique (site_id, number)
 
@@ -310,8 +312,8 @@ visits
   hardware_event_in_id bigint FK, hardware_event_out_id bigint FK
   decision_in_id bigint FK gate_decisions, decision_out_id bigint FK
   overage boolean NN default false, overage_quota_id uuid FK
-  exception_id uuid FK, override_id uuid FK override_requests
-  flags text[] NN default '{}'              -- 'no_checkin','after_expiry','over_stay','offline_over_quota','undone'
+  exception_id uuid FK, override_id uuid FK override_requests   -- exception_id — только исключение, снявшее лимит: такой визит место не занимает
+  flags text[] NN default '{}'              -- 'no_checkin','after_expiry','over_stay','offline_over_quota','undone','pass_cancelled_meanwhile'
   client_time_in timestamptz, client_time_out timestamptz   -- время устройства при офлайн-отметке
   index (site_id, tenant_id, category_id) where time_out is null    -- подсчёт лимитов
   index (site_id, plate_norm) where time_out is null
@@ -324,7 +326,7 @@ gate_decisions                              -- каждый вердикт, вк
   pass_id uuid FK, plate_query text, hardware_event_id bigint FK
   verdict text NN check in ('allow','allow_overage','wait','wrong_gate','deny','no_pass')
   reasons jsonb NN, trace jsonb NN, engine_version text NN
-  action text check in ('check_in','check_out','refuse','redirect','request','override_request','none','undo')
+  action text check in ('check_in','check_out','refuse','redirect','request','override_request','none','undo','passage')
   visit_id uuid FK, override_id uuid FK
   gate_account_id uuid FK, device_id uuid FK, user_id uuid FK   -- user_id: админ в песочнице/при переопределении
   offline boolean NN default false
@@ -335,6 +337,20 @@ gate_passages                               -- A4: внутренние пост
   id bigint identity PK, organization_id, site_id, gate_id NN FK
   at timestamptz NN, pass_id uuid FK, direction text
   decision_id bigint FK, gate_account_id uuid FK, device_id uuid FK, snapshot jsonb NN
+
+gate_actions                                -- действия поста с идемпотентным id (ADR-005, ADR-017); только insert
+  id uuid PK                                -- id, присланный устройством: повтор с тем же id не выполняет действие второй раз
+  organization_id, site_id, gate_id NN FK
+  type text NN check in ('check_in','check_out','refuse','redirect','undo','passage')
+  gate_account_id uuid FK, device_id uuid FK, user_id uuid FK
+  client_at timestamptz, received_at timestamptz NN
+  offline boolean NN default false          -- пришло из офлайн-очереди (POST /gate/actions/sync)
+  request_hash text NN                      -- отпечаток тела: тот же id с другими данными — ошибка idempotency_conflict
+  outcome text NN check in ('applied','merged','rejected')
+  pass_id uuid FK, visit_id uuid FK, decision_id bigint FK gate_decisions
+  undo_of uuid FK gate_actions               -- для undo: какое действие отменено
+  response jsonb NN                         -- ответ клиенту; повтор получает его же
+  unique (undo_of) where undo_of is not null -- действие отменяется не больше одного раза
 
 gate_queue                                  -- B5: очередь у ворот
   id uuid PK, organization_id, site_id, tenant_id NN FK, gate_id NN FK
@@ -391,6 +407,8 @@ users                                       -- платформенные: од�
   status text NN default 'invited' check in ('invited','active','disabled')
   locale text NN default 'ru', last_login_at timestamptz
   must_change_password boolean NN default false
+  show_own_time boolean NN default false    -- «показывать ещё и моё время» второй строкой (ADR-009, дополнение)
+  own_timezone text                         -- IANA, выбирает пользователь; check: show_own_time → own_timezone not null
 
 roles
   id uuid PK, organization_id NN FK
@@ -550,7 +568,7 @@ notifications
 |---|---|---|
 | 1 | Убраны `users.pin_hash`, `shifts`, `role_assignments.scope_gate_id`; добавлены `gate_accounts`, `gate_devices` (с привязкой к учётке, не к КПП напрямую), `device_enrollments`, необязательные `shift_marks` | `16_` A11: одна учётка на КПП, без личных PIN |
 | 2 | `gates.kind` (`perimeter`/`internal`), `gates.zone_id`, таблица `gate_passages` | A4: КПП офис — внутренний пост, проход не открывает визит |
-| 3 | `passes.destination jsonb` → `destination_zone_id` + `dock_id` (FK); `tenants.trucks_dock_required`; `docks.counts_in_quota` | A5: док обязателен и выбирается из списка; 11 наземных ворот ДНС не в лимите; маршрут пешехода по месту назначения |
+| 3 | `passes.destination jsonb` → `destination_zone_id` + `dock_id` (FK); `tenants.trucks_dock_required`; `docks.counts_in_quota` | A5: док обязателен и выбирается из списка; ворота, не дающие места в лимите, отмечаются `counts_in_quota = false`; маршрут пешехода по месту назначения |
 | 4 | `tenants.is_operator` | A6: оператор — арендатор без лимитов |
 | 5 | Таблица `pedestrian_rules` | A3: правила пешеходов на арендатора (× зона) |
 | 6 | Таблица `pass_change_requests` | A8: заявка на изменение начавшегося согласованного пропуска |
@@ -584,6 +602,7 @@ notifications
 | ФИО, телефон, e-mail пользователей | `users`, `invitations` | пока учётка активна + 1 год | не пишутся в `pino`-логи (редакция по ключам) |
 | ФИО водителя/пешехода, телефон, номер | `passes`, `visits.snapshot`, `gate_requests`, `fleet_vehicles` | `retentionDays.visits` | задача `retention` обезличивает (`person_name → null`, `plate_norm → хэш`) по сроку |
 | Фото с камер | хранилище файлов, ссылка в `hardware_events.photo_ref` | `retentionDays.photos` | удаляются задачей |
+| «Было → стало» правок пропусков (номер, ФИО) | `audit_log.diff`, `pass_change_requests.changes`, `pass_batches.errors` | `retentionDays.audit` | журнал в БД; в технические логи и `domain_events.payload` не попадают |
 | Согласия | `pass_tokens.consent_at`, `users` (при приёме приглашения) | вместе с записью | |
 
 ## 7. Уточнения реализации (этап 2)
@@ -602,3 +621,21 @@ notifications
 | 8 | NOTIFY outbox | ADR-004: `{"siteId", "id"}` | `{"id", "organizationId", "siteId"}` | слушатель читает событие под RLS |
 | 9 | `sites.settings` | `SiteSettings` | хранятся только заданные ключи, значения по умолчанию — в zod (`SiteSettingsSchema.parse`) | новая настройка с дефолтом не требует миграции данных |
 | 10 | `sites.working_hours`, `gates.working_hours`, `quotas.schedule` | `{"mon":[["08:00","20:00"]],…}` | то же, все семь дней явно (`WorkingHours`), `[]` — выходной | нет двусмысленности «день не указан = выходной или круглосуточно» |
+
+## 8. Уточнения реализации (этап 4)
+
+Решения — ADR-017; пояса — ADR-009 (дополнение). Миграции `0003_gate_actions_timezones.sql` (сгенерирована) и `0004_gate_actions_grants.sql` (вручную).
+
+| # | Где | Что | Почему |
+|---|---|---|---|
+| 1 | `gate_actions` (новая, 55-я таблица) | действие поста с id устройства, итог, сохранённый ответ, отпечаток тела; только insert (`REVOKE UPDATE, DELETE` в 0004); `undo_of` уникален | идемпотентность действий онлайн и из офлайн-очереди (ADR-005): повтор возвращает тот же ответ |
+| 2 | `organizations.default_timezone` | IANA, может быть `null` | пояс по умолчанию для нового объекта (ADR-009) |
+| 3 | `users.show_own_time`, `users.own_timezone` | `check (not show_own_time or own_timezone is not null)` | «показывать ещё и моё время» второй строкой (ADR-009) |
+| 4 | `gate_decisions.action` | + `passage` | проход внутреннего поста пишется в журнал КПП как решение |
+| 5 | `visits.flags` | + `pass_cancelled_meanwhile` | офлайн-въезд по пропуску, отменённому за это время (ADR-005) |
+| 6 | `visits.exception_id` | только исключение, **снявшее лимит** | такой визит не занимает место; остальные применённые исключения видны в `gate_decisions.trace` |
+| 7 | `visits` | вставка — только `packages/db/src/queries/visits.ts` (`insertVisit`), вызывается транзакцией въезда | ADR-006: все пути создания визита — через `checkIn()`; проверяет архитектурный тест |
+| 8 | `pass_tokens` | создаётся вместе с пропуском, срок — конец пропуска + сутки (постоянный — год) | ссылка на страницу водителя в ответе создания (ARCHITECTURE §3.2) |
+| 9 | `pass_batches` | строка пакета создаётся до строк пропусков (на неё ссылается `passes.batch_id`), итог дописывается в конце | «создано N из M» с ошибками по строкам; предпросмотр строку не создаёт |
+| 10 | `gate_queue` | `quota_id` — самый тесный жёсткий лимит, из-за которого «ждать»; `notified_at` — кому уже отправлен сигнал «место освободилось» | сигнал только первым по числу свободных мест (сценарий 40) |
+

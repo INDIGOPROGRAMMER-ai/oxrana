@@ -18,11 +18,12 @@ import type {
 } from '@oxrana/contracts';
 
 /**
- * Описание демо-объекта для сида: обычные данные справочников, ссылки — по ключам (`key`), id
- * получаются из ключей (`seedId`). Значения-заглушки перечислены в `checkList` (ПРОВЕРИТЬ).
+ * Описание демо-объекта для сида (только тесты и разработка, ADR-016): обычные данные
+ * справочников, ссылки — по ключам (`key`), id получаются из ключей (`seedId`).
  */
 export interface SeedData {
-  organization: { key: string; name: string; slug: string };
+  /** `defaultTimezone` — пояс, которым предзаполняется новый объект (ADR-009). */
+  organization: { key: string; name: string; slug: string; defaultTimezone: string };
   site: {
     key: string;
     name: string;
@@ -81,8 +82,6 @@ export interface SeedData {
   }[];
   /** Учётка на каждый КПП получает роль этого шаблона (A11). */
   gateAccountRoleTemplate: string;
-  /** Что в сиде — заглушка до ответа заказчика (ПРОВЕРИТЬ). */
-  checkList: string[];
 }
 
 export interface TenantSeed {
@@ -94,7 +93,7 @@ export interface TenantSeed {
   defaultCategory?: VehicleCategoryPresetCode;
   responsiblePhone?: string;
   emergencyPhone?: string;
-  /** Заглушка договора; у оператора договора нет. */
+  /** Примечание демо-договора; у оператора договора нет. */
   contractNotes?: string;
   quotas: QuotaSeed[];
   /** Номера доков арендатора. */
@@ -117,6 +116,6 @@ export interface QuotaSeed {
   capacityFromDocks?: boolean;
   enforcement?: QuotaEnforcement;
   overageTariffRub?: string;
-  /** Основание: пункт договора-заглушки. */
+  /** Основание: пункт демо-договора. */
   clause: { ref: string; summary: string };
 }

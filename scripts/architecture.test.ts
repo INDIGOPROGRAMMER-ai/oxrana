@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { findDependencyViolations } from './check-deps';
 import { findPurityViolations } from './check-engine-purity';
 import { FORBIDDEN_NAMES, findSiteNames } from './check-no-site-names';
+import { findVisitWrites } from './check-visit-writes';
 
 const REPO_ROOT = join(import.meta.dirname, '..');
 
@@ -141,5 +142,20 @@ describe('версия движка', () => {
     const source = readFileSync(join(REPO_ROOT, 'packages/engine/src/evaluate.ts'), 'utf8');
     const version = /export const ENGINE_VERSION = '([^']+)'/.exec(source)?.[1];
     expect(version).toBe(pkg.version);
+  });
+});
+
+describe('визиты создаются только через checkIn (ADR-006)', () => {
+  it('репозиторий чист: insert в visits — только в packages/db/src/queries/visits.ts', () => {
+    expect(findVisitWrites(REPO_ROOT)).toEqual([]);
+  });
+
+  it('находит прямую вставку визита в коде приложения, тесты не проверяет', () => {
+    const root = fixture({
+      'apps/api/src/x.ts': 'await tx.insert(schema.visits).values(v);\n',
+      'apps/api/test/y.test.ts': 'await db.insert(schema.visits).values(v);\n',
+      'packages/db/src/queries/visits.ts': 'await tx.insert(schema.visits).values(v);\n',
+    });
+    expect(findVisitWrites(root)).toEqual([{ file: 'apps/api/src/x.ts', line: 1 }]);
   });
 });

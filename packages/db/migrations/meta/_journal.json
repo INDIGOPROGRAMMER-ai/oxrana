@@ -22,6 +22,20 @@
       "when": 1791643518694,
       "tag": "0002_constraints_triggers_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791648849258,
+      "tag": "0003_gate_actions_timezones",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791648863463,
+      "tag": "0004_gate_actions_grants",
+      "breakpoints": true
     }
   ]
 }

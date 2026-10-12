@@ -66,6 +66,35 @@ export type SiteSettings = z.infer<typeof SiteSettingsSchema>;
 export type SiteSettingsInput = z.input<typeof SiteSettingsSchema>;
 
 /**
+ * Изменение настроек объекта (PATCH): те же ключи, **без значений по умолчанию** — в
+ * `sites.settings` попадают только присланные ключи (DATA_MODEL §7 п. 9). Совпадение ключей с
+ * `SiteSettingsSchema` проверяет тест contracts.
+ */
+export const SiteSettingsPatchSchema = z.strictObject({
+  singlePassMaxHours: z.int().min(1).optional(),
+  multiPassMinDays: z.int().min(1).optional(),
+  multiPassMaxDays: z.int().min(1).optional(),
+  singleReturnWindowMin: z.int().min(1).nullable().optional(),
+  outsideWorkingHours: z.enum(OUTSIDE_WORKING_HOURS_MODES).optional(),
+  gateRequestTimeoutMin: z.int().min(1).optional(),
+  overrideValidMin: z.int().min(1).optional(),
+  undoWindowSec: z.int().min(0).optional(),
+  shiftMarkEnabled: z.boolean().optional(),
+  seniorPinHash: z.string().min(1).nullable().optional(),
+  dutyAdminPhone: z.string().min(1).nullable().optional(),
+  retentionDays: z
+    .strictObject({
+      visits: z.int().min(1).optional(),
+      photos: z.int().min(1).optional(),
+      audit: z.int().min(1).optional(),
+    })
+    .optional(),
+  plateFuzzyThreshold: z.number().min(0).max(1).optional(),
+  permanentPassReviewMonths: z.int().min(1).optional(),
+});
+export type SiteSettingsPatch = z.infer<typeof SiteSettingsPatchSchema>;
+
+/**
  * С чем совпадает исключение (`exceptions.match`, RULES_ENGINE §5). Ровно один вариант:
  * номера (нормализованные), типы транспорта, весь арендатор исключения, конкретные пропуска.
  */

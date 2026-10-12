@@ -1,7 +1,17 @@
 import { createDb, createPool } from '../src';
 import { applySeed, DEMO_SEED } from './index';
 
-/** `pnpm db:seed`: демо-объект под владельцем схемы (`DATABASE_ADMIN_URL`). Идемпотентно. */
+/**
+ * `pnpm db:seed`: демо-объект под владельцем схемы (`DATABASE_ADMIN_URL`). Идемпотентно. Только для
+ * разработки и тестов: реальный сервер стартует чистым (ADR-016).
+ */
+if (process.env.NODE_ENV === 'production') {
+  console.error(
+    'Демо-данные не ставятся на рабочий сервер (NODE_ENV=production): платформа стартует чистой, ' +
+      'объект настраивается через интерфейс (ADR-016).',
+  );
+  process.exit(1);
+}
 const adminUrl = process.env.DATABASE_ADMIN_URL;
 if (!adminUrl) {
   console.error(
@@ -19,8 +29,6 @@ try {
   console.log(
     `Сид применён (${DEMO_SEED.site.name}): добавлено строк ${inserted}, уже было ${described - inserted}.`,
   );
-  console.log('Заглушки до ответа заказчика (ПРОВЕРИТЬ):');
-  for (const item of DEMO_SEED.checkList) console.log(`  • ${item}`);
 } catch (error) {
   console.error('Сид не применён:', error instanceof Error ? error.message : error);
   process.exitCode = 1;

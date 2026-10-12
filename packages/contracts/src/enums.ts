@@ -134,6 +134,8 @@ export const VISIT_FLAGS = [
   'over_stay',
   'offline_over_quota',
   'undone',
+  /** Офлайн-въезд по пропуску, который за это время отменили (ADR-005). */
+  'pass_cancelled_meanwhile',
 ] as const;
 export const VisitFlagSchema = z.enum(VISIT_FLAGS);
 export type VisitFlag = (typeof VISIT_FLAGS)[number];
@@ -158,9 +160,31 @@ export const GATE_ACTIONS = [
   'override_request',
   'none',
   'undo',
+  /** Проход через внутренний пост (A4): визит не меняется. */
+  'passage',
 ] as const;
 export const GateActionSchema = z.enum(GATE_ACTIONS);
 export type GateAction = (typeof GATE_ACTIONS)[number];
+
+/** Действия поста с идемпотентным id (ADR-005): онлайн и из офлайн-очереди — один путь. */
+export const GATE_ACTION_TYPES = [
+  'check_in',
+  'check_out',
+  'refuse',
+  'redirect',
+  'undo',
+  'passage',
+] as const;
+export const GateActionTypeSchema = z.enum(GATE_ACTION_TYPES);
+export type GateActionType = (typeof GATE_ACTION_TYPES)[number];
+
+/**
+ * Итог действия поста (`gate_actions.outcome`): применено · слито с уже сделанным (визит уже
+ * открыт или закрыт с другого КПП) · не выполнено (вердикт не разрешил, окно отмены прошло).
+ */
+export const GATE_ACTION_OUTCOMES = ['applied', 'merged', 'rejected'] as const;
+export const GateActionOutcomeSchema = z.enum(GATE_ACTION_OUTCOMES);
+export type GateActionOutcome = (typeof GATE_ACTION_OUTCOMES)[number];
 
 export const QUEUE_LEAVE_REASONS = ['entered', 'cancelled', 'timeout', 'redirected'] as const;
 export const QueueLeaveReasonSchema = z.enum(QUEUE_LEAVE_REASONS);

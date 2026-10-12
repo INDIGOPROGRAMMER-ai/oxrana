@@ -33,7 +33,7 @@ describe('схема в БД = схема Drizzle (DATA_MODEL §2)', () => {
       .map((t) => getTableName(t))
       .sort();
     expect(await publicTables()).toEqual(inCode);
-    expect(inCode).toHaveLength(54);
+    expect(inCode).toHaveLength(55);
   });
 
   it('у каждой таблицы с updated_at есть триггер, и он ставит время', async () => {
@@ -64,7 +64,7 @@ describe('схема в БД = схема Drizzle (DATA_MODEL §2)', () => {
 });
 
 describe('журналы не редактируются (ADR-003 п. 4)', () => {
-  it.each(['audit_log', 'domain_events', 'gate_decisions', 'hardware_events'])(
+  it.each(['audit_log', 'domain_events', 'gate_decisions', 'hardware_events', 'gate_actions'])(
     '%s: роль приложения пишет, но не меняет и не удаляет',
     async (table) => {
       const { rows } = await ownerPool.query(

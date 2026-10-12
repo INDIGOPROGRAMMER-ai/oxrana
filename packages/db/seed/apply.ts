@@ -54,7 +54,12 @@ export async function applySeed(db: Db, data: SeedData): Promise<SeedReport> {
     const validFromInstant = new Date(data.validFrom.instant);
 
     await put(schema.organizations, [
-      { id: organizationId, name: data.organization.name, slug: data.organization.slug },
+      {
+        id: organizationId,
+        name: data.organization.name,
+        slug: data.organization.slug,
+        defaultTimezone: data.organization.defaultTimezone,
+      },
     ]);
     const base = { organizationId };
     const onSite = { organizationId, siteId };
