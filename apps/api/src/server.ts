@@ -22,7 +22,8 @@ const db = createDb(pool);
 const hub = new EventHub();
 const app = await buildApp({
   logger: loggerOptions(config.LOG_LEVEL),
-  version: process.env.npm_package_version ?? '0.0.0',
+  version: config.APP_VERSION ?? process.env.npm_package_version ?? '0.0.0',
+  trustProxy: config.TRUST_PROXY,
   readiness: () => pingDb(pool),
   exposeOpenApi: config.NODE_ENV !== 'production',
   services: { db, hub, publicUrl: config.PUBLIC_URL, gateUrl: config.GATE_URL },

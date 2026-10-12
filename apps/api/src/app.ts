@@ -40,6 +40,8 @@ const DEV_GATE_URL = 'http://127.0.0.1:5174';
 export interface AppOptions extends PermissionGuardOptions {
   logger?: FastifyServerOptions['logger'];
   version?: string;
+  /** За обратным прокси (Caddy): IP клиента берётся из `X-Forwarded-For`. */
+  trustProxy?: boolean;
   /** Проверка зависимостей для `/readyz`. По умолчанию — «всё готово» (юнит-тесты без БД). */
   readiness?: () => Promise<void>;
   /** Отдавать `/openapi.json`. В проде выключено. */
@@ -75,6 +77,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
 
   const app = Fastify({
     logger: options.logger ?? false,
+    trustProxy: options.trustProxy ?? false,
     // Идентификатор запроса попадает в тело ошибки и в логи; присланный клиентом x-request-id сохраняется.
     requestIdHeader: 'x-request-id',
     genReqId: () => crypto.randomUUID(),
