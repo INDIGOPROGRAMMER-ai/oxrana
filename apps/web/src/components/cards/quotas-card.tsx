@@ -178,7 +178,7 @@ function QuotaFields({ f, env }: { f: FormController<QuotaValues>; env: QuotaEnv
   const capacity = watch('capacity');
   const basis = watch('basisClauseId');
   const set = <K extends keyof QuotaValues>(key: K, value: QuotaValues[K]) =>
-    setValue(key, value, { shouldDirty: true });
+    setValue(key, value as never, { shouldDirty: true });
 
   const categories = [...env.categories].sort((a, b) => a.sort - b.sort);
   const options = categories

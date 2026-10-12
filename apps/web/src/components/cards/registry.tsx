@@ -1,4 +1,3 @@
-import { Section } from '@oxrana/ui';
 import type { ComponentType } from 'react';
 import { CategoriesCard } from './categories-card';
 import { DevicesCard } from './devices-card';
@@ -19,18 +18,8 @@ function PoliciesStep() {
   return (
     <>
       <PoliciesCard />
-      <Section
-        title="Исключения"
-        description="Особые случаи: служебная машина без досмотра, арендатор круглосуточно. Каждое — с основанием."
-      >
-        <ExceptionsCard />
-      </Section>
-      <Section
-        title="Правила для пешеходов"
-        description="Нужен ли документ и сопровождение — по арендатору. Охранник увидит это одной строкой."
-      >
-        <PedestrianRulesStep />
-      </Section>
+      <ExceptionsCard />
+      <PedestrianRulesStep />
     </>
   );
 }

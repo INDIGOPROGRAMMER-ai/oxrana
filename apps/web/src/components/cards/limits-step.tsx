@@ -2,7 +2,6 @@ import { Alert, Badge, Button, cn, Section, useLinkComponent } from '@oxrana/ui'
 import { Users } from 'lucide-react';
 import { useState } from 'react';
 import { type TenantView, useDockAssignments, useQuotas, useTenants } from '../../lib/data';
-import { count } from '../../lib/setup';
 import { Empty, LoadError, RequireSite } from '../common';
 import { QuotasCard } from './quotas-card';
 import { isActiveOn, TenantDocksCard } from './tenant-docks-card';
@@ -137,11 +136,6 @@ function TenantRow({
         )}
         {docks === undefined ? null : <Badge tone="outline">доки: {docks}</Badge>}
       </span>
-      {docks !== undefined && docks > 0 ? (
-        <span className="sr-only">
-          {count(docks, 'док закреплён', 'дока закреплено', 'доков закреплено')}
-        </span>
-      ) : null}
     </button>
   );
 }

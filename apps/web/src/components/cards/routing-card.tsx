@@ -48,6 +48,8 @@ function RoutingBody({ siteId }: { siteId: string }) {
   const mutate = useMutate();
   const toast = useToast();
   const [pending, setPending] = useState<string | null>(null);
+  // отметка меняется сразу, не дожидаясь ответа; при ошибке возвращается
+  const [shown, setShown] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [extraZones, setExtraZones] = useState<string[]>([]);
   const [pickZone, setPickZone] = useState('');
@@ -94,8 +96,9 @@ function RoutingBody({ siteId }: { siteId: string }) {
     const key = `${row.key}:${gate.id}`;
     setPending(key);
     setError(null);
+    const existing = findRule(row, gate.id);
+    setShown((m) => ({ ...m, [key]: !existing }));
     try {
-      const existing = findRule(row, gate.id);
       if (existing) {
         await mutate(`/routing-rules/${existing.id}?confirm=false`, 'DELETE');
       } else {
@@ -112,6 +115,10 @@ function RoutingBody({ siteId }: { siteId: string }) {
       setError(e instanceof Error ? e.message : 'Не удалось сохранить маршрут');
     } finally {
       setPending(null);
+      setShown((m) => {
+        const { [key]: _done, ...rest } = m;
+        return rest;
+      });
     }
   }
 
@@ -159,7 +166,7 @@ function RoutingBody({ siteId }: { siteId: string }) {
           : row.participant === 'vehicle'
             ? `КПП «${gate.name}» пропускает только пешеходов`
             : `КПП «${gate.name}» пропускает только машины`;
-        const checked = findRule(row, gate.id) !== undefined;
+        const checked = shown[`${row.key}:${gate.id}`] ?? findRule(row, gate.id) !== undefined;
         return (
           <TD key={gate.id} className="text-center">
             <input

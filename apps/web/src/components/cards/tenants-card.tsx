@@ -69,7 +69,6 @@ function CreateTenantForm({ siteId, onDone }: { siteId: string; onDone: () => vo
 
 /** Вставка списка арендаторов из Excel: предпросмотр проверяет сервер (`dryRun`), сохранение — он же. */
 function TenantBatch({ siteId }: { siteId: string }) {
-  const toast = useToast();
   const mutate = useMutate();
   const send = (values: TenantDraft[], dryRun: boolean) =>
     dryRun
@@ -91,11 +90,7 @@ function TenantBatch({ siteId }: { siteId: string }) {
         { header: 'Телефон', render: (v) => v.responsiblePhone ?? '—' },
       ]}
       check={(values) => send(values, true)}
-      commit={async (values) => {
-        const result = await send(values, false);
-        toast(result.summary);
-        return result;
-      }}
+      commit={(values) => send(values, false)}
       commitLabel={(n) => (n === 0 ? 'Добавить арендаторов' : `Добавить арендаторов: ${n}`)}
     />
   );

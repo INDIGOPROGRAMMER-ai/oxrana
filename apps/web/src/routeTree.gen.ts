@@ -20,9 +20,11 @@ import { Route as AdminCategoriesRouteImport } from './routes/admin.categories'
 import { Route as AdminDevicesRouteImport } from './routes/admin.devices'
 import { Route as AdminDocksRouteImport } from './routes/admin.docks'
 import { Route as AdminGatesRouteImport } from './routes/admin.gates'
+import { Route as AdminPoliciesRouteImport } from './routes/admin.policies'
 import { Route as AdminRolesRouteImport } from './routes/admin.roles'
 import { Route as AdminRoutingRouteImport } from './routes/admin.routing'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
+import { Route as AdminRulesApprovalPoliciesRouteImport } from './routes/admin.rules.approval-policies'
 import { Route as AdminSetupIndexRouteImport } from './routes/admin.setup.index'
 import { Route as AdminSetupStepRouteImport } from './routes/admin.setup.$step'
 import { Route as AdminTenantsIndexRouteImport } from './routes/admin.tenants.index'
@@ -86,6 +88,11 @@ const AdminGatesRoute = AdminGatesRouteImport.update({
   path: '/gates',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminPoliciesRoute = AdminPoliciesRouteImport.update({
+  id: '/policies',
+  path: '/policies',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminRolesRoute = AdminRolesRouteImport.update({
   id: '/roles',
   path: '/roles',
@@ -101,6 +108,12 @@ const AdminUsersRoute = AdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminRulesApprovalPoliciesRoute =
+  AdminRulesApprovalPoliciesRouteImport.update({
+    id: '/rules/approval-policies',
+    path: '/rules/approval-policies',
+    getParentRoute: () => AdminRoute,
+  } as any)
 const AdminSetupIndexRoute = AdminSetupIndexRouteImport.update({
   id: '/setup/',
   path: '/setup/',
@@ -151,10 +164,12 @@ export interface FileRoutesByFullPath {
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/docks': typeof AdminDocksRoute
   '/admin/gates': typeof AdminGatesRoute
+  '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/': typeof AdminIndexRoute
+  '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
   '/admin/setup/$step': typeof AdminSetupStepRoute
   '/admin/setup/': typeof AdminSetupIndexRoute
   '/admin/tenants/': typeof AdminTenantsIndexRoute
@@ -173,10 +188,12 @@ export interface FileRoutesByTo {
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/docks': typeof AdminDocksRoute
   '/admin/gates': typeof AdminGatesRoute
+  '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin': typeof AdminIndexRoute
+  '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
   '/admin/setup/$step': typeof AdminSetupStepRoute
   '/admin/setup': typeof AdminSetupIndexRoute
   '/admin/tenants': typeof AdminTenantsIndexRoute
@@ -197,10 +214,12 @@ export interface FileRoutesById {
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/docks': typeof AdminDocksRoute
   '/admin/gates': typeof AdminGatesRoute
+  '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/': typeof AdminIndexRoute
+  '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
   '/admin/setup/$step': typeof AdminSetupStepRoute
   '/admin/setup/': typeof AdminSetupIndexRoute
   '/admin/tenants/': typeof AdminTenantsIndexRoute
@@ -222,10 +241,12 @@ export interface FileRouteTypes {
     | '/admin/devices'
     | '/admin/docks'
     | '/admin/gates'
+    | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
     | '/admin/users'
     | '/admin/'
+    | '/admin/rules/approval-policies'
     | '/admin/setup/$step'
     | '/admin/setup/'
     | '/admin/tenants/'
@@ -244,10 +265,12 @@ export interface FileRouteTypes {
     | '/admin/devices'
     | '/admin/docks'
     | '/admin/gates'
+    | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
     | '/admin/users'
     | '/admin'
+    | '/admin/rules/approval-policies'
     | '/admin/setup/$step'
     | '/admin/setup'
     | '/admin/tenants'
@@ -267,10 +290,12 @@ export interface FileRouteTypes {
     | '/admin/devices'
     | '/admin/docks'
     | '/admin/gates'
+    | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
     | '/admin/users'
     | '/admin/'
+    | '/admin/rules/approval-policies'
     | '/admin/setup/$step'
     | '/admin/setup/'
     | '/admin/tenants/'
@@ -368,6 +393,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminGatesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/policies': {
+      id: '/admin/policies'
+      path: '/policies'
+      fullPath: '/admin/policies'
+      preLoaderRoute: typeof AdminPoliciesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/roles': {
       id: '/admin/roles'
       path: '/roles'
@@ -387,6 +419,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/admin/users'
       preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/rules/approval-policies': {
+      id: '/admin/rules/approval-policies'
+      path: '/rules/approval-policies'
+      fullPath: '/admin/rules/approval-policies'
+      preLoaderRoute: typeof AdminRulesApprovalPoliciesRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/setup/': {
@@ -446,10 +485,12 @@ interface AdminRouteChildren {
   AdminDevicesRoute: typeof AdminDevicesRoute
   AdminDocksRoute: typeof AdminDocksRoute
   AdminGatesRoute: typeof AdminGatesRoute
+  AdminPoliciesRoute: typeof AdminPoliciesRoute
   AdminRolesRoute: typeof AdminRolesRoute
   AdminRoutingRoute: typeof AdminRoutingRoute
   AdminUsersRoute: typeof AdminUsersRoute
   AdminIndexRoute: typeof AdminIndexRoute
+  AdminRulesApprovalPoliciesRoute: typeof AdminRulesApprovalPoliciesRoute
   AdminSetupStepRoute: typeof AdminSetupStepRoute
   AdminSetupIndexRoute: typeof AdminSetupIndexRoute
   AdminTenantsIndexRoute: typeof AdminTenantsIndexRoute
@@ -464,10 +505,12 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminDevicesRoute: AdminDevicesRoute,
   AdminDocksRoute: AdminDocksRoute,
   AdminGatesRoute: AdminGatesRoute,
+  AdminPoliciesRoute: AdminPoliciesRoute,
   AdminRolesRoute: AdminRolesRoute,
   AdminRoutingRoute: AdminRoutingRoute,
   AdminUsersRoute: AdminUsersRoute,
   AdminIndexRoute: AdminIndexRoute,
+  AdminRulesApprovalPoliciesRoute: AdminRulesApprovalPoliciesRoute,
   AdminSetupStepRoute: AdminSetupStepRoute,
   AdminSetupIndexRoute: AdminSetupIndexRoute,
   AdminTenantsIndexRoute: AdminTenantsIndexRoute,
