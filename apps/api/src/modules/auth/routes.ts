@@ -38,6 +38,7 @@ import {
 } from '../../auth/throttle';
 import type { AppDeps } from '../../core/context';
 import { AppError } from '../../errors';
+import { closeSessionStreams } from '../../realtime/routes';
 import {
   buildMe,
   endSessionCookie,
@@ -239,8 +240,11 @@ export function registerAuthRoutes(app: FastifyInstance): void {
           .where(
             and(eq(schema.sessions.tokenHash, sha256Hex(token)), isNull(schema.sessions.revokedAt)),
           )
-          .returning({ userId: schema.sessions.userId });
-        if (row) await recordUserAuth(d, request, 'logout', { id: row.userId });
+          .returning({ id: schema.sessions.id, userId: schema.sessions.userId });
+        if (row) {
+          closeSessionStreams([row.id]);
+          await recordUserAuth(d, request, 'logout', { id: row.userId });
+        }
       }
       endSessionCookie(d, reply);
       return reply.status(204).send();
@@ -257,7 +261,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       const d = deps();
       const actor = request.actor;
       if (!actor) throw new AppError('unauthenticated');
-      await revokeUserSessions(d.db, actor.id, d.clock.now());
+      closeSessionStreams(await revokeUserSessions(d.db, actor.id, d.clock.now()));
       await recordUserAuth(d, request, 'logout_all', { id: actor.id });
       endSessionCookie(d, reply);
       return reply.status(204).send();
@@ -369,6 +373,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         .returning({ id: schema.sessions.id });
       if (!row)
         throw new AppError('not_found', { message: 'Сессия не найдена или уже завершена.' });
+      closeSessionStreams([row.id]);
       await recordUserAuth(d, request, 'session_revoked', { id: actor.id });
       if (row.id === actor.sessionId) endSessionCookie(d, reply);
       return reply.status(204).send();
@@ -409,7 +414,9 @@ export function registerAuthRoutes(app: FastifyInstance): void {
           mustChangePassword: false,
         })
         .where(eq(schema.users.id, user.id));
-      await revokeUserSessions(d.db, user.id, d.clock.now(), actor.sessionId ?? null);
+      closeSessionStreams(
+        await revokeUserSessions(d.db, user.id, d.clock.now(), actor.sessionId ?? null),
+      );
       await recordUserAuth(d, request, 'password_changed', user);
       return reply.status(204).send();
     },
@@ -500,7 +507,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         .update(schema.users)
         .set({ passwordHash, mustChangePassword: false, status: 'active' })
         .where(eq(schema.users.id, row.user.id));
-      await revokeUserSessions(d.db, row.user.id, now);
+      closeSessionStreams(await revokeUserSessions(d.db, row.user.id, now));
       await recordUserAuth(d, request, 'password_set', row.user);
       return signIn(d, request, reply, row.user, null);
     },

@@ -123,13 +123,17 @@ export function endSessionCookie(deps: AppDeps, reply: FastifyReply): void {
   reply.header('set-cookie', clearSessionCookie(deps.auth.secureCookies));
 }
 
-/** Все сессии пользователя отзываются: «выйти на всех устройствах», смена и сброс пароля. */
+/**
+ * Все сессии пользователя отзываются: «выйти на всех устройствах», смена и сброс пароля, отключение.
+ * Возвращает id отозванных сессий: после фиксации транзакции вызывающий закрывает их потоки SSE
+ * (`closeSessionStreams`).
+ */
 export async function revokeUserSessions(
   db: Db | DbTx,
   userId: string,
   now: number,
   except: string | null = null,
-): Promise<number> {
+): Promise<string[]> {
   const rows = await db
     .update(schema.sessions)
     .set({ revokedAt: new Date(now) })
@@ -141,7 +145,7 @@ export async function revokeUserSessions(
       ),
     )
     .returning({ id: schema.sessions.id });
-  return rows.length;
+  return rows.map((r) => r.id);
 }
 
 export async function findUserByLogin(

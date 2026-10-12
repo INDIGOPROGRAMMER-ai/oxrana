@@ -107,3 +107,112 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  stand:
+    name: Стенд (образы, compose, скрипты, workflow)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Проверка того, чего нет в сессии разработки (там нет Docker-демона): образы собираются,
+    # compose поднимается, oxranactl обновляет, откатывает и восстанавливает (ADR-019).
+    env:
+      TAG: ci-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Скрипты — shellcheck и тесты без Docker
+        run: |
+          shellcheck -x -P SCRIPTDIR deploy/oxranactl deploy/setup-vps.sh deploy/test/*.sh deploy/test/fakes/*
+          bash deploy/test/oxranactl.test.sh
+          bash deploy/test/setup-vps.test.sh
+
+      - name: Workflow — actionlint
+        run: |
+          curl -fsSL -o actionlint.tgz https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+          echo "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757  actionlint.tgz" | sha256sum -c -
+          tar xzf actionlint.tgz actionlint
+          ./actionlint
+
+      - name: Dockerfile — hadolint
+        run: docker run --rm -i hadolint/hadolint:v2.12.0 < deploy/Dockerfile
+
+      - name: compose.yml — разбор
+        run: OXRANA_TAG=ci docker compose --env-file deploy/.env.example -f deploy/compose.yml --profile tools config -q
+
+      - name: Сборка образов
+        run: |
+          docker build --target api -t "oxrana-api:$TAG" -f deploy/Dockerfile .
+          docker build --target proxy -t "oxrana-proxy:$TAG" -f deploy/Dockerfile .
+
+      - name: Caddyfile — проверка
+        run: |
+          docker run --rm -e STAND_DOMAIN=stand.example.ru -e ACME_EMAIL=ci@example.test \
+            "oxrana-proxy:$TAG" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+      - name: Стенд поднимается из образов (oxranactl, домен *.localhost, внутренний сертификат Caddy)
+        env:
+          OXRANA_HOME: ${{ runner.temp }}/oxrana
+          OXRANA_NO_REEXEC: "1"
+          OXRANA_CURL_INSECURE: "1" # у *.localhost сертификат выдаёт внутренний CA Caddy
+        run: |
+          mkdir -p "$OXRANA_HOME"
+          cp deploy/compose.yml deploy/oxranactl "$OXRANA_HOME/"
+          {
+            echo "STAND_DOMAIN=stand.localhost"
+            echo "ACME_EMAIL=ci@example.test"
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "OXRANA_OWNER_PASSWORD=$(openssl rand -hex 16)"
+            echo "OXRANA_APP_PASSWORD=$(openssl rand -hex 16)"
+          } > "$OXRANA_HOME/.env"
+          ctl() { bash "$OXRANA_HOME/oxranactl" "$@"; }
+          curl_stand() { curl -ksS --resolve stand.localhost:443:127.0.0.1 "$@"; }
+
+          echo "::group::первый деплой"
+          ctl update "$TAG"
+          echo "::endgroup::"
+          echo "::group::повторный деплой той же версии (идемпотентность)"
+          ctl update "$TAG"
+          echo "::endgroup::"
+
+          echo "Маршруты: кабинет, пост, API, SPA-запасной путь, отсутствующий ресурс"
+          curl_stand https://stand.localhost/ | grep '<div id="root">' >/dev/null
+          curl_stand https://stand.localhost/login | grep '<div id="root">' >/dev/null
+          curl_stand https://stand.localhost/gate/ | grep '/gate/assets/' >/dev/null
+          curl_stand https://stand.localhost/gate/enroll | grep '/gate/assets/' >/dev/null
+          curl_stand https://stand.localhost/api/healthz | grep "\"version\":\"$TAG\"" >/dev/null
+          [ "$(curl_stand -o /dev/null -w '%{http_code}' https://stand.localhost/assets/missing.js)" = 404 ]
+          curl_stand -sI https://stand.localhost/ | grep -i '^strict-transport-security:' >/dev/null
+          if curl_stand -sI https://stand.localhost/api/healthz | grep -i '^server:' >/dev/null; then
+            echo "Заголовок Server не должен отдаваться"; exit 1
+          fi
+
+          echo "::group::чистый старт и повторный запуск"
+          ctl bootstrap --org "Тестовая организация" --slug stand-ci --timezone Asia/Yekaterinburg \
+            --owner-name "Тест Тестов" --owner-email owner@example.test | tee bootstrap.out
+          grep -q 'https://stand.localhost/password#' bootstrap.out
+          if ctl bootstrap --org "Вторая" --slug stand-ci-2 --timezone Asia/Yekaterinburg \
+            --owner-name "Тест Тестов" --owner-email owner2@example.test; then
+            echo "Повторный чистый старт на непустой базе должен отказывать"; exit 1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::копия базы, обновление, откат, восстановление"
+          ctl backup
+          docker tag "oxrana-api:$TAG" "oxrana-api:$TAG-b"
+          docker tag "oxrana-proxy:$TAG" "oxrana-proxy:$TAG-b"
+          ctl update "$TAG-b"
+          ctl rollback
+          ctl rollback
+          ctl status
+          backup="$(find "$OXRANA_HOME/backups" -name 'daily-*.dump' | sort | tail -n 1)"
+          ctl restore "$backup" --yes
+          ctl health
+          echo "::endgroup::"
+
+      - name: Журналы стенда при сбое
+        if: failure()
+        env:
+          OXRANA_HOME: ${{ runner.temp }}/oxrana
+        run: |
+          cd "$OXRANA_HOME" 2>/dev/null || exit 0
+          docker compose --env-file .env --env-file state.env -f compose.yml ps -a || true
+          docker compose --env-file .env --env-file state.env -f compose.yml logs --tail 80 || true

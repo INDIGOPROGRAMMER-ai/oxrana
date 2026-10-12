@@ -1,0 +1,81 @@
+# Стенд (режим «облако» ADR-011, упрощённая первая часть этапа 12; ADR-019).
+# Наружу — только proxy (80, 443). PostgreSQL и API доступны лишь внутри сети compose.
+# Переменные: секреты и домен — в .env на сервере (образец: deploy/.env.example), версия — в state.env
+# (его пишет oxranactl). Запуск и обновление — только через oxranactl, не напрямую.
+name: oxrana
+
+services:
+  postgres:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?не задан POSTGRES_PASSWORD в .env}
+      TZ: UTC
+    command:
+      - postgres
+      - -c
+      - timezone=UTC
+      - -c
+      - log_timezone=UTC
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - max_connections=60
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: oxrana-api:${OXRANA_TAG:?не задана версия, используйте oxranactl}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      LOG_LEVEL: info
+      APP_VERSION: ${OXRANA_TAG}
+      # Порт API снаружи недоступен, перед ним только proxy: доверяем его X-Forwarded-For
+      TRUST_PROXY: "true"
+      PUBLIC_URL: https://${STAND_DOMAIN:?не задан STAND_DOMAIN в .env}
+      GATE_URL: https://${STAND_DOMAIN}/gate
+      DATABASE_URL: postgres://oxrana_app:${OXRANA_APP_PASSWORD:?не задан OXRANA_APP_PASSWORD в .env}@postgres:5432/oxrana
+
+  proxy:
+    image: oxrana-proxy:${OXRANA_TAG}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      STAND_DOMAIN: ${STAND_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?не задан ACME_EMAIL в .env}
+    volumes:
+      # сертификаты Let's Encrypt: не удалять (лимиты на выпуск)
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Разовые команды (`oxranactl update` / `bootstrap`): миграции и чистый старт под владельцем схемы.
+  cli:
+    image: oxrana-api:${OXRANA_TAG}
+    profiles: [tools]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PUBLIC_URL: https://${STAND_DOMAIN}
+      DATABASE_ADMIN_URL: postgres://oxrana_owner:${OXRANA_OWNER_PASSWORD:?не задан OXRANA_OWNER_PASSWORD в .env}@postgres:5432/oxrana
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

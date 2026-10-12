@@ -38,6 +38,7 @@ import { changedFields } from '../../core/diff';
 import { loadSite, loadTenant, notFound } from '../../core/loaders';
 import { usageView } from '../../core/usages';
 import { AppError } from '../../errors';
+import { closeSessionStreams } from '../../realtime/routes';
 import { invitationLink, issuePasswordLink } from './routes';
 import { assignmentViews, revokeUserSessions } from './session';
 
@@ -616,7 +617,8 @@ export function registerUserRoutes(app: FastifyInstance): void {
       },
       async (request) => {
         const ctx = ctxOf(request);
-        return ctx.tx(async (s) => {
+        const revoked: string[] = [];
+        const view = await ctx.tx(async (s) => {
           if (request.params.id === ctx.actor.id) {
             throw new AppError('conflict', { message: 'Свою учётную запись отключить нельзя.' });
           }
@@ -627,7 +629,8 @@ export function registerUserRoutes(app: FastifyInstance): void {
             .where(eq(schema.users.id, request.params.id))
             .returning();
           if (!user) throw notFound('Пользователь');
-          if (action === 'disable') await revokeUserSessions(s.db, user.id, ctx.now());
+          if (action === 'disable')
+            revoked.push(...(await revokeUserSessions(s.db, user.id, ctx.now())));
           await s.audit({
             siteId: null,
             entity: 'user',
@@ -646,6 +649,9 @@ export function registerUserRoutes(app: FastifyInstance): void {
             assignments: assignments.get(user.id) ?? [],
           };
         });
+        // Потоки SSE отключённого закрываются сразу после фиксации (как у отозванных устройств).
+        closeSessionStreams(revoked);
+        return view;
       },
     );
   }

@@ -10,14 +10,17 @@ export const MIGRATIONS_FOLDER = fileURLToPath(new URL('../migrations', import.m
  * Применяет миграции под владельцем схемы (`DATABASE_ADMIN_URL`, роль `oxrana_owner`).
  * Повторный запуск безопасен: применённые миграции пропускаются.
  */
-export async function runMigrations(adminUrl: string): Promise<void> {
+export async function runMigrations(
+  adminUrl: string,
+  migrationsFolder: string = MIGRATIONS_FOLDER,
+): Promise<void> {
   const pool = createPool({
     connectionString: adminUrl,
     max: 1,
     applicationName: 'oxrana-migrate',
   });
   try {
-    await migrate(drizzle(pool), { migrationsFolder: MIGRATIONS_FOLDER });
+    await migrate(drizzle(pool), { migrationsFolder });
   } finally {
     await pool.end();
   }

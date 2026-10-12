@@ -57,7 +57,7 @@ flowchart LR
 | **Агент КПП** | `apps/gate-agent` | адаптеры камер/реле/сканеров/СКУД, симуляторы; после MVP | ADR-008 |
 | **Оборудование: контракты и симуляторы** | `packages/hardware` | типы событий/команд, интерфейсы адаптеров, `sim-camera`, `sim-barrier` | ADR-008 |
 | **UI-кит** | `packages/ui` | shadcn-компоненты, токены, форматирование времени в поясе объекта | ADR-009 |
-| **Дистрибутив** | `deploy/` | `compose.yml` с профилями `onsite`/`cloud`, `oxranactl`, конфиг VPS-шлюза, INSTALL/RESTORE | ADR-011 |
+| **Дистрибутив** | `deploy/` | `compose.yml` с профилями `onsite`/`cloud`, `oxranactl`, конфиг VPS-шлюза, INSTALL/RESTORE; сейчас — стенд: Dockerfile, `compose.yml`, `oxranactl`, `setup-vps.sh` | ADR-011, ADR-019 |
 
 ### Внутри API
 
@@ -236,6 +236,10 @@ flowchart TB
 ### 7.2 Режим «облако»
 
 Тот же `compose.yml` на VM в ЦОД РФ без профилей `tunnel`/`agent`/`dnsmasq`: Caddy с публичным сертификатом, посты и арендаторы — через интернет; офлайн-режим PWA покрывает обрывы связи. Бэкапы — в S3 другого ЦОД. Для будущих клиентов SaaS.
+
+### 7.2a Тестовый стенд (этап 5b, ADR-019)
+
+Первая часть режима «облако» на VPS заказчика: `deploy/Dockerfile` (образы `api` и `proxy`), `deploy/compose.yml` (Caddy + API + PostgreSQL 16, наружу только 80/443), `deploy/oxranactl`, `deploy/setup-vps.sh`. Один домен: `/` — кабинет, `/gate/` — пост, `/api/` — API. Каждое слияние в `main` после зелёного CI собирает образы в GitHub Actions, передаёт их по SSH, применяет миграции и перезапускает стенд; проверка `/healthz`/`/readyz` не прошла — стенд возвращается на прежнюю версию. Человеку — `docs/STAND.md`.
 
 ### 7.3 CI/CD и среда
 

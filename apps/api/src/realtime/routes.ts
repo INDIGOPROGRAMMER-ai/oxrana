@@ -1,7 +1,7 @@
 import type { ServerResponse } from 'node:http';
 import { SiteParamsSchema } from '@oxrana/contracts';
 import { schema } from '@oxrana/db';
-import { and, asc, eq, gt } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -47,7 +47,49 @@ function format(event: HubEvent): string {
   return `id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-const streams = new Set<ServerResponse>();
+interface OpenStream {
+  /** Пользователь и сессия, от имени которых открыт поток; у устройства поста — `null`. */
+  readonly userId: string | null;
+  readonly sessionId: string | null;
+}
+
+const streams = new Map<ServerResponse, OpenStream>();
+
+function endStream(raw: ServerResponse, reason: string): void {
+  if (raw.writableEnded) return;
+  raw.write(`event: revoked\ndata: ${JSON.stringify({ reason })}\n\n`);
+  raw.end();
+}
+
+/**
+ * Закрывает открытые потоки указанных сессий сразу, как только они отозваны (выход, «выйти на всех
+ * устройствах», смена пароля, отключение пользователя). Вызывается после фиксации транзакции, чтобы
+ * переподключение не застало сессию живой. Страховка для нескольких процессов API — проверка
+ * сессии на каждом heartbeat (`stream`).
+ */
+export function closeSessionStreams(sessionIds: readonly string[]): void {
+  if (sessionIds.length === 0) return;
+  const ids = new Set(sessionIds);
+  for (const [raw, info] of streams) {
+    if (info.sessionId !== null && ids.has(info.sessionId)) endStream(raw, 'session_revoked');
+  }
+}
+
+/** Жива ли сессия потока: не отозвана, не истекла, пользователь не отключён. */
+async function sessionAlive(ctx: Ctx, sessionId: string): Promise<boolean> {
+  const [row] = await ctx.deps.db
+    .select({ status: schema.users.status })
+    .from(schema.sessions)
+    .innerJoin(schema.users, eq(schema.users.id, schema.sessions.userId))
+    .where(
+      and(
+        eq(schema.sessions.id, sessionId),
+        isNull(schema.sessions.revokedAt),
+        gt(schema.sessions.expiresAt, new Date(ctx.now())),
+      ),
+    );
+  return row?.status === 'active';
+}
 
 /**
  * Поток SSE объекта (ADR-004 п. 4–5): `id:` = id события, `retry: 3000`, heartbeat каждые 25 с;
@@ -75,7 +117,10 @@ async function stream(
     'x-request-id': request.id,
   });
   raw.write('retry: 3000\n\n');
-  streams.add(raw);
+  streams.set(raw, {
+    userId: actor.kind === 'user' ? actor.id : null,
+    sessionId: actor.sessionId ?? null,
+  });
 
   let lastSent = lastEventId;
   let replaying = true;
@@ -99,7 +144,17 @@ async function stream(
     if (replaying) buffered.push(event);
     else send(event);
   });
-  const heartbeat = setInterval(() => raw.write(': ping\n\n'), HEARTBEAT_MS);
+  const heartbeat = setInterval(() => {
+    raw.write(': ping\n\n');
+    // Страховка: отзыв, сделанный другим процессом API, закрывает поток не позже следующего heartbeat.
+    if (actor.sessionId) {
+      sessionAlive(ctx, actor.sessionId)
+        .then((alive) => {
+          if (!alive) endStream(raw, 'session_revoked');
+        })
+        .catch(() => undefined);
+    }
+  }, HEARTBEAT_MS);
   const close = () => {
     clearInterval(heartbeat);
     unsubscribe();
@@ -155,7 +210,7 @@ export function registerRealtimeRoutes(app: FastifyInstance): void {
 
   // Открытые потоки закрываются до остановки сервера, иначе close() ждал бы их вечно.
   app.addHook('preClose', async () => {
-    for (const raw of streams) raw.end();
+    for (const raw of streams.keys()) raw.end();
     streams.clear();
   });
 

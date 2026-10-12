@@ -19,8 +19,22 @@ const EnvSchema = z.object({
   PUBLIC_URL: z
     .url('PUBLIC_URL — адрес веб-кабинета, например https://pass.example.ru')
     .default('http://127.0.0.1:5173'),
-  /** Адрес приложения поста: в QR привязки устройства. */
+  /**
+   * Адрес приложения поста: в QR привязки устройства. Может лежать под путём общего домена
+   * (`https://pass.example.ru/gate`) — проверка Origin сравнивает только origin.
+   */
   GATE_URL: z.url('GATE_URL — адрес приложения поста').default('http://127.0.0.1:5174'),
+  /**
+   * Доверять заголовкам `X-Forwarded-*` от обратного прокси (Caddy на сервере). Включается только
+   * когда порт API снаружи недоступен: иначе клиент подделает свой IP, а по IP считается ограничение
+   * попыток входа и пишется аудит.
+   */
+  TRUST_PROXY: z
+    .enum(['true', 'false'], { error: 'TRUST_PROXY — true или false' })
+    .default('false')
+    .transform((value) => value === 'true'),
+  /** Версия сборки для `/healthz` и `/readyz`: тег образа; проверка после деплоя сверяет её. */
+  APP_VERSION: z.string().min(1).optional(),
 });
 
 export type Config = z.infer<typeof EnvSchema>;

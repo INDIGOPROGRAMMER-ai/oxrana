@@ -58,3 +58,26 @@ describe('OpenAPI', () => {
     await app.close();
   });
 });
+
+describe('IP клиента за обратным прокси (ADR-019)', () => {
+  const ipOf = async (trustProxy: boolean) => {
+    const app = await buildApp({ trustProxy });
+    app.get('/ip', { config: { public: true } }, async (request) => ({ ip: request.ip }));
+    await app.ready();
+    const res = await app.inject({
+      url: '/ip',
+      headers: { 'x-forwarded-for': '203.0.113.7' },
+      remoteAddress: '172.18.0.2',
+    });
+    await app.close();
+    return res.json().ip;
+  };
+
+  it('за Caddy (TRUST_PROXY=true) берётся адрес из X-Forwarded-For — по нему считается ограничение входа', async () => {
+    expect(await ipOf(true)).toBe('203.0.113.7');
+  });
+
+  it('по умолчанию заголовок не доверяется: клиент не подделает свой IP', async () => {
+    expect(await ipOf(false)).toBe('172.18.0.2');
+  });
+});

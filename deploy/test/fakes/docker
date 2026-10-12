@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Поддельный docker для deploy/test/oxranactl.test.sh: моделирует только то, что вызывает oxranactl.
+# Состояние — файлы в $FAKE_DIR. Управление сбоями: FAKE_BAD_TAG (версия не отвечает снаружи),
+# FAKE_UNHEALTHY_TAG (контейнер api не становится healthy), FAKE_FAIL_MIGRATE=1.
+set -euo pipefail
+: "${FAKE_DIR:?}"
+log() { printf '%s\n' "$*" >>"$FAKE_DIR/calls.log"; }
+
+images_file="$FAKE_DIR/images"
+touch "$images_file"
+
+case "${1:-}" in
+  compose)
+    shift
+    env_files=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --project-directory | -f) shift 2 ;;
+        --env-file) env_files+=("$2"); shift 2 ;;
+        *) break ;;
+      esac
+    done
+    sub=$1
+    shift
+    # версия, как её увидел бы compose: окружение главнее файлов
+    tag=''
+    for f in "${env_files[@]}"; do
+      if [ -f "$f" ] && grep -q '^OXRANA_TAG=' "$f"; then tag="$(grep '^OXRANA_TAG=' "$f" | tail -n 1 | cut -d= -f2-)"; fi
+    done
+    tag="${OXRANA_TAG:-$tag}"
+    case "$sub" in
+      up)
+        log "compose up tag=$tag args=$*"
+        for svc in "$@"; do
+          case "$svc" in
+            api) echo "$tag" >"$FAKE_DIR/api_tag" ;;
+            proxy) echo "$tag" >"$FAKE_DIR/proxy_tag" ;;
+            postgres) touch "$FAKE_DIR/postgres_up" ;;
+          esac
+        done
+        ;;
+      ps)
+        [ -f "$FAKE_DIR/api_tag" ] && echo "cid-api-$(cat "$FAKE_DIR/api_tag")"
+        ;;
+      run)
+        log "compose run tag=$tag args=$*"
+        case "$*" in
+          *migrate.js*)
+            if [ "${FAKE_FAIL_MIGRATE:-}" = 1 ]; then echo "migrate failed" >&2; exit 1; fi
+            echo "Миграции применены."
+            ;;
+          *bootstrap.js*) echo "ССЫЛКА https://fake.example/password#SECRET-TOKEN args: $*" ;;
+        esac
+        ;;
+      exec)
+        log "compose exec args=$*"
+        case "$*" in
+          *pg_dump*) printf 'PGDMP-fake-dump\n' ;;
+          *pg_restore*--list*) cat >/dev/null ;;
+          *pg_restore*) cat >/dev/null ;;
+          *psql*) cat >/dev/null ;;
+        esac
+        ;;
+      logs) echo "fake log line" ;;
+      stop) log "compose stop $*" ;;
+      *) log "compose $sub $*" ;;
+    esac
+    ;;
+  image)
+    case "$2" in
+      inspect) grep -qx "${3}" "$images_file" ;;
+      rm) log "image rm $3"; grep -vx "$3" "$images_file" >"$images_file.new" || true; mv "$images_file.new" "$images_file" ;;
+      prune) ;;
+    esac
+    ;;
+  images)
+    repo=$2
+    # свежие первыми
+    tac "$images_file" | grep "^$repo:" | cut -d: -f2 || true
+    ;;
+  inspect)
+    cid="${*: -1}"
+    tag="${cid#cid-api-}"
+    if [ "$tag" = "${FAKE_UNHEALTHY_TAG:-}" ]; then echo unhealthy; else echo healthy; fi
+    ;;
+  load)
+    cat >/dev/null
+    for t in ${FAKE_LOAD_TAGS:-}; do
+      printf 'oxrana-api:%s\noxrana-proxy:%s\n' "$t" "$t" >>"$images_file"
+    done
+    echo "Loaded image(s)"
+    ;;
+  *) log "docker $*" ;;
+esac

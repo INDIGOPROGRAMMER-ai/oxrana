@@ -1,0 +1,191 @@
+name: Деплой стенда
+
+# Каждое слияние в main после зелёного CI собирает образы, отправляет их на VPS стенда по SSH,
+# применяет миграции и перезапускает стенд (deploy/oxranactl update). Не прошла проверка
+# /healthz и /readyz — стенд остаётся на прошлой версии, а запуск помечается неудачным.
+# Руками: Actions → «Деплой стенда» → Run workflow (выкатить main заново или откатиться).
+# Настройка сервера и секретов — docs/STAND.md. Пока секретов нет, запуск после CI пропускается.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Что сделать: deploy — выкатить выбранную ветку (обычно main); rollback — вернуть предыдущую версию"
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      rollback_tag:
+        description: "Только для rollback: версия, на которую вернуться (пусто — предыдущая)"
+        type: string
+        required: false
+        default: ""
+
+# Деплои идут по очереди, а не друг поверх друга
+concurrency:
+  group: stand-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Деплой на стенд
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    # После CI — только если он зелёный
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    env:
+      EVENT: ${{ github.event_name }}
+      ACTION: ${{ inputs.action || 'deploy' }}
+      ROLLBACK_TAG: ${{ inputs.rollback_tag }}
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Проверка настроек стенда
+        id: cfg
+        env:
+          STAND_HOST: ${{ secrets.STAND_HOST }}
+          STAND_SSH_KEY: ${{ secrets.STAND_SSH_KEY }}
+          STAND_KNOWN_HOSTS: ${{ secrets.STAND_KNOWN_HOSTS }}
+        run: |
+          if [ -n "$STAND_HOST" ] && [ -n "$STAND_SSH_KEY" ] && [ -n "$STAND_KNOWN_HOSTS" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = workflow_dispatch ]; then
+            echo "::error title=Стенд не настроен::Не заданы секреты STAND_HOST, STAND_SSH_KEY, STAND_KNOWN_HOSTS (Settings → Secrets and variables → Actions). См. docs/STAND.md, шаг 4."
+            exit 1
+          else
+            echo "::notice title=Стенд не настроен::Деплой пропущен: нет секретов STAND_HOST, STAND_SSH_KEY, STAND_KNOWN_HOSTS. См. docs/STAND.md."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Проверка параметров отката
+        if: steps.cfg.outputs.configured == 'true' && env.ACTION == 'rollback'
+        run: |
+          if [ -n "$ROLLBACK_TAG" ] && ! [[ $ROLLBACK_TAG =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+            echo "::error title=Неверная версия::Допустимы буквы, цифры, точка, дефис и подчёркивание."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.cfg.outputs.configured == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Коммит ещё актуален
+        id: fresh
+        if: steps.cfg.outputs.configured == 'true' && env.ACTION == 'deploy'
+        run: |
+          # После CI выкатываем только голову main: более новый коммит выкатит свой собственный запуск
+          if [ "$EVENT" = workflow_run ]; then
+            head="$(git ls-remote origin refs/heads/main | cut -f1)"
+            if [ "$head" != "$SHA" ]; then
+              echo "::notice title=Деплой пропущен::В main уже есть более новый коммит ($head); его выкатит его собственный запуск."
+              echo "fresh=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "fresh=true" >> "$GITHUB_OUTPUT"
+
+      - name: Подключение к серверу
+        if: steps.cfg.outputs.configured == 'true' && steps.fresh.outputs.fresh != 'false'
+        env:
+          STAND_HOST: ${{ secrets.STAND_HOST }}
+          STAND_SSH_KEY: ${{ secrets.STAND_SSH_KEY }}
+          STAND_KNOWN_HOSTS: ${{ secrets.STAND_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$STAND_SSH_KEY" > ~/.ssh/stand_key
+          chmod 600 ~/.ssh/stand_key
+          printf '%s\n' "$STAND_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host stand
+            HostName $STAND_HOST
+            User deploy
+            IdentityFile ~/.ssh/stand_key
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            ConnectTimeout 20
+            ServerAliveInterval 15
+            ServerAliveCountMax 8
+          EOF
+          ssh stand 'echo "Сервер отвечает: $(hostname)"'
+
+      - name: Откат на предыдущую версию
+        if: steps.cfg.outputs.configured == 'true' && env.ACTION == 'rollback'
+        shell: bash
+        run: |
+          # shellcheck disable=SC2029 # версия проверена выше и подставляется на стороне runner намеренно
+          ssh stand "/opt/oxrana/oxranactl rollback $ROLLBACK_TAG"
+
+      - name: Сборка образов
+        id: build
+        if: steps.cfg.outputs.configured == 'true' && env.ACTION == 'deploy' && steps.fresh.outputs.fresh != 'false'
+        shell: bash
+        run: |
+          tag="$(date -u +%Y%m%d)-${SHA:0:7}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          docker build --target api -t "oxrana-api:$tag" -f deploy/Dockerfile .
+          docker build --target proxy -t "oxrana-proxy:$tag" -f deploy/Dockerfile .
+
+      - name: Передача на сервер
+        if: steps.build.outcome == 'success'
+        env:
+          TAG: ${{ steps.build.outputs.tag }}
+        shell: bash
+        run: |
+          # скрипты и compose.yml — в той же версии, что образы
+          tar -C deploy -cz compose.yml oxranactl | ssh stand 'tar -xz --no-same-owner -C /opt/oxrana && chmod 755 /opt/oxrana/oxranactl'
+          # PostgreSQL тоже везём с runner: Docker Hub отвечает 403 на запросы с российских IP.
+          # Передаём, только если такой версии на сервере ещё нет.
+          pg_image="$(awk '$1 == "image:" && $2 ~ /^postgres:/ { print $2; exit }' deploy/compose.yml)"
+          if [ -z "$pg_image" ]; then
+            echo "::error title=Нет образа PostgreSQL::В deploy/compose.yml не найдена строка image: postgres:…"
+            exit 1
+          fi
+          # shellcheck disable=SC2029 # имя образа взято из compose.yml репозитория, подстановка на стороне runner намеренна
+          if ssh stand "docker image inspect $pg_image >/dev/null 2>&1"; then
+            echo "Образ $pg_image уже есть на сервере."
+          else
+            docker pull "$pg_image"
+            docker save "$pg_image" | gzip -1 | ssh stand '/opt/oxrana/oxranactl load'
+          fi
+          docker save "oxrana-api:$TAG" "oxrana-proxy:$TAG" | gzip -1 | ssh stand '/opt/oxrana/oxranactl load'
+
+      - name: Обновление, миграции, проверка
+        id: update
+        if: steps.build.outcome == 'success'
+        env:
+          TAG: ${{ steps.build.outputs.tag }}
+        shell: bash
+        run: |
+          # shellcheck disable=SC2029 # тег собран из даты и хэша коммита, подстановка на стороне runner намеренна
+          ssh stand "/opt/oxrana/oxranactl update $TAG"
+
+      - name: Проверка снаружи
+        if: steps.update.outcome == 'success'
+        env:
+          DOMAIN: ${{ vars.STAND_DOMAIN }}
+          TAG: ${{ steps.build.outputs.tag }}
+        shell: bash
+        run: |
+          {
+            echo "### Стенд обновлён"
+            echo "Версия: \`$TAG\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$DOMAIN" ]; then
+            echo "::notice::Переменная STAND_DOMAIN не задана — проверка снаружи пропущена."
+            exit 0
+          fi
+          # Предупреждение, а не ошибка: сервер уже проверил себя; здесь ловим неверную DNS-запись
+          if curl -fsS --max-time 20 --retry 3 --retry-delay 5 "https://$DOMAIN/api/healthz" | grep "\"version\":\"$TAG\"" >/dev/null; then
+            echo "Снаружи https://$DOMAIN отвечает версией $TAG."
+          else
+            echo "::warning title=Стенд не виден снаружи::Сервер обновлён, но https://$DOMAIN/api/healthz не ответил с этой машины. Проверьте DNS-запись (docs/STAND.md, шаг 2)."
+          fi

@@ -17,6 +17,7 @@
     "test:coverage": "vitest run --project unit --coverage",
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
+    "test:deploy": "bash deploy/test/oxranactl.test.sh && bash deploy/test/setup-vps.test.sh",
     "db:up": "bash scripts/db-up.sh",
     "db:migrate": "pnpm --filter @oxrana/db migrate",
     "db:seed": "pnpm --filter @oxrana/db seed",

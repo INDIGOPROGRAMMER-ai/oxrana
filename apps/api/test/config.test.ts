@@ -12,6 +12,16 @@ describe('loadConfig', () => {
     });
   });
 
+  it('TRUST_PROXY и APP_VERSION: по умолчанию выключено, неверное значение — ошибка', () => {
+    const base = { DATABASE_URL: 'postgres://x@127.0.0.1/db' };
+    expect(loadConfig(base)).toMatchObject({ TRUST_PROXY: false });
+    expect(loadConfig({ ...base, TRUST_PROXY: 'true', APP_VERSION: 'v1' })).toMatchObject({
+      TRUST_PROXY: true,
+      APP_VERSION: 'v1',
+    });
+    expect(() => loadConfig({ ...base, TRUST_PROXY: '1' })).toThrow(/TRUST_PROXY/);
+  });
+
   it('без DATABASE_URL — ошибка с названием переменной, а не молчаливая подмена', () => {
     expect(() => loadConfig({})).toThrow(ConfigError);
     expect(() => loadConfig({})).toThrow(/DATABASE_URL/);
