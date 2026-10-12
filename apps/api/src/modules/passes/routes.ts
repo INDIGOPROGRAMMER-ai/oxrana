@@ -1,9 +1,12 @@
 import {
+  ApprovalListQuerySchema,
+  ApprovalViewSchema,
   CancelPassSchema,
   ChangeRequestListQuerySchema,
   ChangeRequestViewSchema,
   DecisionSchema,
   IdParamsSchema,
+  PassApproveSchema,
   PassBatchResultSchema,
   PassBatchSchema,
   PassCreatedSchema,
@@ -30,6 +33,7 @@ import { z } from 'zod';
 import { isTenantUser } from '../../actor';
 import { assertTenantAccess, type Ctx, can, ctxOf, type Scope } from '../../core/context';
 import { loadSite, loadTenant } from '../../core/loaders';
+import { approvePass, creatorNames, rejectPass } from './approvals';
 import { createBatch } from './batch';
 import { passHints } from './hints';
 import {
@@ -260,7 +264,7 @@ export function registerPassesModule(app: FastifyInstance): void {
   typed.post(
     '/passes/:id/cancel',
     {
-      config: { permission: 'pass.cancel' },
+      config: { permission: ['pass.cancel', 'pass.cancel_own'] },
       schema: {
         tags,
         summary: 'Отменить пропуск (с причиной)',
@@ -273,6 +277,97 @@ export function registerPassesModule(app: FastifyInstance): void {
       const ctx = ctxOf(request);
       return ctx.tx(async (s) =>
         passView(await cancelPass(s, request.params.id, request.body.reason), ctx.now()),
+      );
+    },
+  );
+
+  typed.get(
+    '/sites/:siteId/approvals',
+    {
+      config: { permission: 'pass.approve' },
+      schema: {
+        tags,
+        summary: 'Пропуска на согласовании: все поля будущего пропуска, кто заказал',
+        params: SiteParamsSchema,
+        querystring: ApprovalListQuerySchema,
+        response: { 200: z.object({ items: z.array(ApprovalViewSchema) }) },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      const q = request.query;
+      return ctx.tx(async (s) => {
+        const site = await loadSite(s, request.params.siteId);
+        if (q.tenantId) await loadTenant(s, q.tenantId);
+        const rows = await s.db
+          .select({ pass: schema.passes, tenantName: schema.tenants.shortName })
+          .from(schema.passes)
+          .innerJoin(schema.tenants, eq(schema.tenants.id, schema.passes.tenantId))
+          .where(
+            and(
+              eq(schema.passes.organizationId, s.organizationId),
+              eq(schema.passes.siteId, site.id),
+              eq(schema.passes.status, 'pending_approval'),
+              q.tenantId ? eq(schema.passes.tenantId, q.tenantId) : undefined,
+            ),
+          )
+          .orderBy(asc(schema.passes.createdAt), asc(schema.passes.id))
+          .limit(q.limit)
+          .offset(q.offset);
+        const names = await creatorNames(
+          s,
+          rows.map((r) => r.pass),
+        );
+        return {
+          items: rows.map((r) => ({
+            pass: passView(r.pass, ctx.now()),
+            tenantName: r.tenantName,
+            createdByName: r.pass.createdBy ? (names.get(r.pass.createdBy) ?? null) : null,
+          })),
+        };
+      });
+    },
+  );
+
+  typed.post(
+    '/passes/:id/approve',
+    {
+      config: { permission: 'pass.approve' },
+      schema: {
+        tags,
+        summary: 'Одобрить пропуск; «с изменениями» — изменённые поля видны арендатору',
+        params: IdParamsSchema,
+        body: PassApproveSchema,
+        response: { 200: PassViewSchema },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      return ctx.tx(async (s) =>
+        passView(
+          await approvePass(s, request.params.id, request.body.note ?? null, request.body.changes),
+          ctx.now(),
+        ),
+      );
+    },
+  );
+
+  typed.post(
+    '/passes/:id/reject',
+    {
+      config: { permission: 'pass.approve' },
+      schema: {
+        tags,
+        summary: 'Отклонить пропуск на согласовании (с причиной — её видит арендатор)',
+        params: IdParamsSchema,
+        body: RejectSchema,
+        response: { 200: PassViewSchema },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      return ctx.tx(async (s) =>
+        passView(await rejectPass(s, request.params.id, request.body.note), ctx.now()),
       );
     },
   );

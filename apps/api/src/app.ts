@@ -6,6 +6,10 @@ import {
   serializerCompiler,
   validatorCompiler,
 } from 'fastify-type-provider-zod';
+import { sessionCookie } from './auth/cookies';
+import { registerCsrfGuard } from './auth/csrf';
+import { type AuthMessenger, type MessengerLog, StubMessenger } from './auth/messenger';
+import { createActorResolver } from './auth/resolve';
 import { type Clock, systemClock } from './clock';
 import type { AppDeps, ServiceHooks } from './core/context';
 import { RuleSetCache } from './core/ruleset-cache';
@@ -22,7 +26,16 @@ export interface AppServices {
   clock?: Clock;
   hub?: EventHub;
   hooks?: ServiceHooks;
+  /** Доставка приглашений и кодов; по умолчанию — заглушка до этапа уведомлений. */
+  messenger?: AuthMessenger;
+  /** Адрес веб-кабинета (ссылки, Origin); по умолчанию — dev-адрес. */
+  publicUrl?: string;
+  /** Адрес приложения поста (QR привязки). */
+  gateUrl?: string;
 }
+
+const DEV_PUBLIC_URL = 'http://127.0.0.1:5173';
+const DEV_GATE_URL = 'http://127.0.0.1:5174';
 
 export interface AppOptions extends PermissionGuardOptions {
   logger?: FastifyServerOptions['logger'];
@@ -35,9 +48,16 @@ export interface AppOptions extends PermissionGuardOptions {
 }
 
 /** Собирает зависимости сервисов: часы, кэш правил, хаб событий. */
-export function createDeps(services: AppServices): AppDeps {
+export function createDeps(services: AppServices, log: MessengerLog | null = null): AppDeps {
   const clock = services.clock ?? systemClock;
+  const publicUrl = services.publicUrl ?? DEV_PUBLIC_URL;
   return {
+    auth: {
+      publicUrl,
+      gateUrl: services.gateUrl ?? DEV_GATE_URL,
+      secureCookies: publicUrl.startsWith('https:'),
+      messenger: services.messenger ?? new StubMessenger(log),
+    },
     db: services.db,
     clock,
     hub: services.hub ?? new EventHub(),
@@ -74,9 +94,27 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   });
 
   registerErrorHandling(app);
+  // CSRF — до определения актора: подделанный запрос не доходит даже до чтения сессии (ADR-018).
+  registerCsrfGuard(app, [
+    options.services?.publicUrl ?? DEV_PUBLIC_URL,
+    options.services?.gateUrl ?? DEV_GATE_URL,
+  ]);
+  const deps = options.services ? createDeps(options.services, app.log) : null;
+  app.decorateRequest('refreshedSessionToken', null);
+  app.addHook('onSend', async (request, reply) => {
+    // Скользящий срок сессии: продлённая на сервере сессия продлевает и cookie.
+    if (request.refreshedSessionToken && deps && !reply.hasHeader('set-cookie')) {
+      reply.header(
+        'set-cookie',
+        sessionCookie(request.refreshedSessionToken, deps.auth.secureCookies),
+      );
+    }
+  });
+  const resolveActor =
+    options.resolveActor ?? (deps ? createActorResolver(deps.db, deps.clock) : undefined);
   registerPermissionGuard(app, {
     ...(options.permissions ? { permissions: options.permissions } : {}),
-    ...(options.resolveActor ? { resolveActor: options.resolveActor } : {}),
+    ...(resolveActor ? { resolveActor } : {}),
   });
 
   registerHealthRoutes(app, {
@@ -84,8 +122,8 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     readiness: options.readiness ?? (async () => {}),
   });
 
-  if (options.services) {
-    app.decorate('deps', createDeps(options.services));
+  if (deps) {
+    app.decorate('deps', deps);
     registerModules(app);
   }
 

@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { registerRealtimeRoutes } from '../realtime/routes';
 import { registerAuditModule } from './audit/routes';
+import { registerDeviceRoutes } from './auth/devices';
+import { registerAuthRoutes } from './auth/routes';
+import { registerUserRoutes } from './auth/users';
 import { registerGateModule } from './gate/routes';
 import { registerOccupancyModule } from './occupancy/routes';
 import { registerOrgModule } from './org/routes';
@@ -10,6 +13,9 @@ import { registerTenantsModule } from './tenants/routes';
 
 /** Бизнес-модули API (ARCHITECTURE §2): каждый регистрирует свои маршруты с правами. */
 export function registerModules(app: FastifyInstance): void {
+  registerAuthRoutes(app);
+  registerUserRoutes(app);
+  registerDeviceRoutes(app);
   registerOrgModule(app);
   registerTenantsModule(app);
   registerRulesModule(app);

@@ -4,6 +4,7 @@ import {
   GateActionTypeSchema,
   GateKindSchema,
   GateRequestStatusSchema,
+  OverrideStatusSchema,
   ParticipantSchema,
   PassageDirectionSchema,
   QuotaEnforcementSchema,
@@ -309,4 +310,38 @@ export const GateDecisionQuerySchema = z.strictObject({
   passId: IdSchema.optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+/**
+ * Запрос исключения с поста (A11, сценарий 42): пост ссылается на решение из журнала КПП —
+ * вердикт и причины сервер берёт оттуда, а не из тела запроса.
+ */
+export const OverrideRequestCreateSchema = z.strictObject({
+  decisionId: z.int().positive(),
+  reason: ReasonSchema,
+});
+
+export const OverrideRequestViewSchema = z.object({
+  id: IdSchema,
+  siteId: IdSchema,
+  gateId: IdSchema,
+  gateName: z.string(),
+  passId: IdSchema.nullable(),
+  tenantId: IdSchema.nullable(),
+  plateNorm: z.string().nullable(),
+  direction: PassageDirectionSchema,
+  verdictCode: VerdictCodeSchema,
+  reasons: z.array(z.object({ code: z.string(), message: z.string() })),
+  reason: z.string(),
+  status: OverrideStatusSchema,
+  decidedBy: IdSchema.nullable(),
+  decidedByName: z.string().nullable(),
+  decidedAt: InstantSchema.nullable(),
+  decisionNote: z.string().nullable(),
+  validUntil: InstantSchema.nullable(),
+  createdAt: InstantSchema,
+});
+
+export const OverrideRequestListQuerySchema = z.strictObject({
+  status: OverrideStatusSchema.optional(),
 });

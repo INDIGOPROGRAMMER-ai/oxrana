@@ -1,19 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { ROLE_TEMPLATES } from '@oxrana/contracts';
-import type { Actor } from '../src/actor';
-import { gateActor, KEYS, roleActor } from './support/harness';
+import { gateActor, KEYS, roleActor, type TestPrincipal } from './support/harness';
 
 /**
  * Тест-матрица прав (ADR-007, B12): каждый маршрут API × каждая роль-шаблон × «без входа».
  * Маршруты берутся из реестра хука прав (`app.routeAccess`), поэтому новый маршрут попадает в
  * матрицу сам. Ожидание выводится из объявленного права: есть право (любое из списка) — хук
  * пропускает (ответ не 401 и не 403 с этим правом), нет — 403 с названием права; без входа — 401.
- * Акторы до этапа 5 фиктивные: права — из шаблона роли, область — демо-объект, у ролей арендатора —
- * первый арендатор сида (ключ dns).
+ * Субъекты — настоящие учётные записи (ADR-018): пользователь с назначением роли-шаблона
+ * демо-организации и сессией, у ролей арендатора — первый арендатор сида (ключ dns); пост — устройство
+ * учётки КПП с токеном. Сервер сам определяет актора по сессии и токену и читает права из БД.
  */
 export interface MatrixActor {
   readonly role: string;
-  readonly actor: Actor;
+  readonly actor: TestPrincipal;
 }
 
 export function matrixActors(): MatrixActor[] {

@@ -18,6 +18,22 @@ const executablePath =
 
 const reuseExistingServer = !process.env.CI;
 
+/**
+ * E2E идут на отдельной чистой базе `oxrana_e2e` (только миграции, без демо-сида): сценарий
+ * начинается с «чистого старта», как на новом сервере (ADR-016).
+ */
+function withDatabase(url: string | undefined, database: string): string {
+  if (!url) return '';
+  const parsed = new URL(url);
+  parsed.pathname = `/${database}`;
+  return parsed.toString();
+}
+export const E2E_DATABASE_URL = withDatabase(process.env.DATABASE_URL, 'oxrana_e2e');
+export const E2E_DATABASE_ADMIN_URL = withDatabase(process.env.DATABASE_ADMIN_URL, 'oxrana_e2e');
+export const WEB_URL = `http://127.0.0.1:${PORTS.web}`;
+export const GATE_URL = `http://127.0.0.1:${PORTS.gate}`;
+const API_URL = `http://127.0.0.1:${PORTS.api}`;
+
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
@@ -40,19 +56,30 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'pnpm --filter @oxrana/api exec tsx src/server.ts',
-      url: `http://127.0.0.1:${PORTS.api}/healthz`,
-      env: { PORT: String(PORTS.api), HOST: '127.0.0.1' },
-      reuseExistingServer,
+      // база пересоздаётся при каждом запуске: сервер не переиспользуется
+      command: 'bash scripts/e2e-db.sh && pnpm --filter @oxrana/api exec tsx src/server.ts',
+      url: `${API_URL}/healthz`,
+      env: {
+        PORT: String(PORTS.api),
+        HOST: '127.0.0.1',
+        DATABASE_URL: E2E_DATABASE_URL,
+        E2E_DATABASE_ADMIN_URL,
+        PUBLIC_URL: WEB_URL,
+        GATE_URL,
+      },
+      reuseExistingServer: false,
+      timeout: 120_000,
     },
     {
       command: `pnpm --filter @oxrana/web exec vite --host 127.0.0.1 --port ${PORTS.web} --strictPort`,
-      url: `http://127.0.0.1:${PORTS.web}`,
+      url: WEB_URL,
+      env: { API_PROXY_TARGET: API_URL },
       reuseExistingServer,
     },
     {
       command: `pnpm --filter @oxrana/gate exec vite --host 127.0.0.1 --port ${PORTS.gate} --strictPort`,
-      url: `http://127.0.0.1:${PORTS.gate}`,
+      url: GATE_URL,
+      env: { API_PROXY_TARGET: API_URL },
       reuseExistingServer,
     },
   ],

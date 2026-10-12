@@ -79,6 +79,7 @@
 | Применить миграции (под `oxrana_owner`) | `pnpm db:migrate` |
 | Демо-объект «ЛЦ Радонежский» (идемпотентно: повтор ничего не дублирует и не меняет) | `pnpm db:seed` |
 | Пересоздать базу с нуля: миграции и сид | `pnpm db:reset` |
+| Чистый старт на пустой базе: организация, шаблоны ролей, владелец; печатает одноразовую ссылку установки пароля (ADR-018) | `pnpm bootstrap --org "…" --slug … --timezone Asia/Yekaterinburg --owner-name "…" --owner-email …` |
 | Запуск для разработки: API :3000, web :5173, gate :5174 | `pnpm dev` |
 | Сборка web, gate и API | `pnpm build` |
 | Дымовая проверка собранного API (после `build`) | `bash scripts/smoke-build.sh` |
@@ -88,10 +89,10 @@
 | Покрытие `engine` и `plates` (порог 95 % строк) | `pnpm test:coverage` |
 | Интеграционные тесты на реальном PostgreSQL (шаблон `oxrana_test_template` с миграциями, своя копия базы на каждый файл) | `pnpm test:integration` |
 | Все тесты Vitest | `pnpm test` |
-| E2E Playwright (сами поднимают API, web, gate на портах 3100/5273/5274) | `pnpm test:e2e` |
+| E2E Playwright (сами поднимают API на чистой базе `oxrana_e2e`, web, gate на портах 3100/5273/5274) | `pnpm test:e2e` |
 | Один тест | `pnpm exec vitest run путь/к/файлу.test.ts` |
 | Новая миграция из изменённой схемы `packages/db/src/schema` | `pnpm --filter @oxrana/db generate` |
 | Перегенерировать фикстуру RuleSet демо-объекта для тестов движка (после правки сида или `loadRuleSet`) | `pnpm fixture:engine` |
 | Проверка «готово» | `pnpm typecheck && pnpm lint && pnpm test` |
 
-Где что: `apps/api` (Fastify: `src/core` — транзакция запроса с аудитом и outbox, фабрика справочников; `src/modules/*` — модули; `src/realtime` — SSE; тесты `test/scenarios` — сценарии приёмки на демо-объекте, `test/permissions.*` — матрица прав), `apps/web` и `apps/gate` (Vite + TanStack Router), `packages/{contracts,engine,plates,db}`, `scripts/` (БД, архитектурные проверки), `e2e/`. В `packages/db`: `src/schema` (Drizzle), `migrations/` (0001 генерируется, ручное — отдельными файлами), `seed/` (единственное место с названиями объекта), `test/` (harness тестовых баз). В `packages/engine/test/fixtures` — замороженный срез правил демо-объекта (ADR-015), в `scripts/check-engine-purity.ts` — запрет часов, сети и пояса среды в `engine` и `plates`. Решения по устройству каркаса — ADR-013. Новая внешняя зависимость — только через `catalog:` в `pnpm-workspace.yaml`, версия точная.
+Где что: `apps/api` (Fastify: `src/core` — транзакция запроса с аудитом и outbox, фабрика справочников; `src/auth` — пароли, токены, CSRF, ограничение попыток, актор из сессии и токена устройства; `src/cli` — чистый старт; `src/modules/*` — модули; `src/realtime` — SSE; тесты `test/scenarios` — сценарии приёмки на демо-объекте, `test/permissions.*` — матрица прав, субъекты тестов — настоящие сессии и токены устройств из `test/support/harness.ts`), `apps/web` и `apps/gate` (Vite + TanStack Router), `packages/{contracts,engine,plates,db}`, `scripts/` (БД, архитектурные проверки), `e2e/`. В `packages/db`: `src/schema` (Drizzle), `migrations/` (0001 генерируется, ручное — отдельными файлами), `seed/` (единственное место с названиями объекта), `test/` (harness тестовых баз). В `packages/engine/test/fixtures` — замороженный срез правил демо-объекта (ADR-015), в `scripts/check-engine-purity.ts` — запрет часов, сети и пояса среды в `engine` и `plates`. Решения по устройству каркаса — ADR-013. Новая внешняя зависимость — только через `catalog:` в `pnpm-workspace.yaml`, версия точная.

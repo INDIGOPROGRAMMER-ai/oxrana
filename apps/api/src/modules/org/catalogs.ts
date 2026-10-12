@@ -16,6 +16,7 @@ import { assertSiteAccess, type Scope } from '../../core/context';
 import { registerResource, type ScopeInfo } from '../../core/crud';
 import { assertRef } from '../../core/refs';
 import { AppError } from '../../errors';
+import { createGateAccount } from '../auth/devices';
 
 type Row = Record<string, unknown> & { id: string };
 
@@ -77,6 +78,9 @@ export function registerCatalogRoutes(app: FastifyInstance): void {
       });
       return input;
     },
+    // Учётка КПП создаётся вместе с КПП (A11, ADR-018).
+    afterWrite: async (s, row, _input, existing) =>
+      existing ? {} : createGateAccount(s, { id: row.id, siteId: String(row.siteId) }),
     scopeOf: siteScope,
     orderBy: (c) => [asc(c('sort')), asc(c('name'))],
   });

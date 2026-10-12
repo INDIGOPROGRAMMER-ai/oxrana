@@ -296,6 +296,7 @@ export async function applySeed(db: Db, data: SeedData): Promise<SeedReport> {
         name: r.name,
         permissions: [...r.permissions],
         isTemplate: true,
+        templateCode: r.code,
       })),
     );
     // Одна учётка на КПП (A11); устройства привязываются кодом из админки (этап 5).

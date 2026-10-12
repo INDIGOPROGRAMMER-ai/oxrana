@@ -62,6 +62,8 @@ export const passes = pgTable(
     approvedAt: tstz('approved_at'),
     approvalNote: text('approval_note'),
     approvalChanges: jsonb('approval_changes'),
+    /** Согласование эскалировано по сроку политики (on_timeout = escalate). */
+    approvalEscalatedAt: tstz('approval_escalated_at'),
     cancelledReason: text('cancelled_reason'),
     closedAt: tstz('closed_at'),
     /** id в PASS24 при импорте. */

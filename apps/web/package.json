@@ -12,7 +12,8 @@
     "@oxrana/contracts": "workspace:*",
     "@tanstack/react-router": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "uqr": "catalog:"
   },
   "devDependencies": {
     "@tanstack/router-plugin": "catalog:",

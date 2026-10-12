@@ -55,6 +55,7 @@ const ENUM_COLUMNS: [table: string, column: string, schema: EnumSchema][] = [
   ['override_requests', 'via', c.OverrideViaSchema],
   ['violations', 'status', c.ViolationStatusSchema],
   ['users', 'status', c.UserStatusSchema],
+  ['password_resets', 'purpose', c.PasswordResetPurposeSchema],
   ['gate_accounts', 'status', c.GateAccountStatusSchema],
   ['gate_devices', 'kind', c.GateDeviceKindSchema],
   ['device_enrollments', 'kind', c.GateDeviceKindSchema],

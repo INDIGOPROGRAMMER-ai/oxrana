@@ -37,6 +37,11 @@ export function passView(row: PassRow, now: number): PassApiView {
     createdVia: row.createdVia,
     batchId: row.batchId,
     approvedAt: iso(row.approvedAt),
+    approvedBy: row.approvedBy,
+    approvalNote: row.approvalNote,
+    approvalChanges:
+      (row.approvalChanges as Record<string, { from: unknown; to: unknown }> | null) ?? null,
+    approvalEscalatedAt: iso(row.approvalEscalatedAt),
     cancelledReason: row.cancelledReason,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

@@ -6,9 +6,13 @@
     "emitDeclarationOnly": false,
     "noEmit": true,
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "jsx": "react-jsx"
   },
   "include": ["src", "test", "vite.config.ts"],
-  "references": [{ "path": "../../packages/contracts" }]
+  "references": [
+    {
+      "path": "../../packages/contracts"
+    }
+  ]
 }

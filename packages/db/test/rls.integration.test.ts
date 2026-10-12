@@ -133,8 +133,10 @@ describe('чужая организация не видна (RLS)', () => {
     const withoutRls = rows.filter((r) => !r.rls || r.policies === 0).map((r) => r.table);
     // Платформенные таблицы без organization_id: пользователь состоит в нескольких организациях.
     expect(withoutRls).toEqual([
+      'auth_events',
       'login_codes',
       'notification_preferences',
+      'password_resets',
       'push_subscriptions',
       'sessions',
       'telegram_links',
@@ -143,7 +145,10 @@ describe('чужая организация не видна (RLS)', () => {
     const { rows: orgTables } = await ownerPool.query<{ table: string }>(`
       select table_name as table from information_schema.columns
        where table_schema = 'public' and column_name = 'organization_id'`);
-    for (const { table } of orgTables) expect(withoutRls, table).not.toContain(table);
+    // sessions.organization_id — текущая организация сессии, а не принадлежность строки (ADR-018).
+    for (const { table } of orgTables.filter((t) => t.table !== 'sessions')) {
+      expect(withoutRls, table).not.toContain(table);
+    }
   });
 
   it('приложение может задать только свою организацию — RLS не принимает пустое значение', async () => {

@@ -1,11 +1,14 @@
 import {
+  APPROVAL_CREATOR_KINDS,
   ApprovalPolicyCreateSchema,
+  ApprovalPolicyGapSchema,
   ApprovalPolicyPatchSchema,
   ApprovalPolicyViewSchema,
   ExceptionCreateSchema,
   type ExceptionMatch,
   ExceptionPatchSchema,
   ExceptionViewSchema,
+  PASS_TYPES,
   QuotaCreateSchema,
   QuotaListQuerySchema,
   QuotaPatchSchema,
@@ -13,6 +16,7 @@ import {
   RoutingRuleCreateSchema,
   RoutingRulePatchSchema,
   RoutingRuleViewSchema,
+  SiteParamsSchema,
   TimeWindowPolicyCreateSchema,
   TimeWindowPolicyPatchSchema,
   TimeWindowPolicyViewSchema,
@@ -22,13 +26,16 @@ import { localDate } from '@oxrana/engine';
 import { normalizePlate } from '@oxrana/plates';
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import type { Scope } from '../../core/context';
+import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
+import { ctxOf, type Scope } from '../../core/context';
 import { registerResource } from '../../core/crud';
 import { sameValue } from '../../core/diff';
 import { loadSite } from '../../core/loaders';
 import { assertRef } from '../../core/refs';
 import { AppError } from '../../errors';
 import { siteScope } from '../org/catalogs';
+import { CREATOR_LABEL, PASS_TYPE_LABEL } from '../passes/validate';
 
 type Row = Record<string, unknown> & { id: string };
 const iso = (value: unknown): string | null =>
@@ -466,6 +473,51 @@ export function registerRulesModule(app: FastifyInstance): void {
       }),
     scopeOf: siteScope,
   });
+
+  app.withTypeProvider<ZodTypeProvider>().get(
+    '/sites/:siteId/approval-policies/missing',
+    {
+      config: { permission: 'rule.manage' },
+      schema: {
+        tags: ['rules'],
+        summary: 'Незаданные политики согласования объекта: такие пропуска уходят на согласование',
+        params: SiteParamsSchema,
+        response: { 200: z.object({ items: z.array(ApprovalPolicyGapSchema) }) },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      return ctx.tx(async (s) => {
+        const site = await loadSite(s, request.params.siteId);
+        const rows = await s.db
+          .select({
+            creatorKind: schema.approvalPolicies.creatorKind,
+            passType: schema.approvalPolicies.passType,
+          })
+          .from(schema.approvalPolicies)
+          .where(
+            and(
+              eq(schema.approvalPolicies.organizationId, s.organizationId),
+              eq(schema.approvalPolicies.siteId, site.id),
+              isNull(schema.approvalPolicies.tenantId),
+            ),
+          );
+        const have = new Set(rows.map((r) => `${r.creatorKind}:${r.passType}`));
+        const items = [];
+        for (const creatorKind of APPROVAL_CREATOR_KINDS) {
+          for (const passType of PASS_TYPES) {
+            if (have.has(`${creatorKind}:${passType}`)) continue;
+            items.push({
+              creatorKind,
+              passType,
+              message: `Политика «${CREATOR_LABEL[creatorKind]} → ${PASS_TYPE_LABEL[passType]}» не задана: такие пропуска уходят на согласование.`,
+            });
+          }
+        }
+        return { items };
+      });
+    },
+  );
 }
 
 function isTenantMatch(match: unknown): boolean {

@@ -2,6 +2,7 @@ import {
   GATE_ACCOUNT_STATUSES,
   GATE_DEVICE_KINDS,
   NOTIFICATION_CHANNELS,
+  PASSWORD_RESET_PURPOSES,
   USER_STATUSES,
 } from '@oxrana/contracts';
 import { sql } from 'drizzle-orm';
@@ -11,6 +12,7 @@ import {
   boolean,
   check,
   customType,
+  index,
   inet,
   integer,
   jsonb,
@@ -24,11 +26,12 @@ import {
   deletedAt,
   enumCheck,
   id,
+  journalId,
   organizationIsolation,
   timestamps,
   tstz,
 } from './_helpers';
-import { gates, organizationId, siteId, sites } from './organization';
+import { gates, organizationId, organizations, siteId, sites } from './organization';
 import { tenants } from './tenants';
 
 // DATA_MODEL §2.8 — люди, роли, учётки КПП.
@@ -59,6 +62,8 @@ export const users = pgTable(
     showOwnTime: boolean('show_own_time').notNull().default(false),
     /** Свой пояс пользователя (IANA), выбирается из списка; пояс браузера не читается. */
     ownTimezone: text('own_timezone'),
+    /** Согласие на обработку ПДн при принятии приглашения (152-ФЗ). */
+    consentAt: tstz('consent_at'),
     ...timestamps(),
   },
   (t) => [
@@ -78,10 +83,15 @@ export const roles = pgTable(
     /** Коды из packages/contracts/src/permissions.ts; проверяются zod на записи. */
     permissions: text('permissions').array().notNull().default(sql`'{}'::text[]`),
     isTemplate: boolean('is_template').notNull().default(false),
+    /** Код шаблона (ROLE_TEMPLATES): по нему находится «Пост КПП» для новой учётки КПП. */
+    templateCode: text('template_code'),
     deletedAt: deletedAt(),
     ...timestamps(),
   },
-  () => [organizationIsolation()],
+  (t) => [
+    unique('roles_template_code_key').on(t.organizationId, t.templateCode),
+    organizationIsolation(),
+  ],
 );
 
 export const roleAssignments = pgTable(
@@ -127,6 +137,8 @@ export const invitations = pgTable(
     invitedBy: uuid('invited_by').notNull(),
     acceptedAt: tstz('accepted_at'),
     acceptedUserId: uuid('accepted_user_id').references(() => users.id),
+    /** Отозвано администратором или заменено повторной отправкой. */
+    revokedAt: tstz('revoked_at'),
     createdAt: createdAt(),
   },
   () => [organizationIsolation()],
@@ -145,7 +157,54 @@ export const sessions = pgTable('sessions', {
   ip: inet('ip'),
   userAgent: text('user_agent'),
   revokedAt: tstz('revoked_at'),
+  /** Текущая организация сессии: у пользователя их может быть несколько. */
+  organizationId: uuid('organization_id').references(() => organizations.id),
 });
+
+/**
+ * Одноразовые ссылки установки пароля (ADR-018): владелец при чистом старте (`setup`),
+ * восстановление и сброс администратором (`reset`). В БД — SHA-256 токена.
+ */
+export const passwordResets = pgTable(
+  'password_resets',
+  {
+    id: id(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    purpose: text('purpose', { enum: PASSWORD_RESET_PURPOSES }).notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: tstz('expires_at').notNull(),
+    usedAt: tstz('used_at'),
+    /** Администратор, выдавший ссылку; null — сам пользователь или чистый старт. */
+    createdBy: uuid('created_by').references((): AnyPgColumn => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [enumCheck('password_resets', t.purpose, PASSWORD_RESET_PURPOSES)],
+);
+
+/**
+ * Журнал входа платформы (ADR-018): вход, неудачные попытки, выход, коды и ссылки. Без RLS — у
+ * неизвестного логина нет организации; логин хранится только хэшем. Источник ограничения попыток.
+ */
+export const authEvents = pgTable(
+  'auth_events',
+  {
+    id: journalId(),
+    at: tstz('at').notNull().defaultNow(),
+    kind: text('kind').notNull(),
+    userId: uuid('user_id').references(() => users.id),
+    /** SHA-256 нормализованного логина. */
+    loginHash: text('login_hash'),
+    ip: inet('ip'),
+    userAgent: text('user_agent'),
+    requestId: text('request_id'),
+  },
+  (t) => [
+    index('auth_events_login_hash_at_idx').on(t.loginHash, t.at),
+    index('auth_events_ip_at_idx').on(t.ip, t.at),
+  ],
+);
 
 /** Вход по коду из SMS/e-mail. */
 export const loginCodes = pgTable('login_codes', {
@@ -223,6 +282,8 @@ export const deviceEnrollments = pgTable(
     expiresAt: tstz('expires_at').notNull(),
     usedAt: tstz('used_at'),
     usedDeviceId: uuid('used_device_id').references((): AnyPgColumn => gateDevices.id),
+    /** Кто выдал код в админке. */
+    createdBy: uuid('created_by').references(() => users.id),
     createdAt: createdAt(),
   },
   (t) => [enumCheck('device_enrollments', t.kind, GATE_DEVICE_KINDS), organizationIsolation()],

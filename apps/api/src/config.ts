@@ -11,6 +11,16 @@ const EnvSchema = z.object({
   DATABASE_URL: z
     .string({ error: 'не задана строка подключения к БД' })
     .min(1, 'не задана строка подключения к БД'),
+  /**
+   * Адрес веб-кабинета, как его видит пользователь: из него собираются ссылки приглашений и
+   * установки пароля, с него разрешены изменяющие запросы (защита от CSRF, ADR-018). При https
+   * cookie сессии ставится с `Secure`.
+   */
+  PUBLIC_URL: z
+    .url('PUBLIC_URL — адрес веб-кабинета, например https://pass.example.ru')
+    .default('http://127.0.0.1:5173'),
+  /** Адрес приложения поста: в QR привязки устройства. */
+  GATE_URL: z.url('GATE_URL — адрес приложения поста').default('http://127.0.0.1:5174'),
 });
 
 export type Config = z.infer<typeof EnvSchema>;
@@ -29,6 +39,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new ConfigError(
       parsed.error.issues.map((issue) => `${issue.path.join('.') || 'env'}: ${issue.message}`),
     );
+  }
+  // Ссылки приглашений и проверка Origin на рабочем сервере не могут указывать на 127.0.0.1.
+  if (parsed.data.NODE_ENV === 'production' && (!env.PUBLIC_URL || !env.GATE_URL)) {
+    throw new ConfigError([
+      'PUBLIC_URL и GATE_URL обязательны при NODE_ENV=production: адреса веба и поста, как их видит пользователь',
+    ]);
   }
   return parsed.data;
 }

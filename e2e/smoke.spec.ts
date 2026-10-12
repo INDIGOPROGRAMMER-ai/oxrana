@@ -11,10 +11,10 @@ test('API: /healthz отвечает', async ({ request }) => {
   expect(await res.json()).toMatchObject({ status: 'ok' });
 });
 
-test('web: главная открывается', async ({ page }) => {
+test('web: главная без входа ведёт на экран входа', async ({ page }) => {
   await page.goto(WEB);
   await expect(page).toHaveTitle('Платформа пропускного режима');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Платформа пропускного режима');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Вход');
 });
 
 test('web: неизвестный адрес показывает «Страница не найдена»', async ({ page }) => {
@@ -22,8 +22,8 @@ test('web: неизвестный адрес показывает «Страни
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Страница не найдена');
 });
 
-test('gate: главная открывается', async ({ page }) => {
+test('gate: непривязанное устройство открывает экран привязки', async ({ page }) => {
   await page.goto(GATE);
   await expect(page).toHaveTitle('Пост охраны');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Пост охраны');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Привязка устройства поста');
 });

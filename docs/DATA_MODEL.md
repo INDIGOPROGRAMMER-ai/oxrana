@@ -274,6 +274,7 @@ passes
   created_by_gate_account_id uuid FK        -- если создан с поста
   batch_id uuid FK pass_batches
   approved_by uuid, approved_at timestamptz, approval_note text, approval_changes jsonb
+  approval_escalated_at timestamptz          -- согласование эскалировано по сроку политики (on_timeout = escalate)
   cancelled_reason text, closed_at timestamptz
   source_ref text                            -- id в PASS24 при импорте
   index gin (plate_norm gin_trgm_ops), index gin (person_name gin_trgm_ops)
@@ -409,11 +410,13 @@ users                                       -- платформенные: од�
   must_change_password boolean NN default false
   show_own_time boolean NN default false    -- «показывать ещё и моё время» второй строкой (ADR-009, дополнение)
   own_timezone text                         -- IANA, выбирает пользователь; check: show_own_time → own_timezone not null
+  consent_at timestamptz                    -- согласие на обработку ПДн при принятии приглашения (152-ФЗ)
 
 roles
   id uuid PK, organization_id NN FK
   name text NN, permissions text[] NN default '{}'   -- коды из packages/contracts/permissions.ts
   is_template boolean NN default false, deleted_at timestamptz
+  template_code text                        -- код шаблона (contracts ROLE_TEMPLATES): «Пост КПП» для новой учётки КПП; unique (organization_id, template_code)
 
 role_assignments
   id uuid PK, organization_id NN FK, user_id NN FK, role_id NN FK
@@ -427,11 +430,27 @@ invitations
   role_id uuid NN FK, site_id uuid FK, tenant_id uuid FK
   token_hash text NN unique, expires_at timestamptz NN
   invited_by uuid NN, accepted_at timestamptz, accepted_user_id uuid FK
+  revoked_at timestamptz                    -- отозвано администратором или заменено повторной отправкой
 
 sessions                                    -- cookie-сессии пользователей (opaque id)
   id uuid PK, user_id NN FK
   token_hash text NN unique, created_at, last_seen_at, expires_at timestamptz NN
   ip inet, user_agent text, revoked_at timestamptz
+  organization_id uuid FK                   -- текущая организация сессии (у пользователя их может быть несколько)
+
+password_resets                             -- одноразовые ссылки установки пароля: восстановление, сброс администратором, владелец при чистом старте
+  id uuid PK, user_id NN FK
+  purpose text NN check in ('setup','reset')
+  token_hash text NN unique, expires_at timestamptz NN, used_at timestamptz
+  created_by uuid FK users                  -- администратор, выдавший ссылку; null — сам пользователь или чистый старт
+  created_at
+
+auth_events                                 -- журнал входа платформы (без RLS): вход, неудачи, выход, коды, ссылки; источник ограничения попыток
+  id bigint identity PK, at timestamptz NN default now()
+  kind text NN                              -- 'login','login_failed','logout','logout_all','password_set','password_reset_requested',…
+  user_id uuid FK, login_hash text          -- SHA-256 нормализованного логина: сам логин (e-mail/телефон) не хранится
+  ip inet, user_agent text, request_id text
+  index (login_hash, at), index (ip, at); только insert
 
 login_codes                                 -- вход по коду из SMS/e-mail
   id uuid PK, user_id NN FK, code_hash text NN, expires_at timestamptz NN, attempts int NN default 0, used_at timestamptz
@@ -453,6 +472,7 @@ gate_devices
 device_enrollments                          -- одноразовый код/QR для привязки
   id uuid PK, organization_id, gate_account_id NN FK, kind text NN
   code_hash text NN unique, expires_at timestamptz NN, used_at timestamptz, used_device_id uuid FK
+  created_by uuid FK users                  -- кто выдал код в админке
 
 shift_marks                                 -- необязательная «отметка смены» (настройка объекта)
   id uuid PK, organization_id, gate_account_id NN FK, device_id uuid FK
@@ -548,6 +568,7 @@ notifications
 | `gateRequestTimeoutMin` | int | 10 | Сколько ждёт запрос «без пропуска» |
 | `overrideValidMin` | int | 15 | Срок одобренного исключения |
 | `undoWindowSec` | int | 120 | Отмена последнего действия |
+| `pastStartToleranceMin` | int | 10 | Допуск на «начало пропуска в прошлом» при создании и изменении начала (Q-58) |
 | `shiftMarkEnabled` | bool | false | Отметка смены (A11) |
 | `seniorPinHash` | string \| null | null | PIN старшего смены (A11) |
 | `dutyAdminPhone` | string | — | Телефон внизу экрана поста |
@@ -558,7 +579,7 @@ notifications
 ## 4. Мультиарендность и RLS
 
 - Каждая таблица с данными организации имеет `organization_id`. Приложение в начале транзакции выполняет `set local app.organization_id = '<uuid>'` (и `app.site_id`, где уместно) — хелпер `withOrganization(db, orgId, fn)` из `@oxrana/db`.
-- На всех таких таблицах включён RLS с политикой `organization_id = nullif(current_setting('app.organization_id', true), '')::uuid` (`USING` и `WITH CHECK`); таблицы-связки без `organization_id` — через видимость родителя; платформенные таблицы (`users`, `sessions`, `login_codes`, `push_subscriptions`, `notification_preferences`, `telegram_links`) — без RLS (ADR-014 п. 4). Приложение ходит под ролью `oxrana_app` без `BYPASSRLS`; миграции и сид — под владельцем `oxrana_owner`.
+- На всех таких таблицах включён RLS с политикой `organization_id = nullif(current_setting('app.organization_id', true), '')::uuid` (`USING` и `WITH CHECK`); таблицы-связки без `organization_id` — через видимость родителя; платформенные таблицы (`users`, `sessions`, `login_codes`, `password_resets`, `auth_events`, `push_subscriptions`, `notification_preferences`, `telegram_links`) — без RLS (ADR-014 п. 4). Приложение ходит под ролью `oxrana_app` без `BYPASSRLS`; миграции и сид — под владельцем `oxrana_owner`.
 - Запросы фильтруют по `organization_id` явно (Drizzle-хелпер `scoped(table, ctx)`), RLS — вторая линия. Тест: запрос с чужим `organization_id` возвращает пусто.
 - Пользователи арендатора видят только `tenant_id` из своих `role_assignments` — это проверяется в сервисном слое (RLS по арендатору не делаем: у охраны и админа срез по объекту).
 
@@ -639,3 +660,16 @@ notifications
 | 9 | `pass_batches` | строка пакета создаётся до строк пропусков (на неё ссылается `passes.batch_id`), итог дописывается в конце | «создано N из M» с ошибками по строкам; предпросмотр строку не создаёт |
 | 10 | `gate_queue` | `quota_id` — самый тесный жёсткий лимит, из-за которого «ждать»; `notified_at` — кому уже отправлен сигнал «место освободилось» | сигнал только первым по числу свободных мест (сценарий 40) |
 
+## 9. Уточнения реализации (этап 5)
+
+Решения — ADR-018. Миграции `0005_auth.sql` (сгенерирована) и `0006_auth_functions.sql` (вручную).
+
+| # | Где | Что | Почему |
+|---|---|---|---|
+| 1 | `roles.template_code` | код шаблона роли, уникален в организации; заполняется сидом, чистым стартом и миграцией (по названию шаблона) | новая учётка КПП получает роль «Пост КПП» организации — её надо найти не по названию (название редактируется) |
+| 2 | `sessions.organization_id` | текущая организация сессии | `Actor` — одна организация; человек с назначениями в нескольких организациях переключает её |
+| 3 | `password_resets` (новая) | одноразовая ссылка установки пароля: `setup` (владелец при чистом старте) и `reset` (восстановление, сброс администратором); в БД — SHA-256 токена | пароль владельца не проходит через логи и командную строку |
+| 4 | `auth_events` (новая, платформенная, только insert) | вход, неудачные попытки, выход, запросы кодов и ссылок; логин — только хэшем | ограничение попыток по логину и по IP без Redis; журнал входа для неизвестного логина (у него нет организации для `audit_log`) |
+| 5 | `invitations.revoked_at`, `device_enrollments.created_by`, `users.consent_at` | отзыв и повторная отправка приглашения; кто выдал код привязки; согласие на ПДн при принятии приглашения | аудит и 152-ФЗ (§6) |
+| 6 | `passes.approval_escalated_at` | время эскалации согласования | эскалация по `approval_policies.escalation_hours` выполняется один раз |
+| 7 | функции `auth_org_of_token(kind, hash)`, `auth_user_organizations(user_id)`, `app_organization_ids()` | `SECURITY DEFINER`, владелец `oxrana_owner`, `EXECUTE` — только `oxrana_app`; возвращают **только id организации** | токен устройства, код привязки и ссылка приглашения приходят без организации, а таблицы под RLS; дальше запрос идёт обычным путём в контексте найденной организации |

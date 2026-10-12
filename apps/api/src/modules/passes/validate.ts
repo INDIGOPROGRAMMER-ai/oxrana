@@ -62,9 +62,6 @@ export interface PassValues {
 
 export type PassField = keyof PassValues;
 
-/** «На сейчас» из формы приходит с задержкой сети и секундами — допуск на начало в прошлом. */
-export const NOW_TOLERANCE_MS = 10 * 60_000;
-
 const date = (value: string | null | undefined): Date | null =>
   value === null || value === undefined ? null : new Date(value);
 
@@ -285,11 +282,14 @@ export async function validatePass(
     if (forbidden && touched('categoryId')) {
       const waived = collectWaivers(asEnginePass(values, tenant.id), rules.exceptions, at).waived;
       if (!waived.has('quota')) {
-        throw fail(
-          'category_unavailable',
-          'categoryId',
-          `Тип «${category.name}» не предусмотрен договором арендатора (лимит 0) — такой пропуск не пропустят на въезд.`,
-        );
+        // Q-57: пользователю арендатора — простыми словами и куда обратиться.
+        throw new AppError('category_unavailable', {
+          field: 'categoryId',
+          message: ctx.tenantUser
+            ? `Тип «${category.name}» для вашей компании не предусмотрен. Если нужен — обратитесь к администратору объекта.`
+            : `Тип «${category.name}» не предусмотрен договором арендатора (лимит 0) — такой пропуск не пропустят на въезд. Изменить: лимиты арендатора или исключение.`,
+          ...(ctx.tenantUser ? {} : { settingLink: `/admin/tenants/${tenant.id}/quotas` }),
+        });
       }
     }
     const docks = tenantDocks(rules, tenant.id);
@@ -336,7 +336,9 @@ export async function validatePass(
   const from = values.validFrom;
   const to = values.validTo;
   if (!from) throw fail('invalid_period', 'validFrom', 'Укажите начало действия пропуска.');
-  if (touched('validFrom') && from.getTime() < ctx.now - NOW_TOLERANCE_MS) {
+  // «На сейчас» из формы приходит с задержкой сети — допуск задаёт объект (Q-58).
+  const tolerance = settings.pastStartToleranceMin * 60_000;
+  if (touched('validFrom') && from.getTime() < ctx.now - tolerance) {
     throw fail(
       'starts_in_past',
       'validFrom',

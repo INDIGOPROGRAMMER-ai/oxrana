@@ -174,7 +174,8 @@ export async function createPass(
   }
   if (policy?.commentRequired && !values.comment)
     throw new AppError('comment_required', { field: 'comment' });
-  const status = policy?.mode === 'on_request' ? 'pending_approval' : 'approved';
+  // Нет политики на сочетание — на согласование, а не молча (Q-55).
+  const status = policy === null || policy.mode === 'on_request' ? 'pending_approval' : 'approved';
   const now = new Date(ctx.now);
   const { actor } = s.ctx;
 
@@ -195,6 +196,8 @@ export async function createPass(
             options.gateAccountId ?? (actor.kind === 'gate_account' ? actor.id : null),
           batchId: options.batchId ?? null,
           approvedAt: status === 'approved' ? now : null,
+          // Время подачи — по часам сервиса (ADR-009): от него считается срок согласования.
+          createdAt: now,
         })
         .returning(),
     () => duplicateError(s, values, tenant.id, ctx.site.timezone),
@@ -232,7 +235,14 @@ export async function createPass(
       participant: row.participant,
     },
   });
-  return { row, driverToken, warnings: await otherTenantWarnings(s, values, tenant.id) };
+  const warnings = await otherTenantWarnings(s, values, tenant.id);
+  if (policy === null) {
+    warnings.push({
+      code: 'approval_policy_missing',
+      message: `Политика «${CREATOR_LABEL[creator]} → ${PASS_TYPE_LABEL[values.passType]}» не задана — пропуск ушёл на согласование.`,
+    });
+  }
+  return { row, driverToken, warnings };
 }
 
 export async function loadPass(
@@ -311,7 +321,7 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
   let viaRequest: PassField[] = [];
   if (isTenantUser(s.ctx.actor) && pass.status === 'approved') {
     const policy = await approvalPolicy(s, tenant.siteId, tenant.id, 'tenant', pass.passType);
-    if (started || policy?.mode === 'on_request') {
+    if (started || policy === null || policy.mode === 'on_request') {
       viaRequest = fields.filter((f) => CHANGE_REQUEST_FIELDS.includes(f));
     }
   }
@@ -501,6 +511,17 @@ export async function decideChangeRequest(
 export async function cancelPass(s: Scope, passId: string, reason: string): Promise<PassRow> {
   const { pass, tenant } = await loadPass(s, passId);
   assertCanView(s, tenant.id);
+  // «Отменить свои» (Q-56): без pass.cancel — только пропуска, созданные этим пользователем.
+  if (!can(s.ctx, 'pass.cancel')) {
+    requirePermission(s.ctx, 'pass.cancel_own');
+    if (pass.createdBy !== s.ctx.actor.id) {
+      throw new AppError('forbidden', {
+        permission: 'pass.cancel',
+        message:
+          'Вы отменяете только свои пропуска. Этот оформил другой сотрудник — попросите его или ответственного за компанию.',
+      });
+    }
+  }
   if (!['draft', 'pending_approval', 'approved'].includes(pass.status)) {
     throw new AppError('pass_not_editable', {
       message: 'Отменить можно только действующий или ожидающий согласования пропуск.',

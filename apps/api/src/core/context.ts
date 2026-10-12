@@ -6,10 +6,11 @@ import {
 } from '@oxrana/contracts';
 import { type Db, type DbTx, schema, withOrganization } from '@oxrana/db';
 import type { FastifyRequest } from 'fastify';
-import { type Actor, coversSite, coversTenant } from '../actor';
+import { type AccessScope, type Actor, coversSite, coversTenant, permissionsIn } from '../actor';
+import type { AuthMessenger } from '../auth/messenger';
 import type { Clock } from '../clock';
 import { AppError } from '../errors';
-import { forbiddenFor } from '../permission-guard';
+import { forbiddenFor, permissionList } from '../permission-guard';
 import type { EventHub } from '../realtime/hub';
 import type { AuditDiff } from './diff';
 import type { RuleSetCache } from './ruleset-cache';
@@ -20,8 +21,19 @@ export interface ServiceHooks {
   afterOccupancyRead?: (tx: DbTx) => Promise<void>;
 }
 
+/** Вход и ссылки (ADR-018): адреса веба и поста, доставка сообщений, флаг Secure у cookie. */
+export interface AuthDeps {
+  /** Адрес веб-кабинета: ссылки приглашений и установки пароля. */
+  readonly publicUrl: string;
+  /** Адрес приложения поста: QR привязки устройства. */
+  readonly gateUrl: string;
+  readonly secureCookies: boolean;
+  readonly messenger: AuthMessenger;
+}
+
 /** Зависимости сервисов: одна копия на процесс. */
 export interface AppDeps {
+  readonly auth: AuthDeps;
   readonly db: Db;
   readonly clock: Clock;
   readonly hub: EventHub;
@@ -49,12 +61,45 @@ const RULESET_EVENTS = new Set<DomainEventType>([
  * события пишутся через `scope` в той же транзакции (ADR-004).
  */
 export class Ctx {
+  /** Права, которые потребовал запрос (группы «любое из»): маршрут и уточнения сервиса. */
+  private readonly demanded: (readonly string[])[] = [];
+  /** Области записей, которых коснулся запрос: объекты и арендаторы. */
+  private readonly entered: AccessScope[] = [];
+
   constructor(
     readonly actor: Actor,
     readonly deps: AppDeps,
     readonly requestId: string,
     readonly ip: string | null,
   ) {}
+
+  /**
+   * Право нужно в каждой области, которой касается запрос (ADR-018): у сотрудника с разными ролями
+   * на двух объектах права одного объекта не действуют на другом, у пользователя арендатора —
+   * права одной компании на другую. Хук маршрута проверил объединение прав, здесь — область.
+   */
+  demand(anyOf: readonly string[]): void {
+    if (anyOf.length === 0) return;
+    this.demanded.push(anyOf);
+    for (const scope of this.entered) this.verify(anyOf, scope);
+  }
+
+  /** Запрос коснулся записи этой области: все потребованные права должны действовать в ней. */
+  enter(scope: AccessScope): void {
+    this.entered.push(scope);
+    for (const anyOf of this.demanded) this.verify(anyOf, scope);
+  }
+
+  /** Есть ли право во всех областях, которых коснулся запрос. */
+  holds(permission: string): boolean {
+    if (!this.actor.permissions.has(permission)) return false;
+    return this.entered.every((scope) => permissionsIn(this.actor, scope).has(permission));
+  }
+
+  private verify(anyOf: readonly string[], scope: AccessScope): void {
+    const held = permissionsIn(this.actor, scope);
+    if (!anyOf.some((p) => held.has(p))) throw forbiddenFor(anyOf);
+  }
 
   get organizationId(): string {
     return this.actor.organizationId;
@@ -178,16 +223,20 @@ function assertNoPii(type: string, value: unknown): void {
 export function ctxOf(request: FastifyRequest): Ctx {
   const actor = request.actor;
   if (!actor) throw new AppError('unauthenticated');
-  return new Ctx(actor, request.server.deps, request.id, request.ip ?? null);
+  const ctx = new Ctx(actor, request.server.deps, request.id, request.ip ?? null);
+  ctx.demand(permissionList(request.routeOptions.config.permission));
+  return ctx;
 }
 
 /** Уточнение права по данным запроса (тип пропуска, вид действия поста): 403 с именем права. */
 export function requirePermission(ctx: Ctx, ...anyOf: string[]): void {
   if (!anyOf.some((p) => ctx.actor.permissions.has(p))) throw forbiddenFor(anyOf);
+  ctx.demand(anyOf);
 }
 
+/** Есть ли право — во всех областях, которых коснулся запрос. */
 export function can(ctx: Ctx, permission: string): boolean {
-  return ctx.actor.permissions.has(permission);
+  return ctx.holds(permission);
 }
 
 /** Объект вне области назначения актора — 403 (объект той же организации виден, но не его). */
@@ -198,6 +247,7 @@ export function assertSiteAccess(ctx: Ctx, siteId: string): void {
       settingLink: '/admin/users',
     });
   }
+  ctx.enter({ siteId });
 }
 
 /** Чужой арендатор у пользователя арендатора — 403, а не 404 (ADR-007). */
@@ -207,4 +257,5 @@ export function assertTenantAccess(ctx: Ctx, tenantId: string): void {
       message: 'Нет доступа к этому арендатору: вы работаете только со своими компаниями.',
     });
   }
+  ctx.enter({ tenantId });
 }

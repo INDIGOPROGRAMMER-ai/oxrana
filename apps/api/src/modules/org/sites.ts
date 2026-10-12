@@ -1,4 +1,5 @@
 import {
+  DEFAULT_APPROVAL_POLICIES,
   isValidTimezone,
   OrganizationPatchSchema,
   type OrganizationView,
@@ -266,6 +267,16 @@ export function registerSiteRoutes(app: FastifyInstance): void {
           })
           .returning();
         if (!site) throw new Error('site insert');
+        // Политики согласования по умолчанию — все 9 сочетаний (Q-55).
+        await s.db.insert(schema.approvalPolicies).values(
+          DEFAULT_APPROVAL_POLICIES.map((p) => ({
+            organizationId: s.organizationId,
+            siteId: site.id,
+            creatorKind: p.creatorKind,
+            passType: p.passType,
+            mode: p.mode,
+          })),
+        );
         await s.audit({
           siteId: site.id,
           entity: 'site',

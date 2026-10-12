@@ -4,6 +4,8 @@ import { schema } from '@oxrana/db';
 import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  customActor,
+  gateActor,
   KEYS,
   NOON,
   ownerDb,
@@ -532,17 +534,15 @@ describe('внутренний пост и права', () => {
     expect(error(res).permission).toBe(
       'visit.check_in | visit.check_out | gate.refuse | gate.redirect | gate.undo | gate.passage',
     );
-    const custom = await action(
-      t,
-      { ...admin, permissions: new Set(['visit.check_in']) },
-      { type: 'check_in', passId },
-    );
+    const custom = await action(t, customActor(['visit.check_in']), {
+      type: 'check_in',
+      passId,
+    });
     expect(error(custom).code).toBe('gate_device_required');
-    const outOnly = await action(
-      t,
-      { ...kpp2, permissions: new Set(['visit.check_out']) },
-      { type: 'check_in', passId },
-    );
+    const outOnly = await action(t, gateActor('kpp2', 'gate_post', ['visit.check_out']), {
+      type: 'check_in',
+      passId,
+    });
     expect(error(outOnly)).toMatchObject({ code: 'forbidden', permission: 'visit.check_in' });
   });
 

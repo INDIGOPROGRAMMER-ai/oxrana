@@ -48,6 +48,19 @@ export const ERROR_CODES = [
   'nothing_to_undo',
   'gate_request_closed',
   'wrong_gate_kind',
+  // вход и устройства (этап 5)
+  'invalid_credentials',
+  'too_many_attempts',
+  'csrf_failed',
+  'link_invalid',
+  'code_invalid',
+  'password_weak',
+  'account_disabled',
+  'account_exists',
+  'consent_required',
+  'role_too_broad',
+  'not_pending',
+  'override_request_closed',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -98,6 +111,21 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   nothing_to_undo: 'Отменять нечего: действие не открывало и не закрывало визит.',
   gate_request_closed: 'Запрос уже закрыт: на него ответили, его отменили или истёк срок.',
   wrong_gate_kind: 'Это действие не выполняется на КПП такого вида.',
+  invalid_credentials: 'Неверный логин или пароль.',
+  too_many_attempts: 'Слишком много попыток. Подождите 15 минут и повторите.',
+  csrf_failed:
+    'Запрос отклонён: он пришёл не со страницы платформы. Обновите страницу и повторите действие.',
+  link_invalid:
+    'Ссылка недействительна: она уже использована или истёк её срок. Попросите новую ссылку у администратора.',
+  code_invalid: 'Код неверный или устарел. Запросите новый код.',
+  password_weak: 'Пароль слишком простой: нужно не меньше 10 символов, не только цифры.',
+  account_disabled: 'Учётная запись отключена. Обратитесь к администратору объекта.',
+  account_exists: 'У вас уже есть учётная запись — введите свой пароль, чтобы принять приглашение.',
+  consent_required: 'Подтвердите согласие на обработку персональных данных.',
+  role_too_broad:
+    'Нельзя выдать роль с правами, которых нет у вас самих. Выберите другую роль или попросите владельца организации.',
+  not_pending: 'Пропуск уже не ждёт согласования: решение принято или пропуск отменён.',
+  override_request_closed: 'Запрос исключения уже рассмотрен или устарел.',
 };
 
 export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
@@ -138,6 +166,18 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   nothing_to_undo: 409,
   gate_request_closed: 409,
   wrong_gate_kind: 422,
+  invalid_credentials: 401,
+  too_many_attempts: 429,
+  csrf_failed: 403,
+  link_invalid: 410,
+  code_invalid: 401,
+  password_weak: 422,
+  account_disabled: 403,
+  account_exists: 409,
+  consent_required: 422,
+  role_too_broad: 403,
+  not_pending: 409,
+  override_request_closed: 409,
 };
 
 /**

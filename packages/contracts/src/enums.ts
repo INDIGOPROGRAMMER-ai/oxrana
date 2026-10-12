@@ -219,6 +219,11 @@ export const USER_STATUSES = ['invited', 'active', 'disabled'] as const;
 export const UserStatusSchema = z.enum(USER_STATUSES);
 export type UserStatus = (typeof USER_STATUSES)[number];
 
+/** Назначение одноразовой ссылки установки пароля: владелец при чистом старте · восстановление и сброс. */
+export const PASSWORD_RESET_PURPOSES = ['setup', 'reset'] as const;
+export const PasswordResetPurposeSchema = z.enum(PASSWORD_RESET_PURPOSES);
+export type PasswordResetPurpose = (typeof PASSWORD_RESET_PURPOSES)[number];
+
 export const GATE_ACCOUNT_STATUSES = ['active', 'disabled'] as const;
 export const GateAccountStatusSchema = z.enum(GATE_ACCOUNT_STATUSES);
 export type GateAccountStatus = (typeof GATE_ACCOUNT_STATUSES)[number];
