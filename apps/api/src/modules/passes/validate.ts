@@ -282,11 +282,14 @@ export async function validatePass(
     if (forbidden && touched('categoryId')) {
       const waived = collectWaivers(asEnginePass(values, tenant.id), rules.exceptions, at).waived;
       if (!waived.has('quota')) {
-        throw fail(
-          'category_unavailable',
-          'categoryId',
-          `Тип «${category.name}» не предусмотрен договором арендатора (лимит 0) — такой пропуск не пропустят на въезд.`,
-        );
+        // Q-57: пользователю арендатора — простыми словами и куда обратиться.
+        throw new AppError('category_unavailable', {
+          field: 'categoryId',
+          message: ctx.tenantUser
+            ? `Тип «${category.name}» для вашей компании не предусмотрен. Если нужен — обратитесь к администратору объекта.`
+            : `Тип «${category.name}» не предусмотрен договором арендатора (лимит 0) — такой пропуск не пропустят на въезд. Изменить: лимиты арендатора или исключение.`,
+          ...(ctx.tenantUser ? {} : { settingLink: `/admin/tenants/${tenant.id}/quotas` }),
+        });
       }
     }
     const docks = tenantDocks(rules, tenant.id);

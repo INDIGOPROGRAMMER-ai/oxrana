@@ -1,4 +1,5 @@
 import {
+  DecisionSchema,
   GateActionInputSchema,
   GateActionResultSchema,
   GateCheckResultSchema,
@@ -11,6 +12,9 @@ import {
   GateSyncResultSchema,
   GateSyncSchema,
   IdParamsSchema,
+  OverrideRequestCreateSchema,
+  OverrideRequestListQuerySchema,
+  OverrideRequestViewSchema,
   PassCreatedSchema,
   QueueViewSchema,
   RejectSchema,
@@ -35,6 +39,7 @@ import {
   runEngine,
   tenantState,
 } from './core';
+import { createOverrideRequest, decideOverride, listOverrides } from './overrides';
 import { queueEntries } from './queue';
 import {
   approveGateRequest,
@@ -395,4 +400,114 @@ export function registerGateModule(app: FastifyInstance): void {
       );
     },
   );
+
+  typed.post(
+    '/gate/override-requests',
+    {
+      config: { permission: 'gate.override_request' },
+      schema: {
+        tags,
+        summary: 'Запросить исключение по решению поста (🟡/🔴) с причиной — администратору',
+        body: OverrideRequestCreateSchema,
+        response: { 201: OverrideRequestViewSchema },
+      },
+    },
+    async (request, reply) => {
+      const ctx = ctxOf(request);
+      const view = await ctx.tx(async (s) => {
+        const row = await createOverrideRequest(s, request.body);
+        const [item] = await listOverrides(s, [eq(schema.overrideRequests.id, row.id)], null);
+        if (!item) throw new Error('override view');
+        return item;
+      });
+      return reply.status(201).send(view);
+    },
+  );
+
+  typed.get(
+    '/gate/override-requests',
+    {
+      config: { permission: 'gate.override_request' },
+      schema: {
+        tags,
+        summary: 'Запросы исключений этого поста за сутки и решения по ним',
+        response: { 200: z.object({ items: z.array(OverrideRequestViewSchema) }) },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      return ctx.tx(async (s) => {
+        const g = await gateContext(s);
+        const since = new Date(ctx.now() - 86_400_000);
+        return {
+          items: await listOverrides(s, [eq(schema.overrideRequests.gateId, g.gate.id)], since),
+        };
+      });
+    },
+  );
+
+  typed.get(
+    '/sites/:siteId/override-requests',
+    {
+      config: { permission: 'gate.override' },
+      schema: {
+        tags,
+        summary: 'Запросы исключений с постов объекта (очередь администратора)',
+        params: SiteParamsSchema,
+        querystring: OverrideRequestListQuerySchema,
+        response: { 200: z.object({ items: z.array(OverrideRequestViewSchema) }) },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      return ctx.tx(async (s) => {
+        const site = await loadSite(s, request.params.siteId);
+        return {
+          items: await listOverrides(
+            s,
+            [
+              eq(schema.overrideRequests.siteId, site.id),
+              request.query.status
+                ? eq(schema.overrideRequests.status, request.query.status)
+                : undefined,
+            ],
+            null,
+          ),
+        };
+      });
+    },
+  );
+
+  for (const decision of ['approve', 'reject'] as const) {
+    typed.post(
+      `/override-requests/:id/${decision}`,
+      {
+        config: { permission: 'gate.override' },
+        schema: {
+          tags,
+          summary:
+            decision === 'approve'
+              ? 'Одобрить исключение: карточка на посту станет зелёной на срок одобрения'
+              : 'Отклонить исключение (с причиной)',
+          params: IdParamsSchema,
+          body: decision === 'approve' ? DecisionSchema : RejectSchema,
+          response: { 200: OverrideRequestViewSchema },
+        },
+      },
+      async (request) => {
+        const ctx = ctxOf(request);
+        return ctx.tx(async (s) => {
+          const row = await decideOverride(
+            s,
+            request.params.id,
+            decision === 'approve' ? 'approved' : 'rejected',
+            request.body.note ?? null,
+          );
+          const [item] = await listOverrides(s, [eq(schema.overrideRequests.id, row.id)], null);
+          if (!item) throw new Error('override view');
+          return item;
+        });
+      },
+    );
+  }
 }

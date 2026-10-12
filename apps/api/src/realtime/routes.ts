@@ -83,6 +83,16 @@ async function stream(
   const send = (event: HubEvent) => {
     if (event.id <= lastSent) return;
     lastSent = event.id;
+    // Отзыв устройства действует сразу и на открытый поток (ADR-018).
+    if (
+      event.type === 'gate_device.revoked' &&
+      actor.deviceId !== null &&
+      event.payload.deviceId === actor.deviceId
+    ) {
+      raw.write('event: revoked\ndata: {"reason":"device_revoked"}\n\n');
+      raw.end();
+      return;
+    }
     if (visibleTo(actor, event)) raw.write(format(event));
   };
   const unsubscribe = ctx.deps.hub.subscribe(actor.organizationId, siteId, (event) => {

@@ -2,6 +2,7 @@ import { createDb, createPool, pingDb } from '@oxrana/db';
 import { buildApp } from './app';
 import { ConfigError, loadConfig } from './config';
 import { loggerOptions } from './logger';
+import { processApprovalTimeouts } from './modules/passes/approvals';
 import { EventHub } from './realtime/hub';
 import { EventListener } from './realtime/listener';
 
@@ -37,8 +38,18 @@ const listener = new EventListener({
 });
 await listener.start();
 
+// Сроки согласования (эскалация, автоотклонение) — раз в минуту; pg-boss появится вместе с
+// уведомлениями (этап 10), до него — таймер в процессе API.
+const approvalTimer = setInterval(() => {
+  processApprovalTimeouts(app.deps).catch((error: unknown) =>
+    app.log.error({ err: error }, 'Сроки согласования: ошибка, повторим через минуту'),
+  );
+}, 60_000);
+approvalTimer.unref();
+
 async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, 'Останавливаем сервер');
+  clearInterval(approvalTimer);
   await listener.stop();
   await app.close();
   await pool.end();

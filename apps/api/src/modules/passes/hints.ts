@@ -129,7 +129,7 @@ export async function passHints(
   for (const passType of PASS_TYPES) {
     if (!can(s.ctx, `pass.create.${passType}`)) continue;
     const p = await approvalPolicy(s, site.id, tenant.id, creator, passType);
-    const mode = p?.mode ?? 'allow';
+    const mode = p?.mode ?? 'on_request';
     if (mode !== 'deny') passTypes.push({ passType, mode });
   }
 
@@ -178,8 +178,10 @@ export async function passHints(
     quotas,
     approval: query.passType
       ? {
-          mode: policy?.mode ?? ('allow' as const),
-          text: policy ? APPROVAL_TEXT[policy.mode] : `${APPROVAL_TEXT.allow} (политика не задана)`,
+          mode: policy?.mode ?? ('on_request' as const),
+          text: policy
+            ? APPROVAL_TEXT[policy.mode]
+            : `${APPROVAL_TEXT.on_request}: политика согласования для такого пропуска не задана`,
         }
       : null,
     commentRequired: policy?.commentRequired ?? false,

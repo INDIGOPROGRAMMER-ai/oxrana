@@ -4,7 +4,7 @@ import { defineConfig } from 'tsup';
 // Внешним считается только то, что объявлено в dependencies самого api: поэтому `pg` (его использует вшитый
 // @oxrana/db) перечислен и там — иначе CJS-код драйвера попал бы в ESM-бандл и сервер не запустился бы.
 export default defineConfig({
-  entry: ['src/server.ts'],
+  entry: { server: 'src/server.ts', bootstrap: 'src/cli/bootstrap.ts' },
   format: ['esm'],
   target: 'node22',
   platform: 'node',

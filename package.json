@@ -21,7 +21,8 @@
     "db:migrate": "pnpm --filter @oxrana/db migrate",
     "db:seed": "pnpm --filter @oxrana/db seed",
     "db:reset": "bash scripts/db-reset.sh",
-    "fixture:engine": "pnpm --filter @oxrana/db freeze-fixture"
+    "fixture:engine": "pnpm --filter @oxrana/db freeze-fixture",
+    "bootstrap": "pnpm --silent --filter @oxrana/api bootstrap"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
