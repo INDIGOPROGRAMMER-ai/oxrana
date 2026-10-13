@@ -33,7 +33,7 @@ describe('схема в БД = схема Drizzle (DATA_MODEL §2)', () => {
       .map((t) => getTableName(t))
       .sort();
     expect(await publicTables()).toEqual(inCode);
-    expect(inCode).toHaveLength(57);
+    expect(inCode).toHaveLength(58);
   });
 
   it('у каждой таблицы с updated_at есть триггер, и он ставит время', async () => {
