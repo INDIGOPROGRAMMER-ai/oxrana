@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { ParticipantSchema, PassTypeSchema, PassageDirectionSchema, QuotaEnforcementSchema } from '../enums';
+import {
+  ParticipantSchema,
+  PassageDirectionSchema,
+  PassTypeSchema,
+  QuotaEnforcementSchema,
+} from '../enums';
 import { IdSchema, InstantInputSchema, TextSchema } from './common';
 import { VerdictSchema } from './gate';
 

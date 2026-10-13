@@ -1,13 +1,13 @@
 import {
   TENANT_BLOCK_MODE_LABEL,
-  type TenantBlockMode,
-  TenantBlockSchema,
   TenantBlockImpactQuerySchema,
   TenantBlockImpactSchema,
+  type TenantBlockMode,
+  TenantBlockSchema,
   TenantParamsSchema,
+  type TenantStatus,
   TenantUnblockSchema,
   TenantViewSchema,
-  type TenantStatus,
 } from '@oxrana/contracts';
 import { openVisits, schema } from '@oxrana/db';
 import { and, count, eq, gt, isNull, or } from 'drizzle-orm';
@@ -130,7 +130,8 @@ export function registerBlockingRoutes(app: FastifyInstance): void {
       config: { permission: 'tenant.block' },
       schema: {
         tags,
-        summary: 'Последствия блокировки арендатора: сколько внутри и сколько пропусков перестанут работать',
+        summary:
+          'Последствия блокировки арендатора: сколько внутри и сколько пропусков перестанут работать',
         params: TenantParamsSchema,
         querystring: TenantBlockImpactQuerySchema,
         response: { 200: TenantBlockImpactSchema },
@@ -203,9 +204,7 @@ export function registerBlockingRoutes(app: FastifyInstance): void {
             message: 'Арендатор в архиве, а не заблокирован: снять нечего.',
           });
         }
-        return tenantView(
-          await changeStatus(s, tenant, 'active', request.body.reason, 'unblock'),
-        );
+        return tenantView(await changeStatus(s, tenant, 'active', request.body.reason, 'unblock'));
       });
     },
   );

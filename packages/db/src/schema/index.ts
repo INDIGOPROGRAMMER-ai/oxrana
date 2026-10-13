@@ -3,6 +3,7 @@
 export * from './billing';
 export * from './catalogs';
 export * from './events';
+export * from './files';
 export * from './hardware';
 export * from './organization';
 export * from './passes';
@@ -10,4 +11,3 @@ export * from './people';
 export * from './rules';
 export * from './tenants';
 export * from './visits';
-export * from './files';

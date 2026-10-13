@@ -39,12 +39,19 @@ export function buildExamples(data: SandboxData, nowMs: number) {
   if (tenant && quota && category) {
     const allowed = routeGates(
       rules,
-      { tenantId: tenant.id, participant: 'vehicle', categoryId: category.id, destinationZoneId: null },
+      {
+        tenantId: tenant.id,
+        participant: 'vehicle',
+        categoryId: category.id,
+        destinationZoneId: null,
+      },
       'in',
     );
     const gate = rules.gates.find((g) => g.id === allowed[0]);
     if (gate) {
-      const dock = category.dockEligible ? rules.docks.find((d) => d.tenantId === tenant.id) : undefined;
+      const dock = category.dockEligible
+        ? rules.docks.find((d) => d.tenantId === tenant.id)
+        : undefined;
       const base: SandboxCheck = {
         tenantId: tenant.id,
         passType: 'multi',
@@ -65,7 +72,8 @@ export function buildExamples(data: SandboxData, nowMs: number) {
         request: { ...base, quotaFull: true },
       });
       const other = rules.gates.find(
-        (g) => g.kind === 'perimeter' && participantAdmitted(g, 'vehicle') && !allowed.includes(g.id),
+        (g) =>
+          g.kind === 'perimeter' && participantAdmitted(g, 'vehicle') && !allowed.includes(g.id),
       );
       if (other) {
         items.push({
@@ -74,7 +82,9 @@ export function buildExamples(data: SandboxData, nowMs: number) {
           request: { ...base, gateId: other.id },
         });
       }
-      const listed = rules.blacklist.find((b) => b.plateNorm && (b.validTo === null || b.validTo > nowMs));
+      const listed = rules.blacklist.find(
+        (b) => b.plateNorm && (b.validTo === null || b.validTo > nowMs),
+      );
       if (listed?.plateNorm) {
         items.push({
           key: 'blacklist',
@@ -86,7 +96,9 @@ export function buildExamples(data: SandboxData, nowMs: number) {
   } else if (active.length === 0) {
     notes.push('Нет действующих арендаторов (шаг 6).');
   } else {
-    notes.push('Ни у одного арендатора нет лимита на машины (шаг 7) — примеры с въездом машин не из чего собрать.');
+    notes.push(
+      'Ни у одного арендатора нет лимита на машины (шаг 7) — примеры с въездом машин не из чего собрать.',
+    );
   }
 
   const blocked = rules.tenants.find(
@@ -94,7 +106,9 @@ export function buildExamples(data: SandboxData, nowMs: number) {
   );
   if (blocked) {
     const cat = rules.categories[0];
-    const gate = rules.gates.find((g) => g.kind === 'perimeter' && participantAdmitted(g, 'vehicle'));
+    const gate = rules.gates.find(
+      (g) => g.kind === 'perimeter' && participantAdmitted(g, 'vehicle'),
+    );
     if (cat && gate) {
       items.push({
         key: 'blocked',
@@ -144,6 +158,7 @@ export function buildExamples(data: SandboxData, nowMs: number) {
     note:
       picked.length >= 3
         ? null
-        : (notes.join(' ') || 'Настройте КПП, типы, арендаторов и лимиты — и здесь появятся примеры.'),
+        : notes.join(' ') ||
+          'Настройте КПП, типы, арендаторов и лимиты — и здесь появятся примеры.',
   };
 }

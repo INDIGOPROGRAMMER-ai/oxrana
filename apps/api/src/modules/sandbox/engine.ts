@@ -18,8 +18,8 @@ import type { Scope } from '../../core/context';
 import type { SiteRow } from '../../core/loaders';
 import { AppError } from '../../errors';
 import { siteTimeLabel } from '../org/sites';
-import { engineVisit } from '../passes/views';
 import { PASS_TYPE_LABEL } from '../passes/validate';
+import { engineVisit } from '../passes/views';
 
 /**
  * Песочница правил (этап 6b): воображаемый пропуск проверяется тем же `evaluate`, что на посту и
@@ -29,7 +29,11 @@ import { PASS_TYPE_LABEL } from '../passes/validate';
 
 const HOUR = 3_600_000;
 /** Срок воображаемого пропуска вперёд от момента проверки. */
-const VALID_AHEAD: Record<string, number | null> = { single: 12 * HOUR, multi: 48 * HOUR, permanent: null };
+const VALID_AHEAD: Record<string, number | null> = {
+  single: 12 * HOUR,
+  multi: 48 * HOUR,
+  permanent: null,
+};
 
 export interface SandboxData {
   readonly site: SiteRow;
@@ -61,10 +65,15 @@ export interface SandboxOutcome {
 const invalid = (field: string, message: string) =>
   new AppError('validation_failed', { field, message });
 
-export function runSandbox(data: SandboxData, request: SandboxCheck, nowMs: number): SandboxOutcome {
+export function runSandbox(
+  data: SandboxData,
+  request: SandboxCheck,
+  nowMs: number,
+): SandboxOutcome {
   const { rules, siteView, site } = data;
   const tenant = rules.tenants.find((t) => t.id === request.tenantId);
-  if (!tenant) throw invalid('tenantId', 'Арендатор не найден на этом объекте. Выберите из списка.');
+  if (!tenant)
+    throw invalid('tenantId', 'Арендатор не найден на этом объекте. Выберите из списка.');
   const gate = rules.gates.find((g) => g.id === request.gateId);
   if (!gate) throw invalid('gateId', 'КПП не найден на этом объекте. Выберите из списка.');
   const participant = request.participant;
@@ -85,7 +94,7 @@ export function runSandbox(data: SandboxData, request: SandboxCheck, nowMs: numb
   }
   const at = request.at ? Date.parse(request.at) : nowMs;
   const plate = request.plate ? normalizePlate(request.plate) : null;
-  const plateNorm = plate && plate.norm ? plate.norm : null;
+  const plateNorm = plate?.norm ? plate.norm : null;
   const ahead = VALID_AHEAD[request.passType] ?? null;
   const pass: PassView = {
     id: 'sandbox-pass',

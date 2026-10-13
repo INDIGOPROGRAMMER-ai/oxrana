@@ -15,7 +15,8 @@ export interface FileStore {
   remove(key: string): Promise<void>;
 }
 
-const KEY_RE = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+const KEY_RE =
+  /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 
 export function fileKey(organizationId: string, fileId: string): string {
   return `${organizationId}/${fileId}`;

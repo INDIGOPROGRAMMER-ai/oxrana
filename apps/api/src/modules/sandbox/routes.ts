@@ -42,7 +42,11 @@ export function registerSandboxModule(app: FastifyInstance): void {
         const site = await loadSite(s, request.params.siteId);
         const data = await loadSandboxData(s, site);
         const out = runSandbox(data, request.body, ctx.now());
-        return { verdict: verdictView(out.verdict), subject: out.subject, assumptions: out.assumptions };
+        return {
+          verdict: verdictView(out.verdict),
+          subject: out.subject,
+          assumptions: out.assumptions,
+        };
       });
     },
   );
@@ -53,7 +57,8 @@ export function registerSandboxModule(app: FastifyInstance): void {
       config: { permission: 'sandbox.use' },
       schema: {
         tags,
-        summary: 'Песочница: 3–5 примеров из настроенных данных объекта (для шага «Проверка» мастера)',
+        summary:
+          'Песочница: 3–5 примеров из настроенных данных объекта (для шага «Проверка» мастера)',
         params: SiteParamsSchema,
         response: { 200: SandboxExamplesSchema },
       },

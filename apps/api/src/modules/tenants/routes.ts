@@ -1,6 +1,5 @@
 import {
   BatchResultSchema,
-  type StoredFileView,
   ClauseCreateSchema,
   ClausePatchSchema,
   ClauseViewSchema,
@@ -18,6 +17,7 @@ import {
   PedestrianRulePatchSchema,
   PedestrianRuleViewSchema,
   SiteParamsSchema,
+  type StoredFileView,
   TenantBatchSchema,
   TenantCreateSchema,
   TenantParamsSchema,
@@ -176,7 +176,10 @@ export function registerTenantsModule(app: FastifyInstance): void {
     loadExtras: async (s, rows) => {
       const canViewFile = s.ctx.holds('contract.file');
       const files = canViewFile
-        ? await fileViews(s, rows.map((r) => (r.fileRef as string | null) ?? null))
+        ? await fileViews(
+            s,
+            rows.map((r) => (r.fileRef as string | null) ?? null),
+          )
         : new Map<string, StoredFileView>();
       return new Map(
         rows.map((r) => [
@@ -371,7 +374,9 @@ export function registerTenantsModule(app: FastifyInstance): void {
         .where(eq(schema.parkingAreas.id, areaId));
       if (area?.spaces != null) {
         const [taken] = await s.db
-          .select({ n: sql<number>`coalesce(sum(${schema.tenantParkingAssignments.spaces}), 0)::int` })
+          .select({
+            n: sql<number>`coalesce(sum(${schema.tenantParkingAssignments.spaces}), 0)::int`,
+          })
           .from(schema.tenantParkingAssignments)
           .where(
             and(

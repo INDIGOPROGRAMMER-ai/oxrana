@@ -2,9 +2,9 @@ import { parseArgs } from 'node:util';
 import { createDb, createPool } from '@oxrana/db';
 import {
   BootstrapError,
-  type CheckableField,
-  CHECKABLE_FIELDS,
   bootstrapOrganization,
+  CHECKABLE_FIELDS,
+  type CheckableField,
   checkBootstrapField,
   issueOwnerLink,
 } from './bootstrap-core';
@@ -52,7 +52,9 @@ if (values.check !== undefined) {
   const field = values.check.slice(0, eq);
   const value = values.check.slice(eq + 1);
   if (eq < 0 || !(CHECKABLE_FIELDS as readonly string[]).includes(field)) {
-    console.error(`--check: ожидается поле=значение, поле — одно из ${CHECKABLE_FIELDS.join(', ')}.`);
+    console.error(
+      `--check: ожидается поле=значение, поле — одно из ${CHECKABLE_FIELDS.join(', ')}.`,
+    );
     process.exit(2);
   }
   const problem = checkBootstrapField(field as CheckableField, value);

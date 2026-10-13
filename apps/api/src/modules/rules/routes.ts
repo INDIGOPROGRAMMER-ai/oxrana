@@ -399,7 +399,9 @@ export function registerRulesModule(app: FastifyInstance): void {
     // Вкладка арендатора просит только его исключения: фильтр на сервере, а не на экране (Q-66).
     listQuery: ExceptionListQuerySchema,
     listFilter: (_ctx, query) => [
-      typeof query.tenantId === 'string' ? eq(schema.exceptions.tenantId, query.tenantId) : undefined,
+      typeof query.tenantId === 'string'
+        ? eq(schema.exceptions.tenantId, query.tenantId)
+        : undefined,
     ],
     labels: { tenantId: 'tenant', basisClauseId: 'clause' },
     toView: (r) => ({

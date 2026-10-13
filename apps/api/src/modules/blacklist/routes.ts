@@ -1,10 +1,10 @@
 import {
-  type BlacklistLevel,
+  BatchResultSchema,
   BlacklistBatchSchema,
   BlacklistCreateSchema,
+  type BlacklistLevel,
   BlacklistPatchSchema,
   type BlacklistView,
-  BatchResultSchema,
   BlacklistViewSchema,
   IdParamsSchema,
   SiteParamsSchema,
@@ -87,7 +87,8 @@ function validToOf(value: string | null | undefined, now: number): Date | null |
   if (at.getTime() <= now) {
     throw new AppError('invalid_period', {
       field: 'validTo',
-      message: 'Срок уже прошёл: запись ни на что не повлияет. Укажите будущую дату или оставьте «бессрочно».',
+      message:
+        'Срок уже прошёл: запись ни на что не повлияет. Укажите будущую дату или оставьте «бессрочно».',
     });
   }
   return at;
@@ -321,7 +322,8 @@ export function registerBlacklistModule(app: FastifyInstance): void {
         if (next.plateNorm === null && next.personName === null) {
           throw new AppError('validation_failed', {
             field: 'plate',
-            message: 'Нельзя убрать и номер, и человека: запись ни к кому не относится. Удалите запись.',
+            message:
+              'Нельзя убрать и номер, и человека: запись ни к кому не относится. Удалите запись.',
           });
         }
         const fields = changedFields(existing, patch);

@@ -10,9 +10,9 @@ import { afterAll } from 'vitest';
 import { buildApp } from '../../src/app';
 import { randomToken, sha256Hex } from '../../src/auth/crypto';
 import { MemoryMessenger } from '../../src/auth/messenger';
-import { LocalFileStore } from '../../src/files/store';
 import { FixedClock } from '../../src/clock';
 import type { ServiceHooks } from '../../src/core/context';
+import { LocalFileStore } from '../../src/files/store';
 import { EventHub } from '../../src/realtime/hub';
 
 /**

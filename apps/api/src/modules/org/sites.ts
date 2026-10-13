@@ -397,7 +397,8 @@ export function registerSiteRoutes(app: FastifyInstance): void {
       config: { permission: 'rule.manage' },
       schema: {
         tags,
-        summary: 'Изменить настройки объекта: сроки пропусков, рабочее время, допуски (только переданные ключи)',
+        summary:
+          'Изменить настройки объекта: сроки пропусков, рабочее время, допуски (только переданные ключи)',
         params: SiteParamsSchema,
         body: SiteSettingsChangeSchema,
         response: { 200: SiteViewSchema },

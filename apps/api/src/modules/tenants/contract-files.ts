@@ -11,9 +11,9 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { ctxOf, type Scope } from '../../core/context';
-import { fileKey } from '../../files/store';
 import { notFound } from '../../core/loaders';
 import { AppError } from '../../errors';
+import { fileKey } from '../../files/store';
 import { contractScope } from './scope';
 import { contractView } from './views';
 
@@ -24,10 +24,12 @@ import { contractView } from './views';
  */
 const SIGNATURES: Record<(typeof CONTRACT_FILE_TYPES)[number], (b: Buffer) => boolean> = {
   'application/pdf': (b) => b.subarray(0, 5).toString('latin1') === '%PDF-',
-  'image/png': (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  'image/png': (b) =>
+    b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
   'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
   'image/webp': (b) =>
-    b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP',
+    b.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    b.subarray(8, 12).toString('latin1') === 'WEBP',
 };
 
 const sizeText = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} МБ`;
@@ -109,7 +111,8 @@ export function registerContractFileRoutes(app: FastifyInstance): void {
       if (body.length === 0 || !SIGNATURES[contentType](body)) {
         throw new AppError('validation_failed', {
           field: 'file',
-          message: 'Содержимое не похоже на выбранный формат: файл пустой или повреждён. Выберите другой файл.',
+          message:
+            'Содержимое не похоже на выбранный формат: файл пустой или повреждён. Выберите другой файл.',
         });
       }
       if (body.length > ctx.deps.fileMaxBytes) {
@@ -200,7 +203,8 @@ export function registerContractFileRoutes(app: FastifyInstance): void {
         });
         return file;
       });
-      if (!found) throw new AppError('not_found', { message: 'У договора нет файла. Обновите страницу.' });
+      if (!found)
+        throw new AppError('not_found', { message: 'У договора нет файла. Обновите страницу.' });
       const stored = await ctx.deps.files.read(fileKey(ctx.organizationId, found.id));
       if (!stored) {
         throw new AppError('not_found', {
