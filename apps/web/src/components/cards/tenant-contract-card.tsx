@@ -7,6 +7,7 @@ import {
 } from '@oxrana/contracts';
 import {
   Alert,
+  api,
   Badge,
   Button,
   Dialog,
@@ -17,6 +18,7 @@ import {
   EditForm,
   Field,
   type FormController,
+  FormDateInput,
   formatLocalDate,
   Input,
   Section,
@@ -32,15 +34,18 @@ import {
   useEditForm,
   useToast,
 } from '@oxrana/ui';
-import { FilePlus2, FileText, Pencil, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { Download, FilePlus2, FileText, Loader2, Paperclip, Pencil, Plus, X } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { z } from 'zod';
 import {
   type ClauseView,
   type ContractView,
   useClauses,
   useContracts,
+  useMe,
   useMutate,
+  useRefresh,
+  useTrackContracts,
 } from '../../lib/data';
 import { DeleteAction, Empty, GuardPreview, LoadError } from '../common';
 
@@ -83,7 +88,7 @@ interface ContractValues {
 }
 
 function ContractFields({ f }: { f: FormController<ContractValues> }) {
-  const { register, watch } = f.form;
+  const { register, watch, control } = f.form;
   const from = watch('validFrom');
   const to = watch('validTo');
   return (
@@ -93,13 +98,13 @@ function ContractFields({ f }: { f: FormController<ContractValues> }) {
       </Field>
       <div className="grid gap-4 sm:grid-cols-3">
         <Field label="Дата подписания" error={f.fieldError('signedOn')}>
-          <Input type="date" {...register('signedOn')} />
+          <FormDateInput control={control} name="signedOn" />
         </Field>
         <Field label="Действует с" error={f.fieldError('validFrom')}>
-          <Input type="date" {...register('validFrom')} />
+          <FormDateInput control={control} name="validFrom" />
         </Field>
         <Field label="Действует по" error={f.fieldError('validTo')}>
-          <Input type="date" {...register('validTo')} />
+          <FormDateInput control={control} name="validTo" />
         </Field>
       </div>
       {from && to && to < from ? (
@@ -123,9 +128,10 @@ function ContractFields({ f }: { f: FormController<ContractValues> }) {
       <Field label="Примечание" error={f.fieldError('notes')}>
         <Textarea {...register('notes')} maxLength={2000} rows={3} />
       </Field>
-      <Field label="Файл договора (PDF)" disabledReason="Загрузка файлов появится позже.">
-        <Input type="file" accept="application/pdf" />
-      </Field>
+      <p className="text-xs text-muted-foreground">
+        Файл договора (PDF или скан) прикрепляется после сохранения — кнопкой «Прикрепить файл» у
+        договора. Это по желанию.
+      </p>
     </>
   );
 }
@@ -344,14 +350,135 @@ function contractTitle(c: ContractView): string {
   return c.number ? `Договор № ${c.number}` : 'Договор без номера';
 }
 
+const FILE_MAX_MB = 10;
+
 /**
- * Договоры арендатора и их пункты. Пункт договора — основание лимитов, назначений доков и
- * исключений: его выбирают в этих формах, и охрана видит его в причине вердикта.
+ * Файл договора — по желанию и по отдельному праву `contract.file` (договор может быть
+ * коммерческой тайной). Без права файл не виден и не загружается; причина названа.
+ */
+function ContractFile({ contract }: { contract: ContractView }) {
+  const { can } = useMe();
+  const refresh = useRefresh();
+  const toast = useToast();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!can('contract.file')) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Файл договора доступен только пользователям с правом «Файлы договоров».
+      </p>
+    );
+  }
+  const file = contract.file;
+
+  async function upload(chosen: File) {
+    setError(null);
+    if (chosen.size > FILE_MAX_MB * 1024 * 1024) {
+      setError(`Файл больше ${FILE_MAX_MB} МБ. Сожмите его или загрузите меньший.`);
+      return;
+    }
+    if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(chosen.type)) {
+      setError('Файл договора — PDF, PNG, JPEG или WebP. Другие форматы не принимаются.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api(`/contracts/${contract.id}/file?name=${encodeURIComponent(chosen.name)}`, {
+        method: 'PUT',
+        file: chosen,
+      });
+      await refresh();
+      toast('Файл прикреплён');
+    } catch (raw) {
+      setError(raw instanceof Error ? raw.message : 'Не удалось загрузить файл.');
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = '';
+    }
+  }
+
+  async function detach() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/contracts/${contract.id}/file`, { method: 'DELETE' });
+      await refresh();
+      toast('Файл откреплён');
+    } catch (raw) {
+      setError(raw instanceof Error ? raw.message : 'Не удалось открепить файл.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <Paperclip aria-hidden className="size-4 text-muted-foreground" />
+      {file ? (
+        <>
+          <span className="font-medium">{file.fileName}</span>
+          <span className="text-muted-foreground">
+            {file.sizeBytes < 1024 * 1024
+              ? `${Math.max(1, Math.round(file.sizeBytes / 1024))} КБ`
+              : `${(file.sizeBytes / 1024 / 1024).toFixed(1)} МБ`}
+          </span>
+          <Button asChild size="sm" variant="outline">
+            <a href={`/api/contracts/${contract.id}/file`} download>
+              <Download aria-hidden /> Скачать
+            </a>
+          </Button>
+        </>
+      ) : (
+        <span className="text-muted-foreground">Файла нет (по желанию)</span>
+      )}
+      <input
+        ref={input}
+        type="file"
+        hidden
+        accept="application/pdf,image/png,image/jpeg,image/webp"
+        aria-label={`Файл договора: ${contractTitle(contract)}`}
+        onChange={(e) => {
+          const chosen = e.target.files?.[0];
+          if (chosen) void upload(chosen);
+        }}
+      />
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => input.current?.click()}>
+        {busy ? <Loader2 aria-hidden className="animate-spin" /> : null}
+        {file ? 'Заменить файл' : 'Прикрепить файл'}
+      </Button>
+      {file ? (
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void detach()}>
+          <X aria-hidden /> Открепить
+        </Button>
+      ) : null}
+      {error ? (
+        <p role="alert" className="w-full text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Договоры арендатора и их пункты. Договор необязателен (бывает коммерческой тайной); если он есть,
+ * он даёт две вещи: срок (после окончания договора пропуска перестают действовать сами) и пункты —
+ * основание, на которое ссылаются лимиты и доки.
  */
 export function TenantContractCard({ tenantId }: { tenantId: string }) {
-  const contracts = useContracts(tenantId);
+  const track = useTrackContracts();
+  const contracts = useContracts(track ? tenantId : null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ContractView | null>(null);
+  if (!track) {
+    return (
+      <Alert tone="info" title="Ведение договоров выключено">
+        В настройках организации выключено «Вести договоры»: разделы и поля договоров скрыты, срок
+        договора не проверяется. Включить — «Объект» → «Настройки организации».
+      </Alert>
+    );
+  }
   if (contracts.error)
     return <LoadError error={contracts.error} retry={() => void contracts.refetch()} />;
   const items = contracts.items ?? [];
@@ -359,7 +486,7 @@ export function TenantContractCard({ tenantId }: { tenantId: string }) {
     <>
       <Section
         title="Договор и пункты"
-        description="Договор арендатора и выписанные из него пункты. Пункт — основание лимита: по нему видно, откуда взялась цифра."
+        description="Договор необязателен. Если он есть, он нужен для двух вещей: срок договора (когда договор кончился, пропуска арендатора перестают действовать сами) и пункты — основание, на которое ссылаются лимиты и доки."
         actions={
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus aria-hidden /> Добавить договор
@@ -373,7 +500,7 @@ export function TenantContractCard({ tenantId }: { tenantId: string }) {
         ) : items.length === 0 ? (
           <Empty
             title="Договора ещё нет"
-            hint="Добавьте договор, затем выпишите из него пункты. Без договора лимиты тоже работают, но без указания основания."
+            hint="Договор не обязателен: без него лимиты, доки и пропуска работают, только без срока договора и без ссылок на пункты."
             action={
               <Button onClick={() => setCreating(true)}>
                 <FilePlus2 aria-hidden /> Добавить договор
@@ -416,6 +543,7 @@ export function TenantContractCard({ tenantId }: { tenantId: string }) {
                     />
                   </div>
                 </header>
+                <ContractFile contract={c} />
                 <ClausesPanel contractId={c.id} />
               </article>
             ))}

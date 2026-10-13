@@ -13,6 +13,7 @@ import {
   Section,
   Select,
   SiteTime,
+  Switch,
   useCreateForm,
   useEditForm,
   useToast,
@@ -20,7 +21,7 @@ import {
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import type { z } from 'zod';
-import { type SiteView, useApi, useMutate } from '../../lib/data';
+import { type SiteView, useApi, useMutate, useOrganization } from '../../lib/data';
 import { useSite } from '../../lib/site-context';
 import { GuardPreview } from '../common';
 import { describeHours, WorkingHoursInput } from '../working-hours';
@@ -154,6 +155,37 @@ interface EditValues {
   workingHours: WorkingHours | null;
 }
 
+/**
+ * Настройки организации (действуют на все объекты). «Вести договоры» — договоры бывают
+ * коммерческой тайной: выключено — разделы и поля договоров скрыты везде, срок договора не проверяется.
+ */
+function OrganizationSettings() {
+  const mutate = useMutate();
+  const toast = useToast();
+  const { org } = useOrganization();
+  const f = useEditForm<{ trackContracts: boolean }>({
+    values: org ? { trackContracts: org.settings.trackContracts } : undefined,
+    onPatch: async (patch) => {
+      await mutate('/org', 'PATCH', { settings: patch });
+      toast(patch.trackContracts ? 'Договоры включены' : 'Договоры выключены и скрыты');
+    },
+  });
+  return (
+    <Section
+      title="Настройки организации"
+      description="Действуют на все объекты организации. Менять может только роль на всю организацию."
+    >
+      <EditForm form={f}>
+        <Switch
+          {...f.form.register('trackContracts')}
+          label="Вести договоры"
+          hint="Включено по умолчанию. Выключите, если договоры арендаторов — коммерческая тайна: разделы и поля договоров исчезнут, срок договора не будет проверяться (пропуска не закончатся из-за договора), а лимиты и доки работают без ссылки на пункт."
+        />
+      </EditForm>
+    </Section>
+  );
+}
+
 function EditSite({ site }: { site: SiteView }) {
   const mutate = useMutate();
   const toast = useToast();
@@ -226,6 +258,7 @@ function EditSite({ site }: { site: SiteView }) {
           сейчас <SiteTime value={new Date().toISOString()} />.
         </p>
       </Section>
+      <OrganizationSettings />
       <GuardPreview>
         <p>
           Часы работы комплекса: <strong>{describeHours(site.workingHours)}</strong> (

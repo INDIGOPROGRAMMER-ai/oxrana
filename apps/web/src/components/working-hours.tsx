@@ -1,6 +1,6 @@
 import type { WorkingHours } from '@oxrana/contracts';
 import { WEEKDAYS, type Weekday } from '@oxrana/contracts';
-import { Button, Checkbox, Input } from '@oxrana/ui';
+import { Button, Checkbox, TimeInput } from '@oxrana/ui';
 
 const DAY_LABEL: Record<Weekday, string> = {
   mon: 'Пн',
@@ -105,26 +105,18 @@ export function WorkingHoursInput({
                 />
                 {interval ? (
                   <>
-                    <Input
-                      type="time"
+                    <TimeInput
                       aria-label={`${DAY_LABEL[day]}: с`}
-                      className="w-28"
                       value={interval[0]}
                       disabled={disabled}
-                      onChange={(e) =>
-                        onChange({ ...value, [day]: [[e.target.value, interval[1]]] })
-                      }
+                      onChange={(next) => onChange({ ...value, [day]: [[next, interval[1]]] })}
                     />
                     <span>—</span>
-                    <Input
-                      type="time"
+                    <TimeInput
                       aria-label={`${DAY_LABEL[day]}: до`}
-                      className="w-28"
                       value={interval[1] === '24:00' ? '23:59' : interval[1]}
                       disabled={disabled}
-                      onChange={(e) =>
-                        onChange({ ...value, [day]: [[interval[0], e.target.value]] })
-                      }
+                      onChange={(next) => onChange({ ...value, [day]: [[interval[0], next]] })}
                     />
                   </>
                 ) : (

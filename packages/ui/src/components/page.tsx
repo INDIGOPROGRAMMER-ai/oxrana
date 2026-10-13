@@ -31,15 +31,18 @@ export function Section({
   actions,
   children,
   className,
+  id,
 }: {
   title: string;
   description?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Якорь для ссылок «#zones» на странице. */
+  id?: string;
 }) {
   return (
-    <Card className={cn('mb-5', className)}>
+    <Card id={id} className={cn('mb-5 scroll-mt-4', className)}>
       <CardHeader className="flex-row items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <CardTitle>{title}</CardTitle>

@@ -43,3 +43,20 @@ describe('списки без дублей', () => {
     expect(new Set<string>(list).size).toBe(list.length);
   });
 });
+
+describe('группы прав для редактора ролей', () => {
+  it('каждое право входит ровно в одну группу', async () => {
+    const { PERMISSION_GROUPS, PERMISSIONS } = await import('../src');
+    const grouped = PERMISSION_GROUPS.flatMap((g) => g.codes);
+    expect([...grouped].sort()).toEqual([...PERMISSIONS].sort());
+    expect(new Set(grouped).size).toBe(grouped.length);
+  });
+
+  it('русская локаль zod подключена импортом contracts', async () => {
+    const { TenantCreateSchema } = await import('../src');
+    const result = TenantCreateSchema.safeParse({ legalName: 1 });
+    expect(result.success).toBe(false);
+    const message = result.error?.issues[0]?.message ?? '';
+    expect(message).not.toMatch(/Invalid|expected/i);
+  });
+});

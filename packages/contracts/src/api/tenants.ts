@@ -7,7 +7,11 @@ import { IdSchema, ReasonSchema, TextSchema } from './common';
 /** Местная дата `YYYY-MM-DD` (договоры, назначения доков — в датах объекта). */
 export const LocalDateSchema = z.iso.date({ error: 'Дата в формате ГГГГ-ММ-ДД' });
 
-const Phone = z.string().trim().min(5).max(30);
+const Phone = z
+  .string()
+  .trim()
+  .min(5, 'Телефон — не короче 5 символов')
+  .max(30, 'Телефон — не длиннее 30 символов');
 
 export const TenantViewSchema = z.object({
   id: IdSchema,
@@ -59,7 +63,7 @@ export const StoredFileViewSchema = z.object({
 });
 export type StoredFileView = z.infer<typeof StoredFileViewSchema>;
 /** Допустимые типы файла договора: PDF и изображения (Q-63). */
-export const CONTRACT_FILE_TYPES = [
+export const contractFileTypes = [
   'application/pdf',
   'image/png',
   'image/jpeg',

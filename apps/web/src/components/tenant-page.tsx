@@ -2,13 +2,16 @@ import { Badge, PageHeader } from '@oxrana/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft } from 'lucide-react';
 import { useEffect } from 'react';
+import { useTrackContracts } from '../lib/data';
 import { useSite } from '../lib/site-context';
 import { ExceptionsCard } from './cards/exceptions-card';
 import { PedestrianRulesCard } from './cards/pedestrian-rules-card';
 import { QuotasCard } from './cards/quotas-card';
+import { RoutingCard } from './cards/routing-card';
 import { TenantContractCard } from './cards/tenant-contract-card';
 import { TenantDocksCard } from './cards/tenant-docks-card';
 import { TenantGeneralCard } from './cards/tenant-general-card';
+import { TenantParkingCard } from './cards/tenant-parking-card';
 import { TenantStatusBadge, useTenant } from './cards/tenant-shared';
 import { LoadError } from './common';
 
@@ -16,7 +19,9 @@ export const TENANT_TABS = [
   'general',
   'contract',
   'docks',
+  'parking',
   'quotas',
+  'routes',
   'exceptions',
   'pedestrians',
 ] as const;
@@ -26,7 +31,9 @@ const TAB_LABEL: Record<TenantTab, string> = {
   general: 'Общее',
   contract: 'Договор',
   docks: 'Доки',
+  parking: 'Парковка',
   quotas: 'Лимиты',
+  routes: 'Маршруты',
   exceptions: 'Исключения',
   pedestrians: 'Пешеходы',
 };
@@ -44,6 +51,8 @@ export function parseTenantTab(value: unknown): TenantTab | undefined {
 export function TenantPage({ tenantId, tab }: { tenantId: string; tab: TenantTab }) {
   const navigate = useNavigate();
   const tenant = useTenant(tenantId);
+  const track = useTrackContracts();
+  const tabs = TENANT_TABS.filter((t) => track || t !== 'contract');
   const { site, select } = useSite();
   const tenantSiteId = tenant.data?.siteId;
   // карточка арендатора открывает его объект: время и справочники — того же объекта
@@ -97,7 +106,7 @@ export function TenantPage({ tenantId, tab }: { tenantId: string; tab: TenantTab
             aria-label="Разделы карточки арендатора"
             className="mb-5 flex gap-1 overflow-x-auto border-b"
           >
-            {TENANT_TABS.map((t) => (
+            {tabs.map((t) => (
               <button
                 key={t}
                 type="button"
@@ -120,7 +129,9 @@ export function TenantPage({ tenantId, tab }: { tenantId: string; tab: TenantTab
             {tab === 'general' ? <TenantGeneralCard tenantId={tenantId} /> : null}
             {tab === 'contract' ? <TenantContractCard tenantId={tenantId} /> : null}
             {tab === 'docks' ? <TenantDocksCard tenantId={tenantId} /> : null}
+            {tab === 'parking' ? <TenantParkingCard tenantId={tenantId} /> : null}
             {tab === 'quotas' ? <QuotasCard tenantId={tenantId} /> : null}
+            {tab === 'routes' ? <RoutingCard tenantId={tenantId} /> : null}
             {tab === 'exceptions' ? <ExceptionsCard tenantId={tenantId} /> : null}
             {tab === 'pedestrians' ? <PedestrianRulesCard tenantId={tenantId} /> : null}
           </div>

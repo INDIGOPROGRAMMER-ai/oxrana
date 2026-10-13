@@ -23,7 +23,13 @@ import { Link } from '@tanstack/react-router';
 import { Building2, ExternalLink, FileText, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../../lib/api';
-import { type TenantView, useCategories, useMutate, useTenants } from '../../lib/data';
+import {
+  type TenantView,
+  useCategories,
+  useMutate,
+  useTenants,
+  useTrackContracts,
+} from '../../lib/data';
 import { useSite } from '../../lib/site-context';
 import { DeleteAction, Empty, GuardPreview, LoadError, RequireSite } from '../common';
 import { TenantContractCard } from './tenant-contract-card';
@@ -280,14 +286,18 @@ function TenantsBody({
  */
 export function TenantsStep() {
   const { site } = useSite();
+  const track = useTrackContracts();
   const tenants = useTenants(site?.id ?? null);
   const [pickedId, setPickedId] = useState<string | null>(null);
   // удалённый арендатор из выбора пропадает сам
   const picked = tenants.items?.find((t) => t.id === pickedId) ?? null;
   return (
     <>
-      <TenantsCard onPickContract={(t) => setPickedId(t.id)} pickedId={picked?.id} />
-      {picked ? (
+      <TenantsCard
+        {...(track ? { onPickContract: (t: TenantView) => setPickedId(t.id) } : {})}
+        pickedId={picked?.id}
+      />
+      {!track ? null : picked ? (
         <>
           <p className="mb-3 text-sm text-muted-foreground">
             Договор арендатора:{' '}
@@ -297,8 +307,8 @@ export function TenantsStep() {
         </>
       ) : (
         <Empty
-          title="Выберите арендатора, чтобы заполнить договор"
-          hint="Нажмите «Договор» в строке арендатора. Договор и его пункты — основание лимитов; их можно заполнить позже."
+          title="Договор арендатора — по желанию"
+          hint="Договор необязателен. Нажмите «Договор» в строке арендатора, если хотите внести срок и пункты — на них можно ссылаться в лимитах и доках."
         />
       )}
     </>

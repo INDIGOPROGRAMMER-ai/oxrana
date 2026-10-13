@@ -11,6 +11,7 @@
   "dependencies": {
     "@date-fns/tz": "catalog:",
     "@oxrana/contracts": "workspace:*",
+    "@oxrana/plates": "workspace:*",
     "@oxrana/ui": "workspace:*",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",

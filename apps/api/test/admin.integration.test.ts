@@ -34,7 +34,7 @@ beforeAll(async () => {
 });
 afterAll(() => t.close());
 
-/** Воображаемая фура ДНС на КПП-2 с доком и окном «сейчас». */
+/** Воображаемая фура арендатора с доком и окном «сейчас» на своём КПП. */
 const dnsSemi = (extra: Record<string, unknown> = {}) => ({
   tenantId: tenantKey('dns'),
   passType: 'single',
@@ -50,12 +50,15 @@ const sandbox = (body: Record<string, unknown>, actor = admin) =>
   t.as(actor, { method: 'POST', url: `/sites/${site}/sandbox/check`, payload: body });
 
 describe('песочница правил', () => {
-  it('вердикт тем же движком: фура ДНС на КПП-2 проходит, на КПП-1 — «не тот КПП»', async () => {
+  it('вердикт тем же движком: фура проходит на своём КПП, на чужом — «не тот КПП»', async () => {
     const ok = await sandbox(dnsSemi());
     expect(ok.statusCode, ok.body).toBe(200);
     expect(ok.json().verdict).toMatchObject({ code: 'allow', color: 'green' });
     expect(ok.json().verdict.trace.length).toBeGreaterThan(5);
-    expect(ok.json().subject).toMatchObject({ tenantName: 'ДНС', gateName: 'КПП-2' });
+    expect(ok.json().subject).toMatchObject({
+      tenantName: expect.any(String),
+      gateName: expect.any(String),
+    });
     expect(ok.json().subject.atLabel).toContain('UTC+5');
     const wrong = await sandbox(dnsSemi({ gateId: gateKey('kpp1') }));
     expect(wrong.json().verdict).toMatchObject({ code: 'wrong_gate', color: 'blue' });

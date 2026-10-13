@@ -8,6 +8,7 @@ import {
   type ZoneKind,
 } from '@oxrana/contracts';
 import {
+  Alert,
   Badge,
   BatchInput,
   Button,
@@ -32,12 +33,13 @@ import {
   useEditForm,
   useToast,
 } from '@oxrana/ui';
-import { Pencil } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { Loader2, Pencil } from 'lucide-react';
+import { type SelectHTMLAttributes, useCallback, useMemo, useState } from 'react';
 import { z } from 'zod';
 import { api } from '../../lib/api';
 import { type DockView, useDocks, useMutate, useZones, type ZoneView } from '../../lib/data';
 import { DOCK_KIND_LABEL, ZONE_KIND_LABEL } from '../../lib/labels';
+import { useAutoPreview } from '../../lib/use-auto-preview';
 import { DeleteAction, Empty, LoadError, RequireSite } from '../common';
 
 // ——— зоны ———
@@ -111,6 +113,54 @@ function ZoneEditForm({ zone, onDone }: { zone: ZoneView; onDone: () => void }) 
 
 // ——— доки ———
 
+/**
+ * Выбор зоны для дока. Зон нет — список неактивен, а рядом ясно сказано, что делать: сначала
+ * создать зону в блоке «Зоны» (ссылка на него). Зона дока необязательна.
+ */
+function ZoneSelect({
+  zones,
+  value,
+  onChange,
+  emptyLabel = '— не указана —',
+  clearLabel,
+  ...rest
+}: {
+  zones: readonly ZoneView[];
+  value?: string;
+  onChange?: (value: string) => void;
+  emptyLabel?: string;
+  /** Пункт «убрать зону» (значение `__none`) — для массовой правки. */
+  clearLabel?: string;
+} & Omit<SelectHTMLAttributes<HTMLSelectElement>, 'value' | 'onChange'>) {
+  const none = zones.length === 0;
+  return (
+    <>
+      <Select
+        {...rest}
+        {...(onChange ? { value: value ?? '', onChange: (e) => onChange(e.target.value) } : {})}
+        disabled={none || rest.disabled}
+      >
+        <option value="">{none ? '— зон пока нет —' : emptyLabel}</option>
+        {clearLabel && !none ? <option value="__none">{clearLabel}</option> : null}
+        {zones.map((z) => (
+          <option key={z.id} value={z.id}>
+            {z.name}
+          </option>
+        ))}
+      </Select>
+      {none ? (
+        <p className="text-xs text-warning">
+          Сначала создайте зону —{' '}
+          <a href="#zones" className="font-medium underline">
+            блок «Зоны» выше
+          </a>
+          . Зона дока необязательна: без неё док просто не привязан к зданию.
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 function DockEditForm({
   dock,
   zones,
@@ -151,14 +201,11 @@ function DockEditForm({
         <Input {...f.form.register('number')} />
       </Field>
       <Field label="Зона" error={f.fieldError('zoneId')}>
-        <Select {...f.form.register('zoneId')}>
-          <option value="">— не указана —</option>
-          {zones.map((z) => (
-            <option key={z.id} value={z.id}>
-              {z.name}
-            </option>
-          ))}
-        </Select>
+        <ZoneSelect
+          zones={zones}
+          value={f.form.watch('zoneId')}
+          onChange={(v) => f.form.setValue('zoneId', v, { shouldDirty: true })}
+        />
       </Field>
       <Field label="Вид дока" error={f.fieldError('kind')}>
         <Select {...f.form.register('kind')}>
@@ -217,14 +264,7 @@ function DocksBatch({ siteId, zones }: { siteId: string; zones: ZoneView[] }) {
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-3">
         <Field label="Зона" hint="Для всех добавляемых доков. Необязательно.">
-          <Select value={zoneId} onChange={(e) => setZoneId(e.target.value)}>
-            <option value="">— не указана —</option>
-            {zones.map((z) => (
-              <option key={z.id} value={z.id}>
-                {z.name}
-              </option>
-            ))}
-          </Select>
+          <ZoneSelect zones={zones} value={zoneId} onChange={setZoneId} />
         </Field>
         <Field
           label="Вид дока"
@@ -261,6 +301,127 @@ function DocksBatch({ siteId, zones }: { siteId: string; zones: ZoneView[] }) {
   );
 }
 
+type Tri = '' | 'yes' | 'no';
+
+/**
+ * Массовая правка: выбранным докам разом задать зону, вид и «считаются в лимите». «Не менять» —
+ * поле не отправляется. Проверка идёт сама (сервер знает, какие доки нельзя изменить); одна кнопка.
+ */
+function DocksBulkEdit({
+  siteId,
+  zones,
+  ids,
+  onDone,
+}: {
+  siteId: string;
+  zones: readonly ZoneView[];
+  ids: readonly string[];
+  onDone: () => void;
+}) {
+  const mutate = useMutate();
+  const toast = useToast();
+  const [zoneId, setZoneId] = useState('');
+  const [kind, setKind] = useState<DockKind | ''>('');
+  const [counts, setCounts] = useState<Tri>('');
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const changes = {
+    ...(zoneId === '__none' ? { zoneId: null } : zoneId ? { zoneId } : {}),
+    ...(kind ? { kind } : {}),
+    ...(counts ? { countsInQuota: counts === 'yes' } : {}),
+  };
+  const nothing = Object.keys(changes).length === 0;
+  const preview = useAutoPreview({
+    path: `/sites/${siteId}/docks/batch`,
+    method: 'PATCH',
+    body: nothing ? null : { ids, changes },
+  });
+  const checked = preview.status === 'ready' ? preview.result : null;
+
+  async function apply() {
+    setBusy(true);
+    setFailure(null);
+    try {
+      const done = await mutate<BatchResult>(`/sites/${siteId}/docks/batch`, 'PATCH', {
+        ids,
+        changes,
+      });
+      toast(done.summary);
+      if (done.errors.length === 0) onDone();
+      else setFailure(`${done.summary}. ${done.errors[0]?.message ?? ''}`);
+    } catch (raw) {
+      setFailure(raw instanceof Error ? raw.message : 'Не удалось изменить доки.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+      <p className="text-sm font-medium">Выбрано доков: {ids.length}. Что им задать?</p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Зона">
+          <ZoneSelect
+            zones={zones}
+            value={zoneId}
+            onChange={setZoneId}
+            emptyLabel="— не менять —"
+            clearLabel="— убрать зону —"
+          />
+        </Field>
+        <Field label="Вид дока">
+          <Select value={kind} onChange={(e) => setKind(e.target.value as DockKind | '')}>
+            <option value="">— не менять —</option>
+            {DOCK_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {DOCK_KIND_LABEL[k]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Считаются в лимите грузовых">
+          <Select value={counts} onChange={(e) => setCounts(e.target.value as Tri)}>
+            <option value="">— не менять —</option>
+            <option value="yes">да</option>
+            <option value="no">нет</option>
+          </Select>
+        </Field>
+      </div>
+      {zones.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Чтобы убрать зону у выбранных доков, выберите «— убрать зону —» в списке выше.
+        </p>
+      ) : null}
+      {checked && checked.errors.length > 0 ? (
+        <Alert tone="warning">
+          {checked.summary}. {checked.errors[0]?.message}
+        </Alert>
+      ) : null}
+      {failure ? <Alert tone="danger">{failure}</Alert> : null}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          disabled={busy || nothing || !checked || checked.created === 0}
+          onClick={() => void apply()}
+        >
+          {busy || preview.status === 'checking' ? (
+            <Loader2 aria-hidden className="animate-spin" />
+          ) : null}
+          {checked && checked.created > 0
+            ? `Изменить доков: ${checked.created}`
+            : 'Изменить выбранные'}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {nothing
+            ? 'Выберите, что изменить.'
+            : preview.status === 'checking'
+              ? 'Проверяем…'
+              : null}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Карточка «Доки и зоны» (шаг 5): зоны (здания, двор, парковка…) и доки. Доки добавляются
  * диапазоном «1–72» или вставкой списка, с предпросмотром до сохранения.
@@ -274,6 +435,8 @@ function DocksBody({ siteId }: { siteId: string }) {
   const docks = useDocks(siteId);
   const [editingZone, setEditingZone] = useState<ZoneView | null>(null);
   const [editingDock, setEditingDock] = useState<DockView | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const failed = zones.error ?? docks.error;
   if (failed)
     return (
@@ -299,6 +462,7 @@ function DocksBody({ siteId }: { siteId: string }) {
   return (
     <>
       <Section
+        id="zones"
         title="Зоны"
         description="Здания, двор, парковки. Зона нужна, чтобы направлять посетителей и группировать доки; можно добавить позже."
       >
@@ -358,30 +522,91 @@ function DocksBody({ siteId }: { siteId: string }) {
         <DocksBatch siteId={siteId} zones={zoneList} />
         {dockList.length > 0 ? (
           <div className="mt-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                {selecting
+                  ? 'Отметьте доки, которым нужно разом задать зону, вид или «считаются в лимите».'
+                  : 'Нажмите на номер, чтобы изменить док или удалить его.'}
+              </p>
+              <Button
+                variant={selecting ? 'secondary' : 'outline'}
+                size="sm"
+                aria-pressed={selecting}
+                onClick={() => {
+                  setSelecting(!selecting);
+                  setSelected(new Set());
+                }}
+              >
+                {selecting ? 'Закончить выбор' : 'Выбрать несколько'}
+              </Button>
+            </div>
             {[...groups.entries()].map(([zoneKey, list]) => (
               <div key={zoneKey}>
-                <p className="mb-1.5 text-sm font-medium">
+                <p className="mb-1.5 flex items-center gap-2 text-sm font-medium">
                   {zoneName(zoneKey || null)} <Badge tone="neutral">{list.length}</Badge>
+                  {selecting ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const next = new Set(selected);
+                        const all = list.every((d) => next.has(d.id));
+                        for (const d of list) {
+                          if (all) next.delete(d.id);
+                          else next.add(d.id);
+                        }
+                        setSelected(next);
+                      }}
+                    >
+                      {list.every((d) => selected.has(d.id)) ? 'Снять все' : 'Выбрать все'}
+                    </Button>
+                  ) : null}
                 </p>
                 <ul className="flex flex-wrap gap-1.5">
                   {list.map((d) => (
                     <li key={d.id}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        aria-label={`Док ${d.number}`}
-                        onClick={() => setEditingDock(d)}
-                      >
-                        {d.number}
-                      </Button>
+                      {selecting ? (
+                        <Button
+                          variant={selected.has(d.id) ? 'default' : 'outline'}
+                          size="sm"
+                          role="checkbox"
+                          aria-checked={selected.has(d.id)}
+                          aria-label={`Выбрать док ${d.number}`}
+                          onClick={() => {
+                            const next = new Set(selected);
+                            if (next.has(d.id)) next.delete(d.id);
+                            else next.add(d.id);
+                            setSelected(next);
+                          }}
+                        >
+                          {d.number}
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          aria-label={`Док ${d.number}`}
+                          onClick={() => setEditingDock(d)}
+                        >
+                          {d.number}
+                        </Button>
+                      )}
                     </li>
                   ))}
                 </ul>
               </div>
             ))}
-            <p className="text-xs text-muted-foreground">
-              Нажмите на номер, чтобы изменить док или удалить его.
-            </p>
+            {selecting && selected.size > 0 ? (
+              <DocksBulkEdit
+                siteId={siteId}
+                zones={zoneList}
+                ids={[...selected]}
+                onDone={() => {
+                  setSelected(new Set());
+                  setSelecting(false);
+                }}
+              />
+            ) : null}
           </div>
         ) : null}
       </Section>

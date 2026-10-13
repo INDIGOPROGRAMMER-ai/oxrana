@@ -1,9 +1,9 @@
-import { EditForm, Field, Input, Section, useEditForm, useToast } from '@oxrana/ui';
+import { EditForm, Section, useEditForm, useToast } from '@oxrana/ui';
 import { type TenantView, useCategories, useMutate } from '../../lib/data';
 import { LoadError } from '../common';
+import { TenantBlockSection } from './tenant-block-card';
 import {
   blankToNull,
-  TENANT_STATUS_LABEL,
   TenantFields,
   type TenantFormValues,
   TenantPatchFormSchema,
@@ -43,12 +43,6 @@ function GeneralForm({ tenant }: { tenant: TenantView | undefined }) {
         categories={categories.items ?? []}
         currentCategoryId={tenant?.defaultCategoryId}
       />
-      <Field
-        label="Статус"
-        disabledReason="Статус меняется блокировкой арендатора — она появится на следующем этапе. Пока арендатор работает в обычном режиме."
-      >
-        <Input value={tenant ? TENANT_STATUS_LABEL[tenant.status] : ''} readOnly />
-      </Field>
     </EditForm>
   );
 }
@@ -61,11 +55,21 @@ export function TenantGeneralCard({ tenantId }: { tenantId: string }) {
   const tenant = useTenant(tenantId);
   if (tenant.error) return <LoadError error={tenant.error} retry={() => void tenant.refetch()} />;
   return (
-    <Section
-      title="Общие сведения"
-      description="Названия и контакты арендатора. Сохраняются только изменённые поля."
-    >
-      <GeneralForm tenant={tenant.data} />
-    </Section>
+    <>
+      <Section
+        title="Общие сведения"
+        description="Названия и контакты арендатора. Сохраняются только изменённые поля."
+      >
+        <GeneralForm tenant={tenant.data} />
+      </Section>
+      {tenant.data ? (
+        <Section
+          title="Блокировка"
+          description="Запретить новые пропуска, въезд или всё сразу — с причиной и подсчётом последствий."
+        >
+          <TenantBlockSection tenant={tenant.data} />
+        </Section>
+      ) : null}
+    </>
   );
 }

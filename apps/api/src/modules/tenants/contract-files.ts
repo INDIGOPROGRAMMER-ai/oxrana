@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  CONTRACT_FILE_TYPES,
   ContractFileQuerySchema,
   ContractViewSchema,
+  contractFileTypes,
   IdParamsSchema,
   type StoredFileView,
 } from '@oxrana/contracts';
@@ -22,7 +22,7 @@ import { contractView } from './views';
  * телом запроса как есть (PDF или изображение), имя — в query. Тип проверяется по началу файла, а
  * не по заголовку, который задаёт клиент.
  */
-const SIGNATURES: Record<(typeof CONTRACT_FILE_TYPES)[number], (b: Buffer) => boolean> = {
+const SIGNATURES: Record<(typeof contractFileTypes)[number], (b: Buffer) => boolean> = {
   'application/pdf': (b) => b.subarray(0, 5).toString('latin1') === '%PDF-',
   'image/png': (b) =>
     b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
@@ -101,13 +101,13 @@ export function registerContractFileRoutes(app: FastifyInstance): void {
       const ctx = ctxOf(request);
       const type = (request.headers['content-type'] ?? '').split(';')[0]?.trim() ?? '';
       const body = request.body;
-      if (!(CONTRACT_FILE_TYPES as readonly string[]).includes(type) || !Buffer.isBuffer(body)) {
+      if (!(contractFileTypes as readonly string[]).includes(type) || !Buffer.isBuffer(body)) {
         throw new AppError('validation_failed', {
           field: 'file',
           message: 'Файл договора — PDF, PNG, JPEG или WebP. Другие форматы не принимаются.',
         });
       }
-      const contentType = type as (typeof CONTRACT_FILE_TYPES)[number];
+      const contentType = type as (typeof contractFileTypes)[number];
       if (body.length === 0 || !SIGNATURES[contentType](body)) {
         throw new AppError('validation_failed', {
           field: 'file',

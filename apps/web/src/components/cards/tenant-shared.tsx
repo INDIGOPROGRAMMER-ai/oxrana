@@ -1,4 +1,4 @@
-import { TenantCreateSchema, type TenantStatus } from '@oxrana/contracts';
+import { TenantCreateSchema, TenantPatchSchema, type TenantStatus } from '@oxrana/contracts';
 import { Badge, Field, type FormController, Input, Select, Switch } from '@oxrana/ui';
 import { z } from 'zod';
 import { type CategoryView, type TenantView, useApi } from '../../lib/data';
@@ -12,6 +12,7 @@ export const TENANT_STATUS_LABEL: Record<TenantStatus, string> = {
   active: 'активен',
   blocked_new_passes: 'новые пропуска запрещены',
   blocked_entry: 'въезд запрещён',
+  blocked_full: 'заблокирован полностью',
   archived: 'в архиве',
 };
 
@@ -19,6 +20,7 @@ const TENANT_STATUS_TONE: Record<TenantStatus, 'success' | 'warning' | 'danger' 
   active: 'success',
   blocked_new_passes: 'warning',
   blocked_entry: 'danger',
+  blocked_full: 'danger',
   archived: 'neutral',
 };
 
@@ -50,23 +52,12 @@ export function blankToNull(input: object): Record<string, unknown> {
   return out;
 }
 
-// Те же правила, что у сервера, но с русскими сообщениями о длине телефона.
-const PhoneField = z
-  .string()
-  .trim()
-  .min(5, 'Телефон — не короче 5 символов')
-  .max(30, 'Телефон — не длиннее 30 символов')
-  .nullable()
-  .optional();
-const TenantFormShape = TenantCreateSchema.extend({
-  responsiblePhone: PhoneField,
-  emergencyPhone: PhoneField,
-});
-export const TenantCreateFormSchema = TenantFormShape;
+// Схемы и русские сообщения — из contracts (Q-67): экран не переписывает правила сервера.
+export const TenantCreateFormSchema = TenantCreateSchema;
 /** Проверка изменённых полей перед PATCH: пустые строки приводятся к `null` до проверки. */
 export const TenantPatchFormSchema = z.preprocess(
   (v) => (typeof v === 'object' && v !== null ? blankToNull(v) : v),
-  TenantFormShape.partial(),
+  TenantPatchSchema,
 );
 
 /** Поля арендатора — общие для окна создания и карточки «Общее». */
@@ -140,7 +131,7 @@ export function TenantFields({
       <Switch
         {...register('isOperator')}
         label="Оператор объекта"
-        hint="Это сама управляющая компания: без лимитов, проезд через любые КПП."
+        hint="Это сама управляющая компания. Лимиты ей не задают (нет лимита — нет ограничения), сам флаг их не снимает. Машины ездят по общей матрице «тип × КПП»; если руководству нужен любой КПП — заведите исключение на вкладке «Исключения»."
       />
     </>
   );

@@ -110,3 +110,86 @@ export const GATE_POST_ONLY_PERMISSIONS = [
   'gate.undo',
   'gate.passage',
 ] as const satisfies readonly PermissionCode[];
+
+/**
+ * Группы прав для редактора ролей (этап 6b): человек видит не «tenant.block», а раздел «Настройка
+ * объекта» и подписи. Каждое право — ровно в одной группе (проверяет тест contracts).
+ */
+export const PERMISSION_GROUPS: readonly {
+  readonly title: string;
+  readonly hint: string;
+  readonly codes: readonly PermissionCode[];
+}[] = [
+  {
+    title: 'Настройка объекта',
+    hint: 'Объект, КПП, арендаторы, правила, лимиты, чёрный список, устройства.',
+    codes: [
+      'site.manage',
+      'tenant.manage',
+      'tenant.block',
+      'contract.file',
+      'blacklist.manage',
+      'quota.manage',
+      'rule.manage',
+      'device.manage',
+      'hardware.manage',
+    ],
+  },
+  {
+    title: 'Люди и роли',
+    hint: 'Кто может приглашать людей и менять права.',
+    codes: ['user.manage', 'role.manage', 'tenant_user.manage'],
+  },
+  {
+    title: 'Пропуска',
+    hint: 'Оформление, правка, отмена и согласование пропусков.',
+    codes: [
+      'pass.view',
+      'pass.view_all_tenants',
+      'pass.create.single',
+      'pass.create.multi',
+      'pass.create.permanent',
+      'pass.create_for_any_tenant',
+      'pass.edit',
+      'pass.cancel',
+      'pass.cancel_own',
+      'pass.approve',
+      'pass.change_request.create',
+      'pass.change_request.decide',
+    ],
+  },
+  {
+    title: 'Пост охраны',
+    hint: 'Действия на КПП. Администратору объекта их не выдают: «Впустить» нажимает охрана.',
+    codes: [
+      'visit.check_in',
+      'visit.check_out',
+      'gate.redirect',
+      'gate.refuse',
+      'gate.request',
+      'gate.undo',
+      'gate.override_request',
+      'gate.override',
+      'gate.passage',
+    ],
+  },
+  {
+    title: 'Наблюдение и отчёты',
+    hint: 'Табло, очередь, отчёты, журнал, песочница правил.',
+    codes: [
+      'queue.view',
+      'occupancy.view',
+      'violation.create',
+      'violation.manage',
+      'report.view',
+      'report.export',
+      'audit.view',
+      'sandbox.use',
+    ],
+  },
+  {
+    title: 'Личное',
+    hint: 'Свои уведомления и настройки.',
+    codes: ['notification.manage_own', 'profile.manage_own'],
+  },
+];

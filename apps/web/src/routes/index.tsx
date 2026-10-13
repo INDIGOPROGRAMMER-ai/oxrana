@@ -68,10 +68,15 @@ function Home() {
   const name = me.user?.fullName ?? me.gate?.name ?? '';
   const assignments = me.user?.assignments ?? [];
   const canAdmin = ADMIN_PERMISSIONS.some((p) => can(p));
+  // Пользователь арендатора видит свою компанию, а не организацию-оператора платформы.
+  const tenantNames = [
+    ...new Set(assignments.flatMap((a) => (a.tenantName ? [a.tenantName] : []))),
+  ];
+  const company = tenantNames.length > 0 ? tenantNames.join(', ') : me.organization.name;
   return (
     <AuthLayout title="Главная" wide>
       <p>
-        Вы вошли как <strong>{name}</strong> · {me.organization.name}
+        Вы вошли как <strong>{name}</strong> · {company}
       </p>
       <div className="space-y-2">
         <p className="text-sm font-medium">Ваши роли</p>
