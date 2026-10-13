@@ -61,7 +61,7 @@ check_os() {
 # В файле есть хотя бы один ключ администратора: непустая строка, не комментарий, с типом ключа
 # (допускаются параметры перед ним). Ключ деплоя пишется в authorized_keys пользователя deploy, не root.
 admin_key_present() {
-  local file=${1:-$ROOT_AUTH_KEYS}
+  local file=$1
   [ -f "$file" ] || return 1
   grep -Eq '^[[:space:]]*([^#[:space:]][^[:space:]]*[[:space:]]+)?(ssh-(ed25519|rsa|dss)|ecdsa-sha2-nistp[0-9]+|sk-(ssh-ed25519|ecdsa-sha2-nistp256)@openssh\.com)[[:space:]]+[A-Za-z0-9+/=]{20,}' "$file"
 }
@@ -69,7 +69,7 @@ admin_key_present() {
 # Без ключа администратора отключение входа по паролю закрыло бы сервер для владельца: не отключаем
 # молча, а останавливаемся до любых изменений и объясняем, как добавить ключ.
 require_admin_key() {
-  admin_key_present && return 0
+  admin_key_present "$ROOT_AUTH_KEYS" && return 0
   cat >&2 <<EOF
 
 Остановлено: на сервере нет вашего ключа SSH (файл $ROOT_AUTH_KEYS пуст или отсутствует).
@@ -249,7 +249,7 @@ fetch_files() {
 
 harden_ssh() {
   local conf=/etc/ssh/sshd_config.d/00-oxrana.conf
-  admin_key_present || die "нет ключа администратора в $ROOT_AUTH_KEYS — вход по паролю не отключаем."
+  admin_key_present "$ROOT_AUTH_KEYS" || die "нет ключа администратора в $ROOT_AUTH_KEYS — вход по паролю не отключаем."
   log "SSH: вход только по ключу"
   install -d /etc/ssh/sshd_config.d
   # Имя начинается с 00: в sshd первое найденное значение главнее, а cloud-init кладёт свой файл

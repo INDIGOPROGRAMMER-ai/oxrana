@@ -291,6 +291,16 @@ describe('чёрный список', () => {
       payload: { reason: 'Попытка' },
     });
     expect(patchDenied.statusCode).toBe(403);
+    // администратор объекта запись организации только читает: ни правки, ни удаления (Q-71)
+    const deleteDenied = await t.as(admin, { method: 'DELETE', url: `/blacklist/${ok.json().id}` });
+    expect(deleteDenied.statusCode).toBe(403);
+    // а роль на всю организацию правит её с любого объекта
+    const ownerPatch = await t.as(owner, {
+      method: 'PATCH',
+      url: `/blacklist/${ok.json().id}`,
+      payload: { reason: 'Уточнено владельцем' },
+    });
+    expect(ownerPatch.statusCode, ownerPatch.body).toBe(200);
   });
 
   it('пакетная вставка номеров: предпросмотр «добавится N, ошибки в M», повтор внутри пакета', async () => {
@@ -449,10 +459,10 @@ describe('файл договора и настройка «Вести дого�
     contractId = res.json().id;
   });
 
-  const put = (body: Buffer, type: string, name = 'договор.pdf', actor = owner) =>
+  const put = (body: Buffer, type: string, name = 'договор.pdf', confirm = false, actor = owner) =>
     t.as(actor, {
       method: 'PUT',
-      url: `/contracts/${contractId}/file?name=${encodeURIComponent(name)}`,
+      url: `/contracts/${contractId}/file?name=${encodeURIComponent(name)}${confirm ? '&confirm=true' : ''}`,
       headers: { 'content-type': type },
       payload: body,
     });
@@ -480,30 +490,70 @@ describe('файл договора и настройка «Вести дого�
   });
 
   it('проверяется тип и начало файла, размер; чужой формат не принимается', async () => {
-    const text = await put(Buffer.from('просто текст'), 'text/plain');
+    const text = await put(Buffer.from('просто текст'), 'text/plain', 'договор.pdf', true);
     expect(text.statusCode).toBe(400);
     expect(error(text).field).toBe('file');
-    const fake = await put(Buffer.from('это не pdf'), 'application/pdf');
+    const fake = await put(Buffer.from('это не pdf'), 'application/pdf', 'договор.pdf', true);
     expect(fake.statusCode).toBe(400);
     expect(error(fake).field).toBe('file');
-    const big = await put(Buffer.concat([pdf, Buffer.alloc(1_100_000)]), 'application/pdf');
+    const big = await put(
+      Buffer.concat([pdf, Buffer.alloc(1_100_000)]),
+      'application/pdf',
+      'договор.pdf',
+      true,
+    );
     expect(big.statusCode).toBeGreaterThanOrEqual(400);
     expect(big.statusCode).toBeLessThan(500);
-    const png = await put(
-      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]),
-      'image/png',
-      'скан.png',
-    );
-    expect(png.statusCode, png.body).toBe(200);
-    expect(png.json().file.fileName).toBe('скан.png');
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    // замена без подтверждения не выполняется и ничего не стирает
+    const key = (fileId: string) => `${KEYS.organizationId}/${fileId}`;
+    const before = (await t.as(owner, { url: `/tenants/${tenantKey('moll')}/contracts` })).json()
+      .items[0].file.id as string;
+    const unconfirmed = await put(png, 'image/png', 'скан.png');
+    expect(unconfirmed.statusCode).toBe(409);
+    expect(error(unconfirmed).code).toBe('confirmation_required');
+    expect(error(unconfirmed).message).toContain('без возможности восстановления');
+    expect(await t.app.deps.files.read(key(before))).not.toBeNull();
+    // с подтверждением прежний файл стирается с диска сразу
+    const replaced = await put(png, 'image/png', 'скан.png', true);
+    expect(replaced.statusCode, replaced.body).toBe(200);
+    expect(replaced.json().file.fileName).toBe('скан.png');
+    expect(await t.app.deps.files.read(key(before))).toBeNull();
+    expect(await t.app.deps.files.read(key(replaced.json().file.id))).not.toBeNull();
+    // в журнале — факт и имена, без содержимого
+    const audit = (
+      await ownerDb().select().from(schema.auditLog).where(eq(schema.auditLog.entityId, contractId))
+    ).find((a) => a.action === 'file_replace');
+    expect(audit?.snapshot).toMatchObject({
+      fileName: 'скан.png',
+      replacedFileName: 'договор.pdf',
+    });
+    expect(JSON.stringify(audit)).not.toContain('PDF-1.4');
   });
 
   it('без права contract.file файл не скачать и не виден в договоре', async () => {
     const approver = roleActor('approver');
     const denied = await t.as(approver, { url: `/contracts/${contractId}/file` });
     expect(denied.statusCode).toBe(403);
-    const detach = await t.as(owner, { method: 'DELETE', url: `/contracts/${contractId}/file` });
+    const current = (await t.as(owner, { url: `/tenants/${tenantKey('moll')}/contracts` })).json()
+      .items[0].file.id as string;
+    const unconfirmed = await t.as(owner, {
+      method: 'DELETE',
+      url: `/contracts/${contractId}/file`,
+    });
+    expect(unconfirmed.statusCode).toBe(409);
+    expect(await t.app.deps.files.read(`${KEYS.organizationId}/${current}`)).not.toBeNull();
+    const detach = await t.as(owner, {
+      method: 'DELETE',
+      url: `/contracts/${contractId}/file?confirm=true`,
+    });
     expect(detach.json()).toMatchObject({ file: null });
+    // открепление стирает файл с диска и пишет в журнал имя, не содержимое
+    expect(await t.app.deps.files.read(`${KEYS.organizationId}/${current}`)).toBeNull();
+    const detached = (
+      await ownerDb().select().from(schema.auditLog).where(eq(schema.auditLog.entityId, contractId))
+    ).find((a) => a.action === 'file_detach');
+    expect(detached?.snapshot).toMatchObject({ fileName: 'скан.png' });
     const none = await t.as(owner, { url: `/contracts/${contractId}/file` });
     expect(none.statusCode).toBe(404);
   });

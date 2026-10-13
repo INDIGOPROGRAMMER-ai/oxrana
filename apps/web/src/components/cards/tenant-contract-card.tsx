@@ -1,6 +1,7 @@
 import {
   ClauseCreateSchema,
   ClausePatchSchema,
+  CONTRACT_FILE_ERASE_WARNING,
   ContractCreateSchema,
   ContractPatchSchema,
   type ContractStatus,
@@ -13,6 +14,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   EditForm,
@@ -363,6 +365,10 @@ function ContractFile({ contract }: { contract: ContractView }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Подтверждение необратимого стирания: заменяемый файл или открепление.
+  const [confirm, setConfirm] = useState<
+    { kind: 'replace'; chosen: File } | { kind: 'detach' } | null
+  >(null);
   if (!can('contract.file')) {
     return (
       <p className="text-xs text-muted-foreground">
@@ -372,7 +378,7 @@ function ContractFile({ contract }: { contract: ContractView }) {
   }
   const file = contract.file;
 
-  async function upload(chosen: File) {
+  async function upload(chosen: File, confirmed = false) {
     setError(null);
     if (chosen.size > FILE_MAX_MB * 1024 * 1024) {
       setError(`Файл больше ${FILE_MAX_MB} МБ. Сожмите его или загрузите меньший.`);
@@ -382,9 +388,14 @@ function ContractFile({ contract }: { contract: ContractView }) {
       setError('Файл договора — PDF, PNG, JPEG или WebP. Другие форматы не принимаются.');
       return;
     }
+    if (file && !confirmed) {
+      setConfirm({ kind: 'replace', chosen });
+      return;
+    }
     setBusy(true);
     try {
-      await api(`/contracts/${contract.id}/file?name=${encodeURIComponent(chosen.name)}`, {
+      const query = `name=${encodeURIComponent(chosen.name)}${file ? '&confirm=true' : ''}`;
+      await api(`/contracts/${contract.id}/file?${query}`, {
         method: 'PUT',
         file: chosen,
       });
@@ -402,7 +413,7 @@ function ContractFile({ contract }: { contract: ContractView }) {
     setBusy(true);
     setError(null);
     try {
-      await api(`/contracts/${contract.id}/file`, { method: 'DELETE' });
+      await api(`/contracts/${contract.id}/file?confirm=true`, { method: 'DELETE' });
       await refresh();
       toast('Файл откреплён');
     } catch (raw) {
@@ -448,7 +459,12 @@ function ContractFile({ contract }: { contract: ContractView }) {
         {file ? 'Заменить файл' : 'Прикрепить файл'}
       </Button>
       {file ? (
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void detach()}>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => setConfirm({ kind: 'detach' })}
+        >
           <X aria-hidden /> Открепить
         </Button>
       ) : null}
@@ -457,6 +473,38 @@ function ContractFile({ contract }: { contract: ContractView }) {
           {error}
         </p>
       ) : null}
+      <Dialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirm?.kind === 'replace' ? 'Заменить файл договора?' : 'Открепить файл договора?'}
+            </DialogTitle>
+            <DialogDescription>
+              Файл «{file?.fileName}» будет удалён без возможности восстановления.{' '}
+              {CONTRACT_FILE_ERASE_WARNING.replace(
+                /^Файл будет удалён без возможности восстановления\.\s*/,
+                '',
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirm(null)}>
+              Отмена
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                const action = confirm;
+                setConfirm(null);
+                if (action?.kind === 'replace') void upload(action.chosen, true);
+                else void detach();
+              }}
+            >
+              {confirm?.kind === 'replace' ? 'Заменить и удалить старый' : 'Открепить и удалить'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

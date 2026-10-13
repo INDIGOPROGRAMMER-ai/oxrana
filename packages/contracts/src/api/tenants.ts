@@ -72,7 +72,15 @@ export const contractFileTypes = [
 export const ContractFileQuerySchema = z.strictObject({
   /** Имя файла, как оно было на компьютере (в теле — только содержимое). */
   name: z.string().trim().min(1, 'Укажите имя файла').max(200),
+  /** Замена существующего файла стирает прежний с диска навсегда — нужно подтверждение. */
+  confirm: z.enum(['true', 'false']).optional(),
 });
+export const ContractFileDeleteQuerySchema = z.strictObject({
+  confirm: z.enum(['true', 'false']).optional(),
+});
+/** Предупреждение перед заменой и откреплением файла договора (Q-72). */
+export const CONTRACT_FILE_ERASE_WARNING =
+  'Файл будет удалён без возможности восстановления. В журнале останется только факт и имя файла, без содержимого.';
 
 export const ContractViewSchema = z.object({
   id: IdSchema,

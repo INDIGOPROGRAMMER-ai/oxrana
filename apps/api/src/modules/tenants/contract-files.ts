@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  CONTRACT_FILE_ERASE_WARNING,
+  ContractFileDeleteQuerySchema,
   ContractFileQuerySchema,
   ContractViewSchema,
   contractFileTypes,
@@ -81,6 +83,19 @@ async function loadContract(s: Scope, id: string) {
   return { contract, scope };
 }
 
+/** Стереть файл с диска; сбой не ломает ответ (запись уже помечена удалённой), но попадает в журнал сервера. */
+async function eraseBlob(
+  files: { remove(key: string): Promise<void> },
+  key: string,
+  log: { warn(obj: unknown, msg: string): void },
+): Promise<void> {
+  try {
+    await files.remove(key);
+  } catch (error) {
+    log.warn({ err: error, key }, 'Файл договора не удалился с диска: удалите вручную');
+  }
+}
+
 export function registerContractFileRoutes(app: FastifyInstance): void {
   const typed = app.withTypeProvider<ZodTypeProvider>();
   const tags = ['contract'];
@@ -121,9 +136,20 @@ export function registerContractFileRoutes(app: FastifyInstance): void {
           message: `Файл больше ${sizeText(ctx.deps.fileMaxBytes)}. Сожмите его или загрузите меньший.`,
         });
       }
-      const { name } = request.query;
-      return ctx.tx(async (s) => {
+      const { name, confirm } = request.query;
+      let erased: string | null = null;
+      const view = await ctx.tx(async (s) => {
         const { contract, scope } = await loadContract(s, request.params.id);
+        const previous = contract.fileRef
+          ? (await fileViews(s, [contract.fileRef])).get(contract.fileRef)
+          : undefined;
+        if (previous && confirm !== 'true') {
+          throw new AppError('confirmation_required', {
+            field: 'confirm',
+            message: `Заменить файл «${previous.fileName}»? ${CONTRACT_FILE_ERASE_WARNING}`,
+            details: { fileName: previous.fileName },
+          });
+        }
         const fileId = randomUUID();
         await ctx.deps.files.put(fileKey(s.organizationId, fileId), body);
         await s.db.insert(schema.storedFiles).values({
@@ -136,12 +162,13 @@ export function registerContractFileRoutes(app: FastifyInstance): void {
           sha256: createHash('sha256').update(body).digest('hex'),
           createdBy: ctx.actor.kind === 'user' ? ctx.actor.id : null,
         });
-        // Прежний файл не удаляется с диска (удаление договора обратимо, Q-72): он только перестаёт быть текущим.
+        // Явная замена стирает прежний файл с диска (Q-72); сама запись остаётся с пометкой «удалён».
         if (contract.fileRef) {
           await s.db
             .update(schema.storedFiles)
             .set({ deletedAt: new Date(ctx.now()) })
             .where(eq(schema.storedFiles.id, contract.fileRef));
+          erased = fileKey(s.organizationId, contract.fileRef);
         }
         const [updated = contract] = await s.db
           .update(schema.contracts)
@@ -153,8 +180,21 @@ export function registerContractFileRoutes(app: FastifyInstance): void {
           entity: 'contract',
           entityId: contract.id,
           action: contract.fileRef ? 'file_replace' : 'file_attach',
-          diff: { file: { from: null, to: null, toLabel: `${name} (${body.length} байт)` } },
-          snapshot: { fileName: name, sizeBytes: body.length, contentType },
+          // имя и размер — да, содержимое — никогда
+          diff: {
+            file: {
+              from: null,
+              to: null,
+              fromLabel: previous?.fileName ?? null,
+              toLabel: `${name} (${body.length} байт)`,
+            },
+          },
+          snapshot: {
+            fileName: name,
+            sizeBytes: body.length,
+            contentType,
+            replacedFileName: previous?.fileName ?? null,
+          },
         });
         await s.emit('tenant.changed', {
           siteId: scope.siteId,
@@ -164,6 +204,9 @@ export function registerContractFileRoutes(app: FastifyInstance): void {
         });
         return contractView(updated, (await fileViews(s, [fileId])).get(fileId) ?? null, true);
       });
+      // стираем прежний файл только после коммита: сбой записи не должен лишить договор файла
+      if (erased) await eraseBlob(ctx.deps.files, erased, request.log);
+      return view;
     },
   );
 
@@ -232,14 +275,25 @@ export function registerContractFileRoutes(app: FastifyInstance): void {
         tags,
         summary: 'Открепить файл договора',
         params: IdParamsSchema,
+        querystring: ContractFileDeleteQuerySchema,
         response: { 200: ContractViewSchema },
       },
     },
     async (request) => {
       const ctx = ctxOf(request);
-      return ctx.tx(async (s) => {
+      let erased: string | null = null;
+      const view = await ctx.tx(async (s) => {
         const { contract, scope } = await loadContract(s, request.params.id);
         if (!contract.fileRef) return contractView(contract, null, true);
+        const previous = (await fileViews(s, [contract.fileRef])).get(contract.fileRef);
+        if (request.query.confirm !== 'true') {
+          throw new AppError('confirmation_required', {
+            field: 'confirm',
+            message: `Открепить файл «${previous?.fileName ?? 'договора'}»? ${CONTRACT_FILE_ERASE_WARNING}`,
+            details: { fileName: previous?.fileName ?? null },
+          });
+        }
+        erased = fileKey(s.organizationId, contract.fileRef);
         await s.db
           .update(schema.storedFiles)
           .set({ deletedAt: new Date(ctx.now()) })
@@ -254,9 +308,12 @@ export function registerContractFileRoutes(app: FastifyInstance): void {
           entity: 'contract',
           entityId: contract.id,
           action: 'file_detach',
+          snapshot: { fileName: previous?.fileName ?? null },
         });
         return contractView(updated, null, true);
       });
+      if (erased) await eraseBlob(ctx.deps.files, erased, request.log);
+      return view;
     },
   );
 }

@@ -399,6 +399,7 @@ function Body({ site }: { site: SiteView }) {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<BlacklistView | null>(null);
   const [removing, setRemoving] = useState<BlacklistView | null>(null);
+  const whole = useWholeOrganization();
   if (list.error) return <LoadError error={list.error} retry={() => void list.refetch()} />;
   const items = list.items ?? [];
   return (
@@ -439,51 +440,61 @@ function Body({ site }: { site: SiteView }) {
               </TR>
             </THead>
             <TBody>
-              {items.map((e) => (
-                <TR key={e.id} className={e.active ? undefined : 'opacity-60'}>
-                  <TD className="font-medium">
-                    {e.plateNorm ? <span className="font-mono">{e.plateNorm}</span> : null}
-                    {e.plateNorm && e.personName ? ' · ' : null}
-                    {e.personName}
-                  </TD>
-                  <TD className="max-w-72 break-words">{e.reason}</TD>
-                  <TD>
-                    <Validity entry={e} />
-                  </TD>
-                  <TD>
-                    <Badge tone={e.level === 'organization' ? 'info' : 'neutral'}>
-                      {e.level === 'organization' ? 'вся организация' : 'объект'}
-                    </Badge>
-                  </TD>
-                  <TD className="text-muted-foreground">
-                    {e.createdByName ?? '—'}
-                    <br />
-                    <span className="text-xs">
-                      <SiteTime value={e.createdAt} />
-                    </span>
-                  </TD>
-                  <TD>
-                    <div className="flex justify-end">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Изменить запись: ${e.plateNorm ?? e.personName}`}
-                        onClick={() => setEditing(e)}
-                      >
-                        <Pencil aria-hidden />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Убрать из списка: ${e.plateNorm ?? e.personName}`}
-                        onClick={() => setRemoving(e)}
-                      >
-                        <Trash2 aria-hidden className="text-destructive" />
-                      </Button>
-                    </div>
-                  </TD>
-                </TR>
-              ))}
+              {items.map((e) => {
+                // запись «вся организация» правит только роль на всю организацию; администратор объекта её читает
+                const readOnly = e.level === 'organization' && !whole;
+                const why =
+                  'Запись для всей организации: изменить может только роль на всю организацию.';
+                return (
+                  <TR key={e.id} className={e.active ? undefined : 'opacity-60'}>
+                    <TD className="font-medium">
+                      {e.plateNorm ? <span className="font-mono">{e.plateNorm}</span> : null}
+                      {e.plateNorm && e.personName ? ' · ' : null}
+                      {e.personName}
+                    </TD>
+                    <TD className="max-w-72 break-words">{e.reason}</TD>
+                    <TD>
+                      <Validity entry={e} />
+                    </TD>
+                    <TD>
+                      <Badge tone={e.level === 'organization' ? 'info' : 'neutral'}>
+                        {e.level === 'organization' ? 'вся организация' : 'объект'}
+                      </Badge>
+                    </TD>
+                    <TD className="text-muted-foreground">
+                      {e.createdByName ?? '—'}
+                      <br />
+                      <span className="text-xs">
+                        <SiteTime value={e.createdAt} />
+                      </span>
+                    </TD>
+                    <TD>
+                      <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Изменить запись: ${e.plateNorm ?? e.personName}`}
+                          disabled={readOnly}
+                          title={readOnly ? why : undefined}
+                          onClick={() => setEditing(e)}
+                        >
+                          <Pencil aria-hidden />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Убрать из списка: ${e.plateNorm ?? e.personName}`}
+                          disabled={readOnly}
+                          title={readOnly ? why : undefined}
+                          onClick={() => setRemoving(e)}
+                        >
+                          <Trash2 aria-hidden className="text-destructive" />
+                        </Button>
+                      </div>
+                    </TD>
+                  </TR>
+                );
+              })}
             </TBody>
           </Table>
         )}

@@ -46,10 +46,20 @@ export function appPool(max = 10): DbPool {
   return pool;
 }
 
+/**
+ * Одно соединение владельца на тестовый файл. Раньше каждый вызов открывал свой пул и держал
+ * соединения до конца файла: файл с десятками вызовов съедал десятки слотов, а при параллельном
+ * прогоне в CI (4 воркера, `max_connections = 100`) слоты кончались — «remaining connection slots
+ * are reserved», тесты других файлов падали «Failed query» (Q-74).
+ */
+let owner: Db | undefined;
 export function ownerDb(): Db {
-  const pool = createPool({ connectionString: env('DATABASE_ADMIN_URL'), max: 2 });
-  pools.push(pool);
-  return createDb(pool);
+  if (!owner) {
+    const pool = createPool({ connectionString: env('DATABASE_ADMIN_URL'), max: 2 });
+    pools.push(pool);
+    owner = createDb(pool);
+  }
+  return owner;
 }
 
 let seeded: Promise<void> | undefined;
