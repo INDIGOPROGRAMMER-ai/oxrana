@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 
 export type PreviewStatus = 'idle' | 'checking' | 'ready' | 'failed';
 
-export interface AutoPreview {
+export interface AutoPreview<R = BatchResult> {
   readonly status: PreviewStatus;
   /** Ответ сервера на проверку без сохранения (`dryRun`). */
-  readonly result: BatchResult | null;
+  readonly result: R | null;
   readonly error: ErrorView | null;
 }
 
@@ -17,16 +17,16 @@ export interface AutoPreview {
  * запроса без `dryRun`; `null` — вводить пока нечего (проверка не идёт). Устаревший ответ (ввод
  * успел измениться) отбрасывается.
  */
-export function useAutoPreview(options: {
+export function useAutoPreview<R = BatchResult>(options: {
   path: string;
   body: Record<string, unknown> | null;
   /** Метод пакетного маршрута: добавление — `POST`, массовая правка — `PATCH`. */
   method?: 'POST' | 'PATCH';
   delayMs?: number;
-}): AutoPreview {
+}): AutoPreview<R> {
   const { path, body, delayMs = 400, method = 'POST' } = options;
   const key = body === null ? null : JSON.stringify(body);
-  const [state, setState] = useState<{ key: string | null; preview: AutoPreview }>({
+  const [state, setState] = useState<{ key: string | null; preview: AutoPreview<R> }>({
     key: null,
     preview: { status: 'idle', result: null, error: null },
   });
@@ -38,7 +38,7 @@ export function useAutoPreview(options: {
     if (key === null) return;
     const ticket = ++latest.current;
     const timer = setTimeout(() => {
-      api<BatchResult>(path, {
+      api<R>(path, {
         method,
         body: { ...(bodyRef.current ?? {}), dryRun: true },
       })

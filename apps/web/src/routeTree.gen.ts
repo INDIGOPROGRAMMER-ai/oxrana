@@ -11,11 +11,13 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as CabinetRouteImport } from './routes/cabinet'
 import { Route as ForgotRouteImport } from './routes/forgot'
 import { Route as InviteRouteImport } from './routes/invite'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PasswordRouteImport } from './routes/password'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminApprovalsRouteImport } from './routes/admin.approvals'
 import { Route as AdminBlacklistRouteImport } from './routes/admin.blacklist'
 import { Route as AdminCatalogsRouteImport } from './routes/admin.catalogs'
 import { Route as AdminCategoriesRouteImport } from './routes/admin.categories'
@@ -29,10 +31,15 @@ import { Route as AdminRolesRouteImport } from './routes/admin.roles'
 import { Route as AdminRoutingRouteImport } from './routes/admin.routing'
 import { Route as AdminSandboxRouteImport } from './routes/admin.sandbox'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
+import { Route as CabinetIndexRouteImport } from './routes/cabinet.index'
+import { Route as CabinetFleetRouteImport } from './routes/cabinet.fleet'
 import { Route as AdminRulesApprovalPoliciesRouteImport } from './routes/admin.rules.approval-policies'
 import { Route as AdminSetupIndexRouteImport } from './routes/admin.setup.index'
 import { Route as AdminSetupStepRouteImport } from './routes/admin.setup.$step'
 import { Route as AdminTenantsIndexRouteImport } from './routes/admin.tenants.index'
+import { Route as CabinetPassesIndexRouteImport } from './routes/cabinet.passes.index'
+import { Route as CabinetPassesBatchRouteImport } from './routes/cabinet.passes.batch'
+import { Route as CabinetPassesNewRouteImport } from './routes/cabinet.passes.new'
 import { Route as AdminSitesSiteIdIndexRouteImport } from './routes/admin.sites.$siteId.index'
 import { Route as AdminSitesSiteIdTimezoneRouteImport } from './routes/admin.sites.$siteId.timezone'
 import { Route as AdminTenantsTenantIdIndexRouteImport } from './routes/admin.tenants.$tenantId.index'
@@ -46,6 +53,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CabinetRoute = CabinetRouteImport.update({
+  id: '/cabinet',
+  path: '/cabinet',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ForgotRoute = ForgotRouteImport.update({
@@ -71,6 +83,11 @@ const PasswordRoute = PasswordRouteImport.update({
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminApprovalsRoute = AdminApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminBlacklistRoute = AdminBlacklistRouteImport.update({
@@ -138,6 +155,16 @@ const AdminUsersRoute = AdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AdminRoute,
 } as any)
+const CabinetIndexRoute = CabinetIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => CabinetRoute,
+} as any)
+const CabinetFleetRoute = CabinetFleetRouteImport.update({
+  id: '/fleet',
+  path: '/fleet',
+  getParentRoute: () => CabinetRoute,
+} as any)
 const AdminRulesApprovalPoliciesRoute =
   AdminRulesApprovalPoliciesRouteImport.update({
     id: '/rules/approval-policies',
@@ -158,6 +185,21 @@ const AdminTenantsIndexRoute = AdminTenantsIndexRouteImport.update({
   id: '/tenants/',
   path: '/tenants/',
   getParentRoute: () => AdminRoute,
+} as any)
+const CabinetPassesIndexRoute = CabinetPassesIndexRouteImport.update({
+  id: '/passes/',
+  path: '/passes/',
+  getParentRoute: () => CabinetRoute,
+} as any)
+const CabinetPassesBatchRoute = CabinetPassesBatchRouteImport.update({
+  id: '/passes/batch',
+  path: '/passes/batch',
+  getParentRoute: () => CabinetRoute,
+} as any)
+const CabinetPassesNewRoute = CabinetPassesNewRouteImport.update({
+  id: '/passes/new',
+  path: '/passes/new',
+  getParentRoute: () => CabinetRoute,
 } as any)
 const AdminSitesSiteIdIndexRoute = AdminSitesSiteIdIndexRouteImport.update({
   id: '/sites/$siteId/',
@@ -186,10 +228,12 @@ const AdminTenantsTenantIdQuotasRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/cabinet': typeof CabinetRouteWithChildren
   '/forgot': typeof ForgotRoute
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/password': typeof PasswordRoute
+  '/admin/approvals': typeof AdminApprovalsRoute
   '/admin/blacklist': typeof AdminBlacklistRoute
   '/admin/catalogs': typeof AdminCatalogsRoute
   '/admin/categories': typeof AdminCategoriesRoute
@@ -203,11 +247,16 @@ export interface FileRoutesByFullPath {
   '/admin/routing': typeof AdminRoutingRoute
   '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
+  '/cabinet/fleet': typeof CabinetFleetRoute
   '/admin/': typeof AdminIndexRoute
+  '/cabinet/': typeof CabinetIndexRoute
   '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
   '/admin/setup/$step': typeof AdminSetupStepRoute
+  '/cabinet/passes/batch': typeof CabinetPassesBatchRoute
+  '/cabinet/passes/new': typeof CabinetPassesNewRoute
   '/admin/setup/': typeof AdminSetupIndexRoute
   '/admin/tenants/': typeof AdminTenantsIndexRoute
+  '/cabinet/passes/': typeof CabinetPassesIndexRoute
   '/admin/sites/$siteId/timezone': typeof AdminSitesSiteIdTimezoneRoute
   '/admin/tenants/$tenantId/quotas': typeof AdminTenantsTenantIdQuotasRoute
   '/admin/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
@@ -219,6 +268,7 @@ export interface FileRoutesByTo {
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/password': typeof PasswordRoute
+  '/admin/approvals': typeof AdminApprovalsRoute
   '/admin/blacklist': typeof AdminBlacklistRoute
   '/admin/catalogs': typeof AdminCatalogsRoute
   '/admin/categories': typeof AdminCategoriesRoute
@@ -232,11 +282,16 @@ export interface FileRoutesByTo {
   '/admin/routing': typeof AdminRoutingRoute
   '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
+  '/cabinet/fleet': typeof CabinetFleetRoute
   '/admin': typeof AdminIndexRoute
+  '/cabinet': typeof CabinetIndexRoute
   '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
   '/admin/setup/$step': typeof AdminSetupStepRoute
+  '/cabinet/passes/batch': typeof CabinetPassesBatchRoute
+  '/cabinet/passes/new': typeof CabinetPassesNewRoute
   '/admin/setup': typeof AdminSetupIndexRoute
   '/admin/tenants': typeof AdminTenantsIndexRoute
+  '/cabinet/passes': typeof CabinetPassesIndexRoute
   '/admin/sites/$siteId/timezone': typeof AdminSitesSiteIdTimezoneRoute
   '/admin/tenants/$tenantId/quotas': typeof AdminTenantsTenantIdQuotasRoute
   '/admin/sites/$siteId': typeof AdminSitesSiteIdIndexRoute
@@ -246,10 +301,12 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/cabinet': typeof CabinetRouteWithChildren
   '/forgot': typeof ForgotRoute
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/password': typeof PasswordRoute
+  '/admin/approvals': typeof AdminApprovalsRoute
   '/admin/blacklist': typeof AdminBlacklistRoute
   '/admin/catalogs': typeof AdminCatalogsRoute
   '/admin/categories': typeof AdminCategoriesRoute
@@ -263,11 +320,16 @@ export interface FileRoutesById {
   '/admin/routing': typeof AdminRoutingRoute
   '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
+  '/cabinet/fleet': typeof CabinetFleetRoute
   '/admin/': typeof AdminIndexRoute
+  '/cabinet/': typeof CabinetIndexRoute
   '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
   '/admin/setup/$step': typeof AdminSetupStepRoute
+  '/cabinet/passes/batch': typeof CabinetPassesBatchRoute
+  '/cabinet/passes/new': typeof CabinetPassesNewRoute
   '/admin/setup/': typeof AdminSetupIndexRoute
   '/admin/tenants/': typeof AdminTenantsIndexRoute
+  '/cabinet/passes/': typeof CabinetPassesIndexRoute
   '/admin/sites/$siteId/timezone': typeof AdminSitesSiteIdTimezoneRoute
   '/admin/tenants/$tenantId/quotas': typeof AdminTenantsTenantIdQuotasRoute
   '/admin/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
@@ -278,10 +340,12 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/cabinet'
     | '/forgot'
     | '/invite'
     | '/login'
     | '/password'
+    | '/admin/approvals'
     | '/admin/blacklist'
     | '/admin/catalogs'
     | '/admin/categories'
@@ -295,11 +359,16 @@ export interface FileRouteTypes {
     | '/admin/routing'
     | '/admin/sandbox'
     | '/admin/users'
+    | '/cabinet/fleet'
     | '/admin/'
+    | '/cabinet/'
     | '/admin/rules/approval-policies'
     | '/admin/setup/$step'
+    | '/cabinet/passes/batch'
+    | '/cabinet/passes/new'
     | '/admin/setup/'
     | '/admin/tenants/'
+    | '/cabinet/passes/'
     | '/admin/sites/$siteId/timezone'
     | '/admin/tenants/$tenantId/quotas'
     | '/admin/sites/$siteId/'
@@ -311,6 +380,7 @@ export interface FileRouteTypes {
     | '/invite'
     | '/login'
     | '/password'
+    | '/admin/approvals'
     | '/admin/blacklist'
     | '/admin/catalogs'
     | '/admin/categories'
@@ -324,11 +394,16 @@ export interface FileRouteTypes {
     | '/admin/routing'
     | '/admin/sandbox'
     | '/admin/users'
+    | '/cabinet/fleet'
     | '/admin'
+    | '/cabinet'
     | '/admin/rules/approval-policies'
     | '/admin/setup/$step'
+    | '/cabinet/passes/batch'
+    | '/cabinet/passes/new'
     | '/admin/setup'
     | '/admin/tenants'
+    | '/cabinet/passes'
     | '/admin/sites/$siteId/timezone'
     | '/admin/tenants/$tenantId/quotas'
     | '/admin/sites/$siteId'
@@ -337,10 +412,12 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/cabinet'
     | '/forgot'
     | '/invite'
     | '/login'
     | '/password'
+    | '/admin/approvals'
     | '/admin/blacklist'
     | '/admin/catalogs'
     | '/admin/categories'
@@ -354,11 +431,16 @@ export interface FileRouteTypes {
     | '/admin/routing'
     | '/admin/sandbox'
     | '/admin/users'
+    | '/cabinet/fleet'
     | '/admin/'
+    | '/cabinet/'
     | '/admin/rules/approval-policies'
     | '/admin/setup/$step'
+    | '/cabinet/passes/batch'
+    | '/cabinet/passes/new'
     | '/admin/setup/'
     | '/admin/tenants/'
+    | '/cabinet/passes/'
     | '/admin/sites/$siteId/timezone'
     | '/admin/tenants/$tenantId/quotas'
     | '/admin/sites/$siteId/'
@@ -368,6 +450,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
+  CabinetRoute: typeof CabinetRouteWithChildren
   ForgotRoute: typeof ForgotRoute
   InviteRoute: typeof InviteRoute
   LoginRoute: typeof LoginRoute
@@ -388,6 +471,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cabinet': {
+      id: '/cabinet'
+      path: '/cabinet'
+      fullPath: '/cabinet'
+      preLoaderRoute: typeof CabinetRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/forgot': {
@@ -423,6 +513,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/approvals': {
+      id: '/admin/approvals'
+      path: '/approvals'
+      fullPath: '/admin/approvals'
+      preLoaderRoute: typeof AdminApprovalsRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/blacklist': {
@@ -516,6 +613,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/cabinet/': {
+      id: '/cabinet/'
+      path: '/'
+      fullPath: '/cabinet/'
+      preLoaderRoute: typeof CabinetIndexRouteImport
+      parentRoute: typeof CabinetRoute
+    }
+    '/cabinet/fleet': {
+      id: '/cabinet/fleet'
+      path: '/fleet'
+      fullPath: '/cabinet/fleet'
+      preLoaderRoute: typeof CabinetFleetRouteImport
+      parentRoute: typeof CabinetRoute
+    }
     '/admin/rules/approval-policies': {
       id: '/admin/rules/approval-policies'
       path: '/rules/approval-policies'
@@ -543,6 +654,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/tenants/'
       preLoaderRoute: typeof AdminTenantsIndexRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/cabinet/passes/': {
+      id: '/cabinet/passes/'
+      path: '/passes'
+      fullPath: '/cabinet/passes/'
+      preLoaderRoute: typeof CabinetPassesIndexRouteImport
+      parentRoute: typeof CabinetRoute
+    }
+    '/cabinet/passes/batch': {
+      id: '/cabinet/passes/batch'
+      path: '/passes/batch'
+      fullPath: '/cabinet/passes/batch'
+      preLoaderRoute: typeof CabinetPassesBatchRouteImport
+      parentRoute: typeof CabinetRoute
+    }
+    '/cabinet/passes/new': {
+      id: '/cabinet/passes/new'
+      path: '/passes/new'
+      fullPath: '/cabinet/passes/new'
+      preLoaderRoute: typeof CabinetPassesNewRouteImport
+      parentRoute: typeof CabinetRoute
     }
     '/admin/sites/$siteId/': {
       id: '/admin/sites/$siteId/'
@@ -576,6 +708,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AdminRouteChildren {
+  AdminApprovalsRoute: typeof AdminApprovalsRoute
   AdminBlacklistRoute: typeof AdminBlacklistRoute
   AdminCatalogsRoute: typeof AdminCatalogsRoute
   AdminCategoriesRoute: typeof AdminCategoriesRoute
@@ -601,6 +734,7 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminApprovalsRoute: AdminApprovalsRoute,
   AdminBlacklistRoute: AdminBlacklistRoute,
   AdminCatalogsRoute: AdminCatalogsRoute,
   AdminCategoriesRoute: AdminCategoriesRoute,
@@ -627,9 +761,29 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
+interface CabinetRouteChildren {
+  CabinetFleetRoute: typeof CabinetFleetRoute
+  CabinetIndexRoute: typeof CabinetIndexRoute
+  CabinetPassesBatchRoute: typeof CabinetPassesBatchRoute
+  CabinetPassesNewRoute: typeof CabinetPassesNewRoute
+  CabinetPassesIndexRoute: typeof CabinetPassesIndexRoute
+}
+
+const CabinetRouteChildren: CabinetRouteChildren = {
+  CabinetFleetRoute: CabinetFleetRoute,
+  CabinetIndexRoute: CabinetIndexRoute,
+  CabinetPassesBatchRoute: CabinetPassesBatchRoute,
+  CabinetPassesNewRoute: CabinetPassesNewRoute,
+  CabinetPassesIndexRoute: CabinetPassesIndexRoute,
+}
+
+const CabinetRouteWithChildren =
+  CabinetRoute._addFileChildren(CabinetRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
+  CabinetRoute: CabinetRouteWithChildren,
   ForgotRoute: ForgotRoute,
   InviteRoute: InviteRoute,
   LoginRoute: LoginRoute,

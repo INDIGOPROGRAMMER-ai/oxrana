@@ -1,4 +1,4 @@
-import { Alert, Button, ErrorAlert, type ErrorView, errorView, Skeleton } from '@oxrana/ui';
+import { Button, ErrorAlert, type ErrorView, errorView, Skeleton } from '@oxrana/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { LogOut, Settings } from 'lucide-react';
@@ -30,9 +30,13 @@ function Home() {
   const [error, setError] = useState<ErrorView | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Люди компаний-арендаторов работают в кабинете; сотрудники объекта и владелец видят эту страницу.
+  const assigned = me?.user?.assignments ?? [];
+  const tenantOnly = assigned.length > 0 && assigned.every((a) => a.tenantId !== null);
   useEffect(() => {
     if (me === null) void navigate({ to: '/login' });
-  }, [me, navigate]);
+    else if (me && tenantOnly && can('pass.view')) void navigate({ to: '/cabinet' });
+  }, [me, navigate, tenantOnly, can]);
 
   async function logout(all: boolean) {
     setBusy(true);
@@ -119,7 +123,11 @@ function Home() {
           пользователей или устройств.
         </p>
       )}
-      <Alert tone="info">Кабинет арендатора появится на следующем этапе.</Alert>
+      {assignments.some((a) => a.tenantId) ? (
+        <Button asChild variant="outline">
+          <Link to="/cabinet">Открыть кабинет арендатора</Link>
+        </Button>
+      ) : null}
       <ErrorAlert error={error} />
     </AuthLayout>
   );
