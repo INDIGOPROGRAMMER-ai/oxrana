@@ -46,6 +46,11 @@ services:
       PUBLIC_URL: https://${STAND_DOMAIN:?не задан STAND_DOMAIN в .env}
       GATE_URL: https://${STAND_DOMAIN}/gate
       DATABASE_URL: postgres://oxrana_app:${OXRANA_APP_PASSWORD:?не задан OXRANA_APP_PASSWORD в .env}@postgres:5432/oxrana
+      # файлы договоров (необязательны): локальный том, лимит размера — 10 МБ
+      FILES_DIR: /data/files
+      FILE_MAX_BYTES: "10485760"
+    volumes:
+      - files:/data/files
 
   proxy:
     image: oxrana-proxy:${OXRANA_TAG}
@@ -77,5 +82,6 @@ services:
 
 volumes:
   pgdata:
+  files:
   caddy_data:
   caddy_config:

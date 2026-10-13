@@ -34,6 +34,8 @@ COPY --from=build /out/api/node_modules ./node_modules
 COPY --from=build /repo/apps/api/package.json ./package.json
 COPY --from=build /repo/apps/api/dist ./dist
 COPY --from=build /repo/packages/db/migrations ./migrations
+# Том файлов (договоры): каталог принадлежит node, поэтому новый том наследует права.
+RUN mkdir -p /data/files && chown node:node /data/files
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
