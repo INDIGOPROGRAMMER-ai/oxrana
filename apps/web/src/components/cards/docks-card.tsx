@@ -207,15 +207,6 @@ function DockEditForm({
           onChange={(v) => f.form.setValue('zoneId', v, { shouldDirty: true })}
         />
       </Field>
-      <Field label="Вид дока" error={f.fieldError('kind')}>
-        <Select {...f.form.register('kind')}>
-          {DOCK_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {DOCK_KIND_LABEL[k]}
-            </option>
-          ))}
-        </Select>
-      </Field>
       <Field label="Размер" hint="Необязательно, например «40 футов»." error={f.fieldError('size')}>
         <Input {...f.form.register('size')} />
       </Field>
@@ -224,6 +215,24 @@ function DockEditForm({
         hint="Док входит в число доков арендатора, по которому можно считать лимит."
         {...f.form.register('countsInQuota')}
       />
+      <details className="rounded-md border px-3 py-2">
+        <summary className="cursor-pointer text-sm font-medium">Дополнительно</summary>
+        <div className="mt-3">
+          <Field
+            label="Вид дока"
+            hint="Обычно менять не нужно: по умолчанию «с уравнивающей платформой»."
+            error={f.fieldError('kind')}
+          >
+            <Select {...f.form.register('kind')}>
+              {DOCK_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {DOCK_KIND_LABEL[k]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+      </details>
     </EditForm>
   );
 }
@@ -231,7 +240,6 @@ function DockEditForm({
 function DocksBatch({ siteId, zones }: { siteId: string; zones: ZoneView[] }) {
   const mutate = useMutate();
   const [zoneId, setZoneId] = useState('');
-  const [kind, setKind] = useState<DockKind>('leveller');
   const [countsInQuota, setCountsInQuota] = useState(true);
 
   const parse = useCallback((text: string): ParsedRow<string>[] => {
@@ -251,7 +259,6 @@ function DocksBatch({ siteId, zones }: { siteId: string; zones: ZoneView[] }) {
     numbers,
     dryRun,
     ...(zoneId ? { zoneId } : {}),
-    kind,
     countsInQuota,
   });
   const check = (numbers: string[]) =>
@@ -262,21 +269,9 @@ function DocksBatch({ siteId, zones }: { siteId: string; zones: ZoneView[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Зона" hint="Для всех добавляемых доков. Необязательно.">
           <ZoneSelect zones={zones} value={zoneId} onChange={setZoneId} />
-        </Field>
-        <Field
-          label="Вид дока"
-          hint="Один для всех добавляемых; у каждого дока потом можно изменить."
-        >
-          <Select value={kind} onChange={(e) => setKind(e.target.value as DockKind)}>
-            {DOCK_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {DOCK_KIND_LABEL[k]}
-              </option>
-            ))}
-          </Select>
         </Field>
         <div className="flex items-end pb-2">
           <Checkbox
@@ -293,7 +288,7 @@ function DocksBatch({ siteId, zones }: { siteId: string; zones: ZoneView[] }) {
         parse={parse}
         columns={columns}
         check={check}
-        checkKey={`${zoneId}|${kind}|${countsInQuota}`}
+        checkKey={`${zoneId}|${countsInQuota}`}
         commit={commit}
         commitLabel={(n) => `Добавить доков: ${n}`}
       />
@@ -304,7 +299,7 @@ function DocksBatch({ siteId, zones }: { siteId: string; zones: ZoneView[] }) {
 type Tri = '' | 'yes' | 'no';
 
 /**
- * Массовая правка: выбранным докам разом задать зону, вид и «считаются в лимите». «Не менять» —
+ * Массовая правка: выбранным докам разом задать зону и «считаются в лимите». «Не менять» —
  * поле не отправляется. Проверка идёт сама (сервер знает, какие доки нельзя изменить); одна кнопка.
  */
 function DocksBulkEdit({
@@ -321,13 +316,11 @@ function DocksBulkEdit({
   const mutate = useMutate();
   const toast = useToast();
   const [zoneId, setZoneId] = useState('');
-  const [kind, setKind] = useState<DockKind | ''>('');
   const [counts, setCounts] = useState<Tri>('');
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const changes = {
     ...(zoneId === '__none' ? { zoneId: null } : zoneId ? { zoneId } : {}),
-    ...(kind ? { kind } : {}),
     ...(counts ? { countsInQuota: counts === 'yes' } : {}),
   };
   const nothing = Object.keys(changes).length === 0;
@@ -359,7 +352,7 @@ function DocksBulkEdit({
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
       <p className="text-sm font-medium">Выбрано доков: {ids.length}. Что им задать?</p>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Зона">
           <ZoneSelect
             zones={zones}
@@ -368,16 +361,6 @@ function DocksBulkEdit({
             emptyLabel="— не менять —"
             clearLabel="— убрать зону —"
           />
-        </Field>
-        <Field label="Вид дока">
-          <Select value={kind} onChange={(e) => setKind(e.target.value as DockKind | '')}>
-            <option value="">— не менять —</option>
-            {DOCK_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {DOCK_KIND_LABEL[k]}
-              </option>
-            ))}
-          </Select>
         </Field>
         <Field label="Считаются в лимите грузовых">
           <Select value={counts} onChange={(e) => setCounts(e.target.value as Tri)}>
