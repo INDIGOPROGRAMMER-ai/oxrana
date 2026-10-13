@@ -195,6 +195,13 @@ test('мастер настройки на чистой базе: объект, 
   await expect(page.getByRole('row', { name: /3\. Типы транспорта/ })).toContainText(
     'Рефрижератор',
   );
+  // прогон вердиктов по настроенным данным: 3–5 примеров тем же движком, каждый — ссылка в песочницу
+  const examples = page.getByTestId('examples').getByRole('listitem');
+  await expect(examples.first()).toBeVisible();
+  expect(await examples.count()).toBeGreaterThanOrEqual(3);
+  expect(await examples.count()).toBeLessThanOrEqual(5);
+  await expect(page.getByTestId('examples').locator('[data-color="green"]')).not.toHaveCount(0);
+  await expect(page.getByTestId('examples').locator('[data-color="yellow"]')).not.toHaveCount(0);
 });
 
 test('данные мастера видны в карточках; правка шлёт только изменённые поля; удаление показывает использование', async ({

@@ -43,7 +43,6 @@ import {
 } from '@oxrana/ui';
 import { Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { z } from 'zod';
 import {
   type ApprovalPolicyView,
   type CategoryView,
@@ -293,14 +292,6 @@ const VIOLATION_LABEL: Record<WindowViolationMode, string> = {
   warn: 'предупредить и пропустить',
 };
 
-const MINUTES = (label: string) =>
-  z.int(`${label} — целое число минут.`).min(0, `${label} не может быть отрицательным.`);
-
-const WindowFormCreateSchema = TimeWindowPolicyCreateSchema.extend({
-  earlyToleranceMin: MINUTES('Допуск «раньше»'),
-  lateToleranceMin: MINUTES('Допуск «опоздание»').nullable().optional(),
-});
-
 interface WindowValues {
   categoryIds: string[];
   windowRequired: boolean;
@@ -444,7 +435,7 @@ function CreateWindowForm({
   const mutate = useMutate();
   const toast = useToast();
   const f = useCreateForm<WindowValues>({
-    schema: WindowFormCreateSchema,
+    schema: TimeWindowPolicyCreateSchema,
     initial: NEW_WINDOW,
     toBody: (v) => ({
       categoryIds: v.categoryIds,
@@ -670,17 +661,14 @@ interface ApprovalValues {
   onTimeout: ApprovalTimeoutAction | '';
 }
 
-const ApprovalFormCreateSchema = ApprovalPolicyCreateSchema.extend({
-  mode: z.enum(APPROVAL_MODES, { error: 'Выберите, как согласуются такие пропуска.' }),
-  escalationHours: z
-    .int('Эскалация — целое число часов.')
-    .min(1, 'Эскалация — не меньше 1 часа.')
-    .nullable()
-    .optional(),
-}).refine((v) => v.escalationHours == null || Boolean(v.onTimeout), {
-  path: ['onTimeout'],
-  message: 'Выберите, что делать, если согласующий не ответил.',
-});
+// Сообщения о типах и границах — в самих схемах `contracts` (Q-67); здесь только связь полей.
+const ApprovalFormCreateSchema = ApprovalPolicyCreateSchema.refine(
+  (v) => v.escalationHours == null || Boolean(v.onTimeout),
+  {
+    path: ['onTimeout'],
+    message: 'Выберите, что делать, если согласующий не ответил.',
+  },
+);
 
 function ApprovalFields({
   f,

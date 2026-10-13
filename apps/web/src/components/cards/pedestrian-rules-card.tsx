@@ -65,24 +65,8 @@ function ruleBody(input: object): Record<string, unknown> {
   return out;
 }
 
-// Те же правила, что у сервера, но с русскими сообщениями о длине.
-const PhoneField = z
-  .string()
-  .trim()
-  .min(5, 'Телефон — не короче 5 символов')
-  .max(30, 'Телефон — не длиннее 30 символов')
-  .nullable()
-  .optional();
-const GuardTextField = z
-  .string()
-  .trim()
-  .max(300, 'Текст для охраны — не длиннее 300 символов')
-  .nullable()
-  .optional();
-const CreateFormSchema = PedestrianRuleCreateSchema.extend({
-  escortPhone: PhoneField,
-  guardText: GuardTextField,
-});
+// Правила и русские сообщения — из `contracts` (Q-67).
+const CreateFormSchema = PedestrianRuleCreateSchema;
 const PatchFormSchema = z.preprocess(
   (v) => (typeof v === 'object' && v !== null ? ruleBody(v) : v),
   CreateFormSchema.partial(),

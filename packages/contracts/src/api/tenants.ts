@@ -211,6 +211,11 @@ export const PedestrianRuleCreateSchema = z.strictObject({
   documentRequired: z.boolean().optional(),
   escort: PedestrianEscortSchema,
   escortPhone: Phone.nullable().optional(),
-  guardText: z.string().trim().max(300).nullable().optional(),
+  guardText: z
+    .string()
+    .trim()
+    .max(300, 'Текст для охраны — не длиннее 300 символов')
+    .nullable()
+    .optional(),
 });
 export const PedestrianRulePatchSchema = PedestrianRuleCreateSchema.partial();

@@ -28,7 +28,6 @@ import {
 } from '@oxrana/ui';
 import { Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { z } from 'zod';
 import {
   type CategoryView,
   type QuotaView,
@@ -53,23 +52,9 @@ import {
   useTenantClauses,
 } from './tenant-rule-helpers';
 
-// Тексты ошибок схем лимита — по-русски (стандартные сообщения zod английские).
-const CAPACITY = z
-  .int('Число мест — целое число.')
-  .min(0, 'Число мест не может быть отрицательным.');
-const TARIFF = z.number('Тариф — число.').min(0, 'Тариф не может быть отрицательным.');
-const OVERAGE_CAP = z.int('Потолок — целое число.').min(0, 'Потолок не может быть отрицательным.');
-
-const QuotaFormCreateSchema = QuotaCreateSchema.extend({
-  capacity: CAPACITY.optional(),
-  overageTariffRub: TARIFF.nullable().optional(),
-  overageCap: OVERAGE_CAP.nullable().optional(),
-});
-const QuotaFormPatchSchema = QuotaPatchSchema.extend({
-  capacity: CAPACITY.optional(),
-  overageTariffRub: TARIFF.nullable().optional(),
-  overageCap: OVERAGE_CAP.nullable().optional(),
-});
+// Русские сообщения — в самих схемах `contracts` (Q-67): экран их не переписывает.
+const QuotaFormCreateSchema = QuotaCreateSchema;
+const QuotaFormPatchSchema = QuotaPatchSchema;
 
 interface QuotaValues {
   name: string;
