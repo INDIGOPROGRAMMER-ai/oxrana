@@ -146,6 +146,8 @@ test('мастер настройки на чистой базе: объект, 
 
   // 5. Доки 1–10 диапазоном: предпросмотр до сохранения
   await title('Шаг 5 из 11. Доки и зоны');
+  // «Вид дока» из формы добавления убран: по умолчанию «с уравнивающей платформой»
+  await expect(page.getByLabel('Вид дока')).toHaveCount(0);
   await page.getByLabel('Номера доков').fill('1–10');
   await expect(page.getByText('Добавится 10')).toBeVisible();
   await expect(page.getByText('Ошибки в 0')).toBeVisible();
@@ -217,6 +219,15 @@ test('данные мастера видны в карточках; правка
   await expect(page.getByRole('checkbox', { name: 'фура → Въезд 1' })).not.toBeChecked();
   await page.goto(`${WEB_URL}/admin/docks`);
   await expect(page.getByRole('button', { name: 'Док 1', exact: true })).toBeVisible();
+  // в карточке дока вид — под «Дополнительно», свёрнуто; у добавленных пакетом — по умолчанию
+  await page.getByRole('button', { name: 'Док 1', exact: true }).click();
+  const dockCard = page.getByRole('dialog');
+  await expect(dockCard.getByText('Дополнительно')).toBeVisible();
+  await expect(dockCard.getByLabel('Вид дока')).toBeHidden();
+  await dockCard.getByText('Дополнительно').click();
+  await expect(dockCard.getByLabel('Вид дока')).toHaveValue('leveller');
+  await page.keyboard.press('Escape');
+  await expect(dockCard).toBeHidden();
 
   // правка КПП: в запросе только изменённое поле
   await page.goto(`${WEB_URL}/admin/gates`);
@@ -274,14 +285,33 @@ test('чёрный список → песочница показывает кр
   await expect(page.getByRole('cell', { name: 'B777OP174', exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Драка на территории', exact: true })).toBeVisible();
 
-  // песочница: тот же вердикт, что получит пост — красный и с причиной
+  // песочница, режим по умолчанию — «как на посту»: ищет настоящие пропуска, воображаемых нет
   await page.goto(`${WEB_URL}/admin/sandbox`);
+  await expect(page.getByRole('tab', { name: 'Проверить номер, как на посту' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('combobox', { name: 'КПП', exact: true }).selectOption({ label: 'Въезд 2' });
+  await page.getByLabel('Номер машины').fill('В777ОР174');
+  await expect(page.getByTestId('plate-not-found')).toContainText(
+    'Настоящих пропусков по этому номеру нет',
+  );
+  // как на посту: у номера без пропуска охранник видит «Пропуска нет» (чёрный список — у найденного пропуска)
+  await expect(page.getByTestId('verdict')).toHaveAttribute('data-code', 'no_pass');
+  await expect(page.getByTestId('verdict')).toContainText('Пропуска нет: B777OP174');
+  await expect(page.getByTestId('example-notice')).toHaveCount(0);
+
+  // режим «на примере»: тот же вердикт, но над ним крупно — что пропуск воображаемый
+  await page.getByRole('tab', { name: 'Проверить правила на примере' }).click();
   await page
     .getByRole('combobox', { name: 'Арендатор', exact: true })
     .selectOption({ label: 'Альфа' });
   await page.getByRole('combobox', { name: 'Тип транспорта' }).selectOption({ label: 'фура' });
   await page.getByRole('combobox', { name: 'КПП', exact: true }).selectOption({ label: 'Въезд 2' });
   await expect(page.getByTestId('verdict')).toHaveAttribute('data-color', 'green');
+  await expect(page.getByTestId('example-notice')).toContainText(
+    'Это пример: пропуск воображаемый, настоящие пропуска не проверялись.',
+  );
   await page.getByLabel('Номер машины').fill('В777ОР174');
   const verdict = page.getByTestId('verdict');
   await expect(verdict).toHaveAttribute('data-color', 'red');
@@ -313,6 +343,7 @@ test('блокировка арендатора с последствиями �
   await expect(page.getByText('Задолженность по аренде')).toBeVisible();
 
   await page.goto(`${WEB_URL}/admin/sandbox`);
+  await page.getByRole('tab', { name: 'Проверить правила на примере' }).click();
   await page
     .getByRole('combobox', { name: 'Арендатор', exact: true })
     .selectOption({ label: 'Альфа (заблокирован)' });

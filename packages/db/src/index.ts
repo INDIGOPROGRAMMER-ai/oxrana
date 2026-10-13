@@ -18,4 +18,5 @@ export {
   updateVisit,
   type VisitRow,
 } from './queries/visits';
+export { roleTemplatesSyncSql } from './role-sync-sql';
 export * as schema from './schema';

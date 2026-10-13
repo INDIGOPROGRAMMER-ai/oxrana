@@ -7,6 +7,7 @@ import {
 } from '../enums';
 import { IdSchema, InstantInputSchema, TextSchema } from './common';
 import { VerdictSchema } from './gate';
+import { PassViewSchema, VisitViewSchema } from './passes';
 
 // Песочница правил (этап 6b): вердикт движка для воображаемого пропуска на настроенных правилах
 // объекта. Ничего не записывает; живая занятость берётся из открытых визитов.
@@ -48,6 +49,35 @@ export const SandboxResultSchema = z.object({
   }),
   /** Что в песочнице допущено условно (пропуск воображаемый: срок «сейчас ± сутки»). */
   assumptions: z.array(z.string()),
+});
+
+/**
+ * «Проверить номер, как на посту»: ищутся настоящие пропуска объекта по номеру, вердикт — тот же,
+ * что увидит охранник на выбранном КПП сейчас. Ничего не записывает (в журнал КПП не пишет).
+ */
+export const SandboxPlateCheckSchema = z.strictObject({
+  gateId: IdSchema,
+  /** Номер как ввели (или его часть — поиск по цифрам, как на посту). */
+  plate: TextSchema(30),
+  direction: PassageDirectionSchema.default('in'),
+});
+export type SandboxPlateCheck = z.infer<typeof SandboxPlateCheckSchema>;
+
+export const SandboxPlateResultSchema = z.object({
+  verdict: VerdictSchema,
+  /** Найденный пропуск; `null` — пропуска нет или их несколько (охранник выберет сам). */
+  pass: PassViewSchema.nullable(),
+  openVisit: VisitViewSchema.nullable(),
+  /** Название арендатора найденного пропуска (на момент проверки). */
+  tenantName: z.string().nullable(),
+  /** Сколько настоящих пропусков нашлось по номеру. */
+  candidates: z.int(),
+  subject: z.object({
+    gateName: z.string(),
+    plateNorm: z.string(),
+    atLabel: z.string(),
+    directionLabel: z.string(),
+  }),
 });
 
 export const SandboxExampleSchema = z.object({

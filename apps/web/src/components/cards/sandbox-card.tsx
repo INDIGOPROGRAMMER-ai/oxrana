@@ -1,4 +1,9 @@
-import type { QuotaWhatIfResultSchema, SandboxCheck, SandboxResultSchema } from '@oxrana/contracts';
+import type {
+  QuotaWhatIfResultSchema,
+  SandboxCheck,
+  SandboxPlateResultSchema,
+  SandboxResultSchema,
+} from '@oxrana/contracts';
 import { normalizePlate } from '@oxrana/plates';
 import {
   Alert,
@@ -24,7 +29,7 @@ import {
   TR,
 } from '@oxrana/ui';
 import { Loader2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import type { z } from 'zod';
 import {
   type SiteView,
@@ -39,6 +44,7 @@ import { Empty, LoadError, RequireSite } from '../common';
 import { siteToday } from './tenant-rule-helpers';
 
 type Result = z.infer<typeof SandboxResultSchema>;
+type PlateResult = z.infer<typeof SandboxPlateResultSchema>;
 type WhatIf = z.infer<typeof QuotaWhatIfResultSchema>;
 
 export const VERDICT_STYLE: Record<string, { emoji: string; label: string; box: string }> = {
@@ -82,13 +88,27 @@ const RESULT_LABEL: Record<
 };
 
 /** Светофор вердикта: цвет, одна фраза, причины, а по кнопке — каждая проверка (trace). */
-export function VerdictBox({ result }: { result: Result }) {
-  const { verdict, subject } = result;
+export function VerdictBox({
+  verdict,
+  header,
+  atLabel,
+  assumptions = [],
+  notice = null,
+}: {
+  verdict: Result['verdict'];
+  /** Мелкая строка над светофором: что и где проверяли. */
+  header: string;
+  atLabel: string;
+  assumptions?: readonly string[];
+  /** Крупная пометка над светофором (например, «это пример»). */
+  notice?: ReactNode;
+}) {
   const style = VERDICT_STYLE[verdict.color] ?? VERDICT_STYLE.green;
   const [showTrace, setShowTrace] = useState(false);
   if (!style) return null;
   return (
     <div className="space-y-3">
+      {notice}
       <div
         data-testid="verdict"
         data-color={verdict.color}
@@ -96,9 +116,7 @@ export function VerdictBox({ result }: { result: Result }) {
         className={`rounded-lg border-2 p-4 ${style.box}`}
       >
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {subject.directionLabel} · {subject.tenantName} · {subject.gateName}
-          {subject.categoryName ? ` · ${subject.categoryName}` : ''}
-          {subject.plateNorm ? ` · ${subject.plateNorm}` : ''}
+          {header}
         </p>
         <p className="mt-1 text-xl font-semibold">
           <span aria-hidden>{style.emoji}</span> {style.label}
@@ -128,11 +146,11 @@ export function VerdictBox({ result }: { result: Result }) {
         ) : null}
       </div>
       <p className="text-xs text-muted-foreground">
-        Время проверки: {subject.atLabel}. Движок {verdict.engineVersion}.
+        Время проверки: {atLabel}. Движок {verdict.engineVersion}.
       </p>
-      {result.assumptions.length > 0 ? (
+      {assumptions.length > 0 ? (
         <ul className="list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
-          {result.assumptions.map((a) => (
+          {assumptions.map((a) => (
             <li key={a}>{a}</li>
           ))}
         </ul>
@@ -323,163 +341,367 @@ function SandboxBody({ site, initial }: { site: SiteView; initial: SandboxCheck 
           ? 'Выберите КПП.'
           : null;
   return (
-    <>
-      <Section
-        title="Что скажет система охраннику"
-        description="Выберите арендатора, тип, КПП и время — песочница покажет тот же вердикт, что получит пост, с причинами и проверками. Ничего не записывается."
-      >
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="space-y-4">
-            <Field label="Арендатор" required>
-              <Select value={form.tenantId} onChange={(e) => set('tenantId', e.target.value)}>
+    <Section
+      title="Проверить правила на примере"
+      description="Выберите арендатора, тип, КПП и время — песочница проверит воображаемый пропуск по правилам объекта и покажет вердикт с причинами и проверками. Настоящие пропуска не проверяются, ничего не записывается."
+    >
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
+          <Field label="Арендатор" required>
+            <Select value={form.tenantId} onChange={(e) => set('tenantId', e.target.value)}>
+              <option value="">— выберите —</option>
+              {(tenants.items ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.shortName}
+                  {t.status === 'active'
+                    ? ''
+                    : ` (${t.status === 'archived' ? 'архив' : 'заблокирован'})`}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Кто едет">
+              <Select
+                value={form.participant}
+                onChange={(e) => set('participant', e.target.value as Form['participant'])}
+              >
+                <option value="vehicle">Машина</option>
+                <option value="pedestrian">Пешеход</option>
+              </Select>
+            </Field>
+            <Field label="Тип пропуска">
+              <Select
+                value={form.passType}
+                onChange={(e) => set('passType', e.target.value as Form['passType'])}
+              >
+                <option value="single">Разовый</option>
+                <option value="multi">Многоразовый</option>
+                <option value="permanent">Постоянный</option>
+              </Select>
+            </Field>
+          </div>
+          {form.participant === 'vehicle' ? (
+            <Field label="Тип транспорта" required>
+              <Select value={form.categoryId} onChange={(e) => set('categoryId', e.target.value)}>
                 <option value="">— выберите —</option>
-                {(tenants.items ?? []).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.shortName}
-                    {t.status === 'active'
-                      ? ''
-                      : ` (${t.status === 'archived' ? 'архив' : 'заблокирован'})`}
+                {(categories.items ?? [])
+                  .filter((c) => c.enabled)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+          ) : null}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="КПП" required>
+              <Select value={form.gateId} onChange={(e) => set('gateId', e.target.value)}>
+                <option value="">— выберите —</option>
+                {(gates.items ?? []).map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
                   </option>
                 ))}
               </Select>
             </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Кто едет">
-                <Select
-                  value={form.participant}
-                  onChange={(e) => set('participant', e.target.value as Form['participant'])}
-                >
-                  <option value="vehicle">Машина</option>
-                  <option value="pedestrian">Пешеход</option>
-                </Select>
-              </Field>
-              <Field label="Тип пропуска">
-                <Select
-                  value={form.passType}
-                  onChange={(e) => set('passType', e.target.value as Form['passType'])}
-                >
-                  <option value="single">Разовый</option>
-                  <option value="multi">Многоразовый</option>
-                  <option value="permanent">Постоянный</option>
-                </Select>
-              </Field>
+            <Field label="Направление">
+              <Select
+                value={form.direction}
+                onChange={(e) => set('direction', e.target.value as Form['direction'])}
+              >
+                <option value="in">Въезд</option>
+                <option value="out">Выезд</option>
+              </Select>
+            </Field>
+          </div>
+          <Field label="Время проверки" hint={`Время объекта (${site.timezoneLabel}).`}>
+            <div className="flex flex-wrap items-start gap-2">
+              <DateTimeInput
+                value={form.at}
+                todayIso={siteToday(site.timezone)}
+                onChange={(v) => set('at', v)}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => set('at', nowLocal(site.timezone))}
+              >
+                Сейчас
+              </Button>
             </div>
-            {form.participant === 'vehicle' ? (
-              <Field label="Тип транспорта" required>
-                <Select value={form.categoryId} onChange={(e) => set('categoryId', e.target.value)}>
-                  <option value="">— выберите —</option>
-                  {(categories.items ?? [])
-                    .filter((c) => c.enabled)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                </Select>
+          </Field>
+          {form.participant === 'vehicle' ? (
+            <>
+              <Field
+                label="Номер машины"
+                hint={
+                  plate?.norm
+                    ? `Запишется как ${plate.norm}${plate.recognized ? '' : ' (формат не распознан)'}. Без номера чёрный список не проверяется.`
+                    : 'Необязательно. Нужен, чтобы проверить чёрный список.'
+                }
+              >
+                <Input
+                  value={form.plate}
+                  onChange={(e) => set('plate', e.target.value)}
+                  className="font-mono"
+                  autoComplete="off"
+                  maxLength={30}
+                />
               </Field>
-            ) : null}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="КПП" required>
-                <Select value={form.gateId} onChange={(e) => set('gateId', e.target.value)}>
-                  <option value="">— выберите —</option>
-                  {(gates.items ?? []).map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
+              <Field
+                label="Док"
+                hint="Нужен, если арендатору положено ездить грузовым только к докам."
+              >
+                <Select value={form.dockId} onChange={(e) => set('dockId', e.target.value)}>
+                  <option value="">— без дока —</option>
+                  {(docks.items ?? []).map((d) => (
+                    <option key={d.id} value={d.id}>
+                      № {d.number}
                     </option>
                   ))}
                 </Select>
               </Field>
-              <Field label="Направление">
-                <Select
-                  value={form.direction}
-                  onChange={(e) => set('direction', e.target.value as Form['direction'])}
-                >
-                  <option value="in">Въезд</option>
-                  <option value="out">Выезд</option>
-                </Select>
-              </Field>
-            </div>
-            <Field label="Время проверки" hint={`Время объекта (${site.timezoneLabel}).`}>
-              <div className="flex flex-wrap items-start gap-2">
-                <DateTimeInput
-                  value={form.at}
-                  todayIso={siteToday(site.timezone)}
-                  onChange={(v) => set('at', v)}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => set('at', nowLocal(site.timezone))}
-                >
-                  Сейчас
-                </Button>
-              </div>
+            </>
+          ) : (
+            <Field
+              label="Фамилия и имя"
+              hint="Необязательно. Нужно, чтобы проверить чёрный список по человеку."
+            >
+              <Input
+                value={form.personName}
+                onChange={(e) => set('personName', e.target.value)}
+                maxLength={200}
+              />
             </Field>
-            {form.participant === 'vehicle' ? (
-              <>
-                <Field
-                  label="Номер машины"
-                  hint={
-                    plate?.norm
-                      ? `Запишется как ${plate.norm}${plate.recognized ? '' : ' (формат не распознан)'}. Без номера чёрный список не проверяется.`
-                      : 'Необязательно. Нужен, чтобы проверить чёрный список.'
-                  }
-                >
-                  <Input
-                    value={form.plate}
-                    onChange={(e) => set('plate', e.target.value)}
-                    className="font-mono"
-                    autoComplete="off"
-                    maxLength={30}
-                  />
-                </Field>
-                <Field
-                  label="Док"
-                  hint="Нужен, если арендатору положено ездить грузовым только к докам."
-                >
-                  <Select value={form.dockId} onChange={(e) => set('dockId', e.target.value)}>
-                    <option value="">— без дока —</option>
-                    {(docks.items ?? []).map((d) => (
-                      <option key={d.id} value={d.id}>
-                        № {d.number}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              </>
-            ) : (
-              <Field
-                label="Фамилия и имя"
-                hint="Необязательно. Нужно, чтобы проверить чёрный список по человеку."
-              >
-                <Input
-                  value={form.personName}
-                  onChange={(e) => set('personName', e.target.value)}
-                  maxLength={200}
-                />
-              </Field>
-            )}
-            <Checkbox
-              label="Что если все места лимитов арендатора заняты"
-              hint="Покажет, что увидит охранник, когда лимит исчерпан."
-              checked={form.quotaFull}
-              onChange={(e) => set('quotaFull', e.target.checked)}
-            />
-          </div>
-          <div className="space-y-3" aria-live="polite">
-            {missing ? <Alert tone="info">{missing}</Alert> : null}
-            {busy ? (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-                <Loader2 aria-hidden className="size-4 animate-spin" /> Проверяем…
-              </p>
-            ) : null}
-            <ErrorAlert error={error} />
-            {result && !error ? <VerdictBox result={result} /> : null}
-          </div>
+          )}
+          <Checkbox
+            label="Что если все места лимитов арендатора заняты"
+            hint="Покажет, что увидит охранник, когда лимит исчерпан."
+            checked={form.quotaFull}
+            onChange={(e) => set('quotaFull', e.target.checked)}
+          />
         </div>
-      </Section>
-      <WhatIfSection site={site} />
-    </>
+        <div className="space-y-3" aria-live="polite">
+          {missing ? <Alert tone="info">{missing}</Alert> : null}
+          {busy ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+              <Loader2 aria-hidden className="size-4 animate-spin" /> Проверяем…
+            </p>
+          ) : null}
+          <ErrorAlert error={error} />
+          {result && !error ? (
+            <VerdictBox
+              verdict={result.verdict}
+              header={`${result.subject.directionLabel} · ${result.subject.tenantName} · ${result.subject.gateName}${
+                result.subject.categoryName ? ` · ${result.subject.categoryName}` : ''
+              }${result.subject.plateNorm ? ` · ${result.subject.plateNorm}` : ''}`}
+              atLabel={result.subject.atLabel}
+              assumptions={result.assumptions}
+              notice={
+                <div
+                  role="note"
+                  data-testid="example-notice"
+                  className="rounded-lg border-2 border-warning bg-warning-soft p-3 text-lg font-semibold"
+                >
+                  Это пример: пропуск воображаемый, настоящие пропуска не проверялись.
+                </div>
+              }
+            />
+          ) : null}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+const PASS_STATUS_LABEL: Record<string, string> = {
+  draft: 'черновик',
+  pending_approval: 'ждёт согласования',
+  approved: 'согласован',
+  rejected: 'отклонён',
+  cancelled: 'отменён',
+  expired: 'истёк',
+  used: 'использован',
+};
+const PASS_TYPE_WORD: Record<string, string> = {
+  single: 'разовый',
+  multi: 'многоразовый',
+  permanent: 'постоянный',
+};
+
+/** Что нашлось по номеру среди настоящих пропусков — крупно, до светофора. */
+function FoundPass({ result, timezone }: { result: PlateResult; timezone: string }) {
+  const { pass } = result;
+  if (pass) {
+    const until = pass.validTo
+      ? `действует до ${formatInZone(pass.validTo, timezone)}`
+      : 'без срока';
+    return (
+      <div
+        data-testid="plate-found"
+        className="rounded-lg border-2 border-primary bg-info-soft p-3 text-base"
+      >
+        <p className="text-lg font-semibold">Найден настоящий пропуск</p>
+        <p>
+          {result.tenantName ?? 'Арендатор'} · {PASS_TYPE_WORD[pass.passType] ?? pass.passType} ·{' '}
+          {pass.plateNorm ?? pass.personName ?? '—'} ·{' '}
+          {PASS_STATUS_LABEL[pass.status] ?? pass.status} · {until}
+        </p>
+        {result.openVisit ? <p>Сейчас на территории.</p> : null}
+      </div>
+    );
+  }
+  return (
+    <div
+      data-testid="plate-not-found"
+      className="rounded-lg border-2 border-primary bg-info-soft p-3 text-lg font-semibold"
+    >
+      {result.candidates > 1
+        ? `По этому номеру нашлось пропусков: ${result.candidates} — охранник выберет нужный сам.`
+        : 'Настоящих пропусков по этому номеру нет — охранник увидит то, что ниже.'}
+    </div>
+  );
+}
+
+/** «Проверить номер, как на посту»: настоящие пропуска, настоящая занятость, тот же вердикт. */
+function PlateCheckBody({ site }: { site: SiteView }) {
+  const gates = useGates(site.id);
+  const [gateId, setGateId] = useState('');
+  const [direction, setDirection] = useState<'in' | 'out'>('in');
+  const [plate, setPlate] = useState('');
+  const [result, setResult] = useState<PlateResult | null>(null);
+  const [error, setError] = useState<ErrorView | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ticket = useRef(0);
+  const gateItems = gates.items ?? [];
+  // Единственный КПП выбирается сам: лишний клик ни к чему.
+  const effectiveGate = gateId || (gateItems.length === 1 ? (gateItems[0]?.id ?? '') : '');
+  const norm = plate.trim() ? normalizePlate(plate) : null;
+  const ready = effectiveGate !== '' && plate.trim().length >= 2;
+  const key = ready
+    ? JSON.stringify({ gateId: effectiveGate, plate: plate.trim(), direction })
+    : null;
+
+  useEffect(() => {
+    if (!key) {
+      setResult(null);
+      setError(null);
+      return;
+    }
+    const mine = ++ticket.current;
+    setBusy(true);
+    const timer = setTimeout(() => {
+      api<PlateResult>(`/sites/${site.id}/sandbox/check-plate`, {
+        method: 'POST',
+        body: JSON.parse(key),
+      })
+        .then((r) => {
+          if (mine === ticket.current) {
+            setResult(r);
+            setError(null);
+          }
+        })
+        .catch((raw: unknown) => {
+          if (mine === ticket.current) {
+            setResult(null);
+            setError(errorView(raw));
+          }
+        })
+        .finally(() => {
+          if (mine === ticket.current) setBusy(false);
+        });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [key, site.id]);
+
+  if (gates.error) return <LoadError error={gates.error} />;
+  if (gates.isLoading) {
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        Загрузка…
+      </p>
+    );
+  }
+  if (gateItems.length === 0) {
+    return (
+      <Empty
+        title="Проверять пока нечего"
+        hint="Нужен хотя бы один КПП — его добавляют в мастере настройки."
+      />
+    );
+  }
+  return (
+    <Section
+      title="Проверить номер, как на посту"
+      description="Введите номер (можно только цифры): песочница найдёт настоящие пропуска объекта и покажет ровно то, что увидит охранник на выбранном КПП сейчас. В журнал КПП ничего не пишется."
+    >
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="КПП" required>
+              <Select value={effectiveGate} onChange={(e) => setGateId(e.target.value)}>
+                <option value="">— выберите —</option>
+                {gateItems.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Направление">
+              <Select
+                value={direction}
+                onChange={(e) => setDirection(e.target.value as 'in' | 'out')}
+              >
+                <option value="in">Въезд</option>
+                <option value="out">Выезд</option>
+              </Select>
+            </Field>
+          </div>
+          <Field
+            label="Номер машины"
+            hint={
+              norm?.norm
+                ? `Ищем как ${norm.norm}${norm.recognized ? '' : ' (формат не распознан)'}.`
+                : 'Номер целиком или несколько цифр, как у охранника.'
+            }
+          >
+            <Input
+              value={plate}
+              onChange={(e) => setPlate(e.target.value)}
+              className="font-mono"
+              autoComplete="off"
+              maxLength={30}
+            />
+          </Field>
+        </div>
+        <div className="space-y-3" aria-live="polite">
+          {!ready ? (
+            <Alert tone="info">
+              {effectiveGate === '' ? 'Выберите КПП.' : 'Введите номер — проверка пойдёт сама.'}
+            </Alert>
+          ) : null}
+          {busy ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+              <Loader2 aria-hidden className="size-4 animate-spin" /> Проверяем…
+            </p>
+          ) : null}
+          <ErrorAlert error={error} />
+          {result && !error ? (
+            <>
+              <FoundPass result={result} timezone={site.timezone} />
+              <VerdictBox
+                verdict={result.verdict}
+                header={`${result.subject.directionLabel} · ${result.subject.gateName} · ${result.subject.plateNorm}`}
+                atLabel={result.subject.atLabel}
+              />
+            </>
+          ) : null}
+        </div>
+      </div>
+    </Section>
   );
 }
 
@@ -611,7 +833,59 @@ function WhatIfSection({ site }: { site: SiteView }) {
   );
 }
 
-/** Страница «Песочница правил»; `initial` — запрос из примера мастера. */
+type Mode = 'plate' | 'example';
+const MODE_LABEL: Record<Mode, string> = {
+  plate: 'Проверить номер, как на посту',
+  example: 'Проверить правила на примере',
+};
+
+/** Страница «Песочница правил»; `initial` — запрос из примера мастера (режим «на примере»). */
 export function SandboxCard({ initial }: { initial?: SandboxCheck | undefined }) {
-  return <RequireSite>{(site) => <SandboxBody site={site} initial={initial} />}</RequireSite>;
+  const { can } = useMe();
+  // Настоящие пропуска всех арендаторов видит тот, у кого есть право поста их видеть.
+  const plateAllowed = can('pass.view_all_tenants');
+  const [chosen, setMode] = useState<Mode>(initial ? 'example' : 'plate');
+  const mode: Mode = plateAllowed ? chosen : 'example';
+  return (
+    <RequireSite>
+      {(site) => (
+        <>
+          <div
+            role="tablist"
+            aria-label="Режим песочницы"
+            className="mb-5 flex gap-1 overflow-x-auto border-b"
+          >
+            {(Object.keys(MODE_LABEL) as Mode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                disabled={m === 'plate' && !plateAllowed}
+                title={
+                  m === 'plate' && !plateAllowed
+                    ? 'Нужно право «Просмотр пропусков всех арендаторов» — выдаётся в «Ролях».'
+                    : undefined
+                }
+                className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                  mode === m
+                    ? 'border-primary text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+                onClick={() => setMode(m)}
+              >
+                {MODE_LABEL[m]}
+              </button>
+            ))}
+          </div>
+          {mode === 'plate' ? (
+            <PlateCheckBody site={site} />
+          ) : (
+            <SandboxBody site={site} initial={initial} />
+          )}
+          <WhatIfSection site={site} />
+        </>
+      )}
+    </RequireSite>
+  );
 }

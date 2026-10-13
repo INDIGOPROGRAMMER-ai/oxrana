@@ -1,3 +1,4 @@
+import { PERMISSIONS } from '@oxrana/contracts';
 import {
   type Db,
   organizationOfToken,
@@ -23,12 +24,22 @@ declare module 'fastify' {
 const TOUCH_EVERY_MS = 5 * 60_000;
 const DEVICE_TOUCH_EVERY_MS = 60_000;
 
+/**
+ * Права роли при сборке актора. Владелец организации (`org_owner`) всегда имеет все права
+ * платформы, что бы ни лежало в массиве БД: так владелец, созданный до добавления права, не
+ * застрянет без него и не сможет остаться без пункта меню (ADR-007, «Новое право»).
+ */
+function rolePermissions(role: { permissions: string[]; templateCode: string | null }) {
+  return new Set<string>(role.templateCode === 'org_owner' ? PERMISSIONS : role.permissions);
+}
+
 /** Назначения ролей пользователя в организации — права и область каждого (ADR-018). */
 export async function userGrants(db: Db, organizationId: string, userId: string): Promise<Grant[]> {
   return withOrganization(db, organizationId, async (tx) => {
     const rows = await tx
       .select({
         permissions: schema.roles.permissions,
+        templateCode: schema.roles.templateCode,
         siteId: schema.roleAssignments.siteId,
         tenantId: schema.roleAssignments.tenantId,
         tenantSiteId: schema.tenants.siteId,
@@ -47,7 +58,7 @@ export async function userGrants(db: Db, organizationId: string, userId: string)
     return rows
       .filter((r) => r.tenantId === null || r.tenantDeleted === null)
       .map((r) => ({
-        permissions: new Set(r.permissions),
+        permissions: rolePermissions(r),
         siteId: r.tenantId !== null ? (r.tenantSiteId ?? r.siteId) : r.siteId,
         tenantId: r.tenantId,
       }));

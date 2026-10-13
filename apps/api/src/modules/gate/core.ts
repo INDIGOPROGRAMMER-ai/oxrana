@@ -39,7 +39,12 @@ export function requireGateId(s: Scope): string {
 }
 
 export async function gateContext(s: Scope): Promise<GateCtx> {
-  const gate = await loadGate(s, requireGateId(s));
+  return gateContextFor(s, requireGateId(s));
+}
+
+/** Тот же контекст для КПП, выбранного явно (песочница: «как на посту»), а не из токена устройства. */
+export async function gateContextFor(s: Scope, gateId: string): Promise<GateCtx> {
+  const gate = await loadGate(s, gateId);
   const site = await loadSite(s, gate.siteId);
   const { site: siteView, rules } = await s.ctx.deps.ruleSets.get(s.db, s.organizationId, site.id);
   const gateView = rules.gates.find((g) => g.id === gate.id);
