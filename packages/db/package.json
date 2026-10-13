@@ -12,6 +12,7 @@
     "migrate": "tsx --env-file-if-exists=../../.env src/migrate-cli.ts",
     "seed": "tsx --env-file-if-exists=../../.env seed/cli.ts",
     "generate": "drizzle-kit generate",
+    "role-sync-sql": "tsx src/role-sync-cli.ts",
     "freeze-fixture": "tsx --env-file-if-exists=../../.env seed/freeze-fixture.ts"
   },
   "dependencies": {
