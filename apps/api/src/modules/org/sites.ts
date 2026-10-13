@@ -313,6 +313,7 @@ export function registerSiteRoutes(app: FastifyInstance): void {
             creatorKind: p.creatorKind,
             passType: p.passType,
             mode: p.mode,
+            commentRequired: p.commentRequired ?? false,
           })),
         );
         await s.audit({

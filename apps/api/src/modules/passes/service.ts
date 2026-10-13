@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { PassDraft, PassPatch, PassSource } from '@oxrana/contracts';
 import { schema } from '@oxrana/db';
-import { formatDateTime } from '@oxrana/engine';
+import { findBlacklisted, formatDateTime } from '@oxrana/engine';
 import { and, eq, gt, isNull, lt, ne, or } from 'drizzle-orm';
 import { coversTenant, isTenantUser } from '../../actor';
 import { assertTenantAccess, can, requirePermission, type Scope } from '../../core/context';
@@ -236,6 +236,21 @@ export async function createPass(
     },
   });
   const warnings = await otherTenantWarnings(s, values, tenant.id);
+  // Номер или человек в чёрном списке: пропуск оформляется, но на въезде будет красный (этап 7a).
+  // Причину записи арендатору не показываем.
+  const listed = findBlacklisted(
+    ctx.rules.blacklist,
+    { plateNorm: values.plateNorm, personName: values.personName },
+    ctx.now,
+  );
+  if (listed) {
+    warnings.push({
+      code: 'blacklisted',
+      message: ctx.tenantUser
+        ? 'Номер или человек в чёрном списке объекта — на въезде не пропустят. Подробности — у администратора объекта.'
+        : `В чёрном списке: ${listed.reason}. На въезде не пропустят.`,
+    });
+  }
   if (policy === null) {
     warnings.push({
       code: 'approval_policy_missing',

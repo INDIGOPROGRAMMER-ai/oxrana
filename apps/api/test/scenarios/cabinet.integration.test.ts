@@ -1,0 +1,464 @@
+import { ErrorBodySchema } from '@oxrana/contracts';
+import { schema } from '@oxrana/db';
+import { eq } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  KEYS,
+  NOON,
+  ownerDb,
+  roleActor,
+  seedDemo,
+  startTestApp,
+  type TestApp,
+} from '../support/harness';
+
+/**
+ * Кабинет арендатора, этап 7a: подсказки формы до сохранения (чёрный список, блокировка, договор),
+ * автопарк, «повторить вчерашний день», сводка главной, фильтры списка. Часы стоят на вторнике
+ * 10.03.2026 12:00 по объекту; субъекты — настоящие сессии (ADR-018).
+ */
+let t: TestApp;
+const id = (map: Record<string, string>, name: string) => map[name] ?? '';
+const dns = id(KEYS.tenants, 'dns');
+const other = id(KEYS.tenants, 'x5') || Object.values(KEYS.tenants).find((v) => v !== dns) || '';
+const semi = id(KEYS.categories, 'semi');
+const car = id(KEYS.categories, 'car');
+const at = (hhmm: string, day = '2026-03-10') => new Date(`${day}T${hhmm}:00+05:00`).toISOString();
+const error = (res: { json(): unknown }) => ErrorBodySchema.parse(res.json());
+
+const logist = roleActor('tenant_manager', { tenantIds: [dns] });
+const requester = roleActor('tenant_requester', { tenantIds: [dns] });
+const viewer = roleActor('tenant_viewer', { tenantIds: [dns] });
+const otherLogist = roleActor('tenant_manager', { tenantIds: [other] });
+const admin = roleActor('site_admin');
+
+let counter = 300;
+const nextPlate = () => `К${++counter}МС174`;
+
+const hints = (actor: typeof logist, body: Record<string, unknown>, tenant = dns) =>
+  t.as(actor, { method: 'POST', url: `/tenants/${tenant}/pass-hints`, payload: body });
+
+beforeAll(async () => {
+  await seedDemo();
+  t = await startTestApp();
+});
+afterAll(() => t.close());
+
+describe('контекст кабинета и сводка «сегодня»', () => {
+  it('шапка: арендатор, объект с поясом, справочники; чужой арендатор — 403', async () => {
+    const res = await t.as(logist, { url: `/tenants/${dns}/cabinet` });
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json();
+    expect(body.tenant).toMatchObject({ id: dns, status: 'active', isOperator: false });
+    expect(body.site.timezone).toBe('Asia/Yekaterinburg');
+    expect(body.site.timezoneLabel).toBe('Челябинск, UTC+5');
+    expect(body.today).toBe('2026-03-10');
+    expect(body.categories.some((c: { id: string; available: boolean }) => c.id === semi)).toBe(
+      true,
+    );
+    expect(body.docks.length).toBeGreaterThan(0);
+    const foreign = await t.as(otherLogist, { url: `/tenants/${dns}/cabinet` });
+    expect(foreign.statusCode).toBe(403);
+  });
+
+  it('сегодня: ожидаются, въехали, выехали, отказы — только своего арендатора', async () => {
+    const before = await t.as(logist, { url: `/tenants/${dns}/today` });
+    expect(before.statusCode, before.body).toBe(200);
+    const created = await t.as(logist, {
+      method: 'POST',
+      url: '/passes',
+      payload: {
+        tenantId: dns,
+        passType: 'single',
+        participant: 'vehicle',
+        plate: nextPlate(),
+        categoryId: car,
+        validFrom: at('12:00'),
+        validTo: at('20:00'),
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const after = await t.as(logist, { url: `/tenants/${dns}/today` });
+    expect(after.json().expected).toBe(before.json().expected + 1);
+    expect(after.json().date).toBe('2026-03-10');
+
+    // въезд и выезд сегодня — напрямую в таблицу визитов (путь checkIn проверяют сценарии поста)
+    const db = ownerDb();
+    await db.insert(schema.visits).values([
+      {
+        organizationId: KEYS.organizationId,
+        siteId: KEYS.siteId,
+        tenantId: dns,
+        passId: created.json().id,
+        participant: 'vehicle',
+        categoryId: car,
+        snapshot: { note: 'сводка' },
+        gateInId: id(KEYS.gates, 'kpp1'),
+        timeIn: new Date(at('10:00')),
+        timeOut: new Date(at('11:00')),
+        methodIn: 'button',
+      },
+    ]);
+    const inOut = await t.as(logist, { url: `/tenants/${dns}/today` });
+    expect(inOut.json().entered).toBe(before.json().entered + 1);
+    expect(inOut.json().exited).toBe(before.json().exited + 1);
+    // пропуск, по которому уже въезжали сегодня, больше не «ожидается»
+    expect(inOut.json().expected).toBe(before.json().expected);
+
+    const foreign = await t.as(otherLogist, { url: `/tenants/${dns}/today` });
+    expect(foreign.statusCode).toBe(403);
+  });
+});
+
+describe('подсказки формы до сохранения (POST /tenants/:id/pass-hints)', () => {
+  const plate = nextPlate();
+
+  it('чёрный список: арендатору — предупреждение без причины, администратору — с причиной', async () => {
+    const clean = await hints(logist, { participant: 'vehicle', categoryId: car, plate });
+    expect(clean.statusCode, clean.body).toBe(200);
+    expect(clean.json().notices).toEqual([]);
+
+    const listed = await t.as(admin, {
+      method: 'POST',
+      url: `/sites/${KEYS.siteId}/blacklist`,
+      payload: { level: 'site', plate, reason: 'Секретная причина' },
+    });
+    expect(listed.statusCode, listed.body).toBe(201);
+
+    const tenantView = await hints(logist, { participant: 'vehicle', categoryId: car, plate });
+    const notice = tenantView.json().notices[0];
+    expect(notice).toMatchObject({ code: 'blacklisted', severity: 'warning' });
+    expect(notice.text).toContain('в чёрном списке');
+    expect(notice.text).not.toContain('Секретная причина');
+
+    // номер вводят как придётся: пробелы, кириллица
+    const messy = await hints(logist, {
+      participant: 'vehicle',
+      categoryId: car,
+      plate: `  ${plate.toLowerCase()} `,
+    });
+    expect(messy.json().notices[0]?.code).toBe('blacklisted');
+
+    const adminView = await hints(admin, { participant: 'vehicle', categoryId: car, plate }, dns);
+    expect(adminView.json().notices[0].text).toContain('Секретная причина');
+
+    // создание: пропуск оформляется, предупреждение приходит в ответе, причины в нём нет
+    const created = await t.as(logist, {
+      method: 'POST',
+      url: '/passes',
+      payload: {
+        tenantId: dns,
+        passType: 'single',
+        participant: 'vehicle',
+        plate,
+        categoryId: car,
+        validFrom: at('12:00'),
+        validTo: at('20:00'),
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const warning = created.json().warnings.find((w: { code: string }) => w.code === 'blacklisted');
+    expect(warning).toBeTruthy();
+    expect(warning.message).not.toContain('Секретная причина');
+
+    await t.as(admin, { method: 'DELETE', url: `/blacklist/${listed.json().id}` });
+    const after = await hints(logist, { participant: 'vehicle', categoryId: car, plate });
+    expect(after.json().notices).toEqual([]);
+  });
+
+  it('пешеход из чёрного списка по имени', async () => {
+    const listed = await t.as(admin, {
+      method: 'POST',
+      url: `/sites/${KEYS.siteId}/blacklist`,
+      payload: { level: 'site', personName: 'Тестов Нежеланный', reason: 'нарушение' },
+    });
+    expect(listed.statusCode, listed.body).toBe(201);
+    const res = await hints(logist, { participant: 'pedestrian', personName: 'тестов нежеланный' });
+    expect(res.json().notices[0]).toMatchObject({ code: 'blacklisted' });
+    await t.as(admin, { method: 'DELETE', url: `/blacklist/${listed.json().id}` });
+  });
+
+  it('блокировка арендатора: новые пропуска запрещены — ошибка; запрет въезда — предупреждение', async () => {
+    const block = (mode: string) =>
+      t.as(admin, {
+        method: 'POST',
+        url: `/tenants/${dns}/block`,
+        payload: { mode, reason: 'проверка подсказок', confirm: true },
+      });
+    expect((await block('new_passes')).statusCode).toBe(200);
+    const blocked = await hints(logist, { participant: 'vehicle', categoryId: car });
+    expect(blocked.json().notices[0]).toMatchObject({ code: 'tenant_blocked', severity: 'error' });
+    expect(blocked.json().notices[0].text).toContain('Обратитесь к администратору объекта');
+    expect(blocked.json().notices[0].text).not.toContain('Решение принимает администратор');
+
+    expect((await block('entry')).statusCode).toBe(200);
+    const entry = await hints(logist, { participant: 'vehicle', categoryId: car });
+    expect(entry.json().notices[0]).toMatchObject({
+      code: 'tenant_entry_blocked',
+      severity: 'warning',
+    });
+
+    const unblock = await t.as(admin, {
+      method: 'POST',
+      url: `/tenants/${dns}/unblock`,
+      payload: { reason: 'проверка закончена' },
+    });
+    expect(unblock.statusCode).toBe(200);
+    expect(
+      (await hints(logist, { participant: 'vehicle', categoryId: car })).json().notices,
+    ).toEqual([]);
+  });
+
+  it('договор закончился: ошибка до сохранения', async () => {
+    const list = await t.as(admin, { url: `/tenants/${dns}/contracts` });
+    const contract = list
+      .json()
+      .items.find((c: { validTo: string | null }) => c.validTo !== undefined);
+    expect(contract, 'у ДНС в демо-сиде есть договор').toBeTruthy();
+    const original = contract.validTo;
+    const patch = (validTo: string | null) =>
+      t.as(admin, { method: 'PATCH', url: `/contracts/${contract.id}`, payload: { validTo } });
+    expect((await patch('2026-03-01')).statusCode).toBe(200);
+    const res = await hints(logist, { participant: 'vehicle', categoryId: car });
+    expect(res.json().notices[0]).toMatchObject({ code: 'contract_expired', severity: 'error' });
+    expect((await patch(original)).statusCode).toBe(200);
+  });
+
+  it('данные подсказки не попадают в адрес: GET без номера работает, как раньше', async () => {
+    const res = await t.as(logist, {
+      url: `/tenants/${dns}/pass-hints?participant=vehicle&categoryId=${semi}&passType=single`,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().notices).toEqual([]);
+    expect(res.json().route.text).toContain('КПП-2');
+  });
+});
+
+describe('автопарк', () => {
+  const plate = nextPlate();
+  let vehicleId = '';
+
+  it('логист добавляет машину: номер нормализован (пробел не мешает), список виден заказчику', async () => {
+    const res = await t.as(logist, {
+      method: 'POST',
+      url: `/tenants/${dns}/fleet`,
+      payload: { plate: ` ${plate} `, categoryId: semi, brand: 'MAN', driverName: 'Тестов Т. Т.' },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    vehicleId = res.json().id;
+    expect(res.json()).toMatchObject({
+      plateRaw: plate,
+      plateNorm: plate.replace('К', 'K').replace('МС', 'MC'),
+      plateCountry: 'RU',
+      brand: 'MAN',
+    });
+    const list = await t.as(requester, { url: `/tenants/${dns}/fleet` });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().items.map((v: { id: string }) => v.id)).toContain(vehicleId);
+  });
+
+  it('тот же номер дважды — понятная ошибка у поля; после удаления можно добавить снова', async () => {
+    const dup = await t.as(logist, {
+      method: 'POST',
+      url: `/tenants/${dns}/fleet`,
+      payload: { plate: plate.toLowerCase(), categoryId: semi },
+    });
+    expect(dup.statusCode).toBe(409);
+    expect(error(dup)).toMatchObject({ code: 'conflict', field: 'plate' });
+  });
+
+  it('правка шлёт только изменённые поля и пишется в аудит; без права — 403', async () => {
+    const res = await t.as(logist, {
+      method: 'PATCH',
+      url: `/fleet/${vehicleId}`,
+      payload: { driverName: 'Другой Д. Д.' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ driverName: 'Другой Д. Д.', brand: 'MAN' });
+    const audit = await ownerDb()
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.entityId, vehicleId));
+    expect(audit.map((a) => a.action)).toEqual(['create', 'update']);
+    expect(audit[1]?.diff).toMatchObject({
+      driverName: { from: 'Тестов Т. Т.', to: 'Другой Д. Д.' },
+    });
+
+    const denied = await t.as(requester, {
+      method: 'PATCH',
+      url: `/fleet/${vehicleId}`,
+      payload: { brand: 'DAF' },
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(error(denied).permission).toBe('fleet.manage');
+    const viewerRead = await t.as(viewer, { url: `/tenants/${dns}/fleet` });
+    expect(viewerRead.statusCode).toBe(200);
+    const foreign = await t.as(otherLogist, { url: `/tenants/${dns}/fleet` });
+    expect(foreign.statusCode).toBe(403);
+  });
+
+  it('пакет из Excel: предпросмотр без записи, повтор номера и неверный тип — ошибки строк', async () => {
+    const rows = [
+      { plate: nextPlate(), categoryId: car },
+      { plate: plate, categoryId: car },
+      { plate: nextPlate(), categoryId: car, driverName: 'Пакетов П. П.' },
+      { plate: '   ', categoryId: car },
+    ];
+    const preview = await t.as(logist, {
+      method: 'POST',
+      url: `/tenants/${dns}/fleet/batch`,
+      payload: { items: rows.slice(0, 3), dryRun: true },
+    });
+    expect(preview.statusCode, preview.body).toBe(200);
+    expect(preview.json()).toMatchObject({ dryRun: true, total: 3, created: 2 });
+    expect(preview.json().errors[0]).toMatchObject({ row: 2, field: 'plate' });
+    const before = (await t.as(logist, { url: `/tenants/${dns}/fleet` })).json().items.length;
+    const real = await t.as(logist, {
+      method: 'POST',
+      url: `/tenants/${dns}/fleet/batch`,
+      payload: { items: rows.slice(0, 3) },
+    });
+    expect(real.json().created).toBe(2);
+    const after = (await t.as(logist, { url: `/tenants/${dns}/fleet` })).json().items.length;
+    expect(after).toBe(before + 2);
+    // строка без номера — ошибка этой строки, остальные не страдают
+    const bad = await t.as(logist, {
+      method: 'POST',
+      url: `/tenants/${dns}/fleet/batch`,
+      payload: { items: [rows[3]], dryRun: true },
+    });
+    expect(bad.statusCode).toBe(200);
+    expect(bad.json().errors[0]).toMatchObject({ row: 1, field: 'plate' });
+  });
+
+  it('удаление мягкое, в аудите; номер освобождается', async () => {
+    const del = await t.as(logist, { method: 'DELETE', url: `/fleet/${vehicleId}` });
+    expect(del.statusCode, del.body).toBe(200);
+    const again = await t.as(logist, {
+      method: 'POST',
+      url: `/tenants/${dns}/fleet`,
+      payload: { plate, categoryId: semi },
+    });
+    expect(again.statusCode, again.body).toBe(201);
+  });
+});
+
+describe('«Повторить вчерашний день»', () => {
+  it('разовые пропуска вчерашнего дня создаются заново на сегодня с теми же часами; предпросмотр ничего не пишет', async () => {
+    const plateA = nextPlate();
+    const plateB = nextPlate();
+    t.clock.set('2026-03-09T07:00:00.000Z');
+    for (const plate of [plateA, plateB]) {
+      const res = await t.as(logist, {
+        method: 'POST',
+        url: '/passes',
+        payload: {
+          tenantId: dns,
+          passType: 'single',
+          participant: 'vehicle',
+          plate,
+          categoryId: car,
+          driverName: 'Вчерашний В. В.',
+          validFrom: at('12:00', '2026-03-09'),
+          validTo: at('20:00', '2026-03-09'),
+        },
+      });
+      expect(res.statusCode, res.body).toBe(201);
+    }
+    t.clock.set(NOON);
+
+    const repeat = (dryRun: boolean) =>
+      t.as(logist, {
+        method: 'POST',
+        url: `/tenants/${dns}/passes/repeat`,
+        payload: { sourceDate: '2026-03-09', targetDate: '2026-03-10', dryRun },
+      });
+    const preview = await repeat(true);
+    expect(preview.statusCode, preview.body).toBe(200);
+    expect(preview.json()).toMatchObject({ dryRun: true, total: 2, created: 2, errors: [] });
+
+    const real = await repeat(false);
+    expect(real.json()).toMatchObject({ dryRun: false, total: 2, created: 2 });
+    const list = await t.as(logist, {
+      url: `/sites/${KEYS.siteId}/passes?tenantId=${dns}&dateFrom=2026-03-10&dateTo=2026-03-10&q=${plateA.slice(1, 4)}`,
+    });
+    const copy = list.json().items.find((p: { plateRaw: string }) => p.plateRaw === plateA);
+    expect(copy).toMatchObject({
+      validFrom: at('12:00'),
+      validTo: at('20:00'),
+      driverName: 'Вчерашний В. В.',
+    });
+
+    // второй раз — те же номера уже есть на сегодня: дубли отмечены ошибками строк, не падением
+    const twice = await repeat(false);
+    expect(twice.json().created).toBe(0);
+    expect(twice.json().errors.map((e: { code: string }) => e.code)).toEqual([
+      'pass_duplicate',
+      'pass_duplicate',
+    ]);
+  });
+
+  it('в день без пропусков — понятное сообщение, а не ошибка', async () => {
+    const res = await t.as(logist, {
+      method: 'POST',
+      url: `/tenants/${dns}/passes/repeat`,
+      payload: { sourceDate: '2026-01-05', targetDate: '2026-03-10', dryRun: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ total: 0, created: 0 });
+    expect(res.json().summary).toContain('повторять нечего');
+  });
+
+  it('просмотрщик пропуска создать не может; чужой арендатор — 403', async () => {
+    const denied = await t.as(viewer, {
+      method: 'POST',
+      url: `/tenants/${dns}/passes/repeat`,
+      payload: { sourceDate: '2026-03-09', targetDate: '2026-03-10' },
+    });
+    expect(denied.statusCode).toBe(403);
+    const foreign = await t.as(otherLogist, {
+      method: 'POST',
+      url: `/tenants/${dns}/passes/repeat`,
+      payload: { sourceDate: '2026-03-09', targetDate: '2026-03-10' },
+    });
+    expect(foreign.statusCode).toBe(403);
+  });
+});
+
+describe('список пропусков: фильтры', () => {
+  it('по типу, статусу и дате; дата — местные сутки объекта', async () => {
+    const plate = nextPlate();
+    const multi = await t.as(logist, {
+      method: 'POST',
+      url: '/passes',
+      payload: {
+        tenantId: dns,
+        passType: 'multi',
+        participant: 'vehicle',
+        plate,
+        categoryId: car,
+        comment: 'Ревизия',
+        validFrom: at('12:00'),
+        validTo: at('12:00', '2026-03-14'),
+      },
+    });
+    expect(multi.statusCode, multi.body).toBe(201);
+    const url = (query: string) => `/sites/${KEYS.siteId}/passes?tenantId=${dns}&${query}`;
+    const byType = await t.as(logist, { url: url('passType=multi') });
+    expect(byType.json().items.every((p: { passType: string }) => p.passType === 'multi')).toBe(
+      true,
+    );
+    const inRange = await t.as(logist, {
+      url: url('dateFrom=2026-03-12&dateTo=2026-03-12&passType=multi'),
+    });
+    expect(inRange.json().items.map((p: { plateRaw: string }) => p.plateRaw)).toContain(plate);
+    const outOfRange = await t.as(logist, {
+      url: url('dateFrom=2026-03-15&dateTo=2026-03-20&passType=multi'),
+    });
+    expect(outOfRange.json().items.map((p: { plateRaw: string }) => p.plateRaw)).not.toContain(
+      plate,
+    );
+    const pending = await t.as(logist, { url: url('status=pending_approval') });
+    expect(pending.json().items.some((p: { plateRaw: string }) => p.plateRaw === plate)).toBe(true);
+  });
+});

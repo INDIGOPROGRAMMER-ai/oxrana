@@ -227,9 +227,12 @@ function asEnginePass(values: PassValues, tenantId: string): EnginePass {
   };
 }
 
-/** Новые пропуска не оформляются заблокированному арендатору и после конца договора. */
-export function assertTenantAcceptsPasses(ctx: PassContext): void {
+/** Что мешает оформить новый пропуск арендатору: блокировка или конец договора; `null` — ничего. */
+export function tenantPassProblem(
+  ctx: PassContext,
+): { code: 'tenant_blocked' | 'contract_expired'; message: string; settingLink: string } | null {
   const { tenant } = ctx;
+  const settingLink = `/admin/tenants/${tenant.id}`;
   // Блокировка «запретить въезд» новые пропуска не запрещает (Q-73): они оформляются и ждут снятия.
   if (tenant.status !== 'active' && tenant.status !== 'blocked_entry') {
     const why = {
@@ -237,19 +240,28 @@ export function assertTenantAcceptsPasses(ctx: PassContext): void {
       blocked_full: 'арендатор заблокирован полностью',
       archived: 'арендатор в архиве',
     }[tenant.status];
-    throw new AppError('tenant_blocked', {
+    return {
+      code: 'tenant_blocked',
       message: `Пропуск не оформлен: ${why}. Решение принимает администратор объекта.`,
-      settingLink: `/admin/tenants/${tenant.id}`,
-    });
+      settingLink,
+    };
   }
   const view = ctx.rules.tenants.find((t) => t.id === tenant.id);
   const today = localDate(ctx.now, ctx.site.timezone);
   if (view?.contractValidTo && view.contractValidTo < today) {
-    throw new AppError('contract_expired', {
+    return {
+      code: 'contract_expired',
       message: `Договор арендатора закончился ${view.contractValidTo.split('-').reverse().join('.')} — новые пропуска не оформляются.`,
-      settingLink: `/admin/tenants/${tenant.id}`,
-    });
+      settingLink,
+    };
   }
+  return null;
+}
+
+/** Новые пропуска не оформляются заблокированному арендатору и после конца договора. */
+export function assertTenantAcceptsPasses(ctx: PassContext): void {
+  const problem = tenantPassProblem(ctx);
+  if (problem) throw new AppError(problem.code, problem);
 }
 
 /**

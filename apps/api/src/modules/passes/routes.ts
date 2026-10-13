@@ -12,6 +12,7 @@ import {
   PassCreatedSchema,
   PassCreateSchema,
   PassHintsQuerySchema,
+  PassHintsRequestSchema,
   PassHintsSchema,
   PassHistoryEntrySchema,
   PassListQuerySchema,
@@ -25,8 +26,9 @@ import {
   VisitViewSchema,
 } from '@oxrana/contracts';
 import { schema } from '@oxrana/db';
+import { addLocalDays, localInstant } from '@oxrana/engine';
 import { normalizePlateText, plateDigits } from '@oxrana/plates';
-import { and, asc, desc, eq, ilike, inArray, isNull, or, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, type SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -35,6 +37,7 @@ import { assertTenantAccess, type Ctx, can, ctxOf, type Scope } from '../../core
 import { loadSite, loadTenant } from '../../core/loaders';
 import { approvePass, creatorNames, rejectPass } from './approvals';
 import { createBatch } from './batch';
+import { registerCabinetRoutes } from './cabinet';
 import { passHints } from './hints';
 import {
   assertCanView,
@@ -141,6 +144,20 @@ export function registerPassesModule(app: FastifyInstance): void {
           tenants === null ? undefined : inArray(schema.passes.tenantId, tenants),
           q.status ? eq(schema.passes.status, q.status) : undefined,
           q.participant ? eq(schema.passes.participant, q.participant) : undefined,
+          q.passType ? eq(schema.passes.passType, q.passType) : undefined,
+          // Даты — местные сутки объекта: пропуск действует хотя бы часть этого промежутка.
+          q.dateTo
+            ? lt(
+                schema.passes.validFrom,
+                new Date(localInstant(addLocalDays(q.dateTo, 1), 0, site.timezone)),
+              )
+            : undefined,
+          q.dateFrom
+            ? or(
+                isNull(schema.passes.validTo),
+                gt(schema.passes.validTo, new Date(localInstant(q.dateFrom, 0, site.timezone))),
+              )
+            : undefined,
         ];
         if (q.q) {
           const digits = plateDigits(q.q);
@@ -537,6 +554,28 @@ export function registerPassesModule(app: FastifyInstance): void {
     },
   );
 
+  typed.post(
+    '/tenants/:tenantId/pass-hints',
+    {
+      config: { permission: CREATE },
+      schema: {
+        tags,
+        summary:
+          'Подсказки формы с номером или именем (чёрный список): данные в теле, не в адресе запроса',
+        params: TenantParamsSchema,
+        body: PassHintsRequestSchema,
+        response: { 200: PassHintsSchema },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      return ctx.tx(async (s) => {
+        const tenant = await loadTenant(s, request.params.tenantId);
+        return passHints(s, tenant, request.body);
+      });
+    },
+  );
+
   typed.get(
     '/sites/:siteId/visits',
     {
@@ -574,4 +613,5 @@ export function registerPassesModule(app: FastifyInstance): void {
       });
     },
   );
+  registerCabinetRoutes(app);
 }

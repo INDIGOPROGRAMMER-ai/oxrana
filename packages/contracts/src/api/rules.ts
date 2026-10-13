@@ -184,17 +184,19 @@ export const ApprovalPolicyPatchSchema = ApprovalPolicyCreateSchema.omit({
 /**
  * Политики согласования нового объекта (Q-55): все 9 сочетаний «кто создаёт × тип пропуска»
  * заполняются при создании объекта. Разовый от арендатора — без согласования, многоразовый и
- * постоянный от арендатора — на согласование; администратор — без согласования; охрана
+ * постоянный от арендатора — на согласование и с обязательным комментарием (`08_`); администратор — без согласования; охрана
  * оформляет только разовый по запросу «без пропуска», и он идёт на согласование.
  */
 export const DEFAULT_APPROVAL_POLICIES: readonly {
   readonly creatorKind: ApprovalCreatorKind;
   readonly passType: PassType;
   readonly mode: ApprovalMode;
+  /** «Комментарий обязателен» (`08_`: для многоразовых и постоянных от арендатора — «для чего и зачем»). */
+  readonly commentRequired?: boolean;
 }[] = [
   { creatorKind: 'tenant', passType: 'single', mode: 'allow' },
-  { creatorKind: 'tenant', passType: 'multi', mode: 'on_request' },
-  { creatorKind: 'tenant', passType: 'permanent', mode: 'on_request' },
+  { creatorKind: 'tenant', passType: 'multi', mode: 'on_request', commentRequired: true },
+  { creatorKind: 'tenant', passType: 'permanent', mode: 'on_request', commentRequired: true },
   { creatorKind: 'admin', passType: 'single', mode: 'allow' },
   { creatorKind: 'admin', passType: 'multi', mode: 'allow' },
   { creatorKind: 'admin', passType: 'permanent', mode: 'allow' },
