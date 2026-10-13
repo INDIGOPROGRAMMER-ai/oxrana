@@ -142,6 +142,72 @@ describe('песочница правил', () => {
   });
 });
 
+describe('песочница: проверка номера, как на посту', () => {
+  const checkPlate = (body: Record<string, unknown>, actor = admin) =>
+    t.as(actor, { method: 'POST', url: `/sites/${site}/sandbox/check-plate`, payload: body });
+
+  it('нет настоящего пропуска — вердикт «пропуска нет», в журнал КПП ничего не пишется', async () => {
+    const before = await ownerDb().select().from(schema.gateDecisions);
+    const res = await checkPlate({ gateId: gateKey('kpp2'), plate: 'У999УУ174' });
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json();
+    expect(body.pass).toBeNull();
+    expect(body.candidates).toBe(0);
+    expect(body.verdict.color).not.toBe('green');
+    expect(body.subject.plateNorm).toBe('Y999YY174');
+    expect((await ownerDb().select().from(schema.gateDecisions)).length).toBe(before.length);
+  });
+
+  it('настоящий пропуск находится по номеру, вердикт тот же, что на посту', async () => {
+    const plate = uniquePlate();
+    await dnsTruck(t, { plate });
+    const res = await checkPlate({ gateId: gateKey('kpp2'), plate });
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json();
+    expect(body.candidates).toBe(1);
+    expect(body.pass?.plateNorm).toBeTruthy();
+    expect(body.tenantName).toBeTruthy();
+    const post = await t.as(kpp2, {
+      method: 'POST',
+      url: '/gate/check',
+      payload: { plateQuery: plate, direction: 'in' },
+    });
+    expect(body.verdict.code).toBe(post.json().verdict.code);
+    expect(body.verdict.headline).toBe(post.json().verdict.headline);
+  });
+
+  it('номер в чёрном списке — красный вердикт с причиной', async () => {
+    const plate = uniquePlate();
+    await dnsTruck(t, { plate });
+    const created = await t.as(admin, {
+      method: 'POST',
+      url: `/sites/${site}/blacklist`,
+      payload: { level: 'site', plate, reason: 'Проверка песочницы' },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const res = await checkPlate({ gateId: gateKey('kpp2'), plate });
+    expect(res.json().verdict).toMatchObject({ code: 'deny', color: 'red' });
+    expect(res.json().verdict.headline).toContain('Проверка песочницы');
+    await t.as(admin, { method: 'DELETE', url: `/blacklist/${created.json().id}` });
+  });
+
+  it('пустой номер и чужой КПП отклоняются с полем; без sandbox.use — 403', async () => {
+    const empty = await checkPlate({ gateId: gateKey('kpp2'), plate: '  ' });
+    expect(empty.statusCode).toBeGreaterThanOrEqual(400);
+    const noGate = await checkPlate({
+      gateId: '00000000-0000-4000-8000-000000000001',
+      plate: 'А123ВС174',
+    });
+    expect(noGate.statusCode).toBe(404);
+    const denied = await checkPlate(
+      { gateId: gateKey('kpp2'), plate: 'А123ВС174' },
+      roleActor('tenant_manager', { tenantIds: [tenantKey('dns')] }),
+    );
+    expect(denied.statusCode).toBe(403);
+    expect(error(denied).permission).toBe('sandbox.use');
+  });
+});
+
 describe('чёрный список', () => {
   it('номер нормализуется, причина обязательна, красный вердикт с причиной, аудит с причиной', async () => {
     const noReason = await t.as(admin, {

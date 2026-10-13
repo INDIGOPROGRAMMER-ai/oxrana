@@ -154,6 +154,7 @@ exports[`тест-матрица прав (ADR-007, B12) > реестр марш
   "GET /sites/:siteId/routing-rules → rule.manage",
   "POST /sites/:siteId/routing-rules → rule.manage",
   "POST /sites/:siteId/sandbox/check → sandbox.use",
+  "POST /sites/:siteId/sandbox/check-plate → sandbox.use",
   "GET /sites/:siteId/sandbox/examples → sandbox.use",
   "POST /sites/:siteId/sandbox/quota-what-if → sandbox.use",
   "PATCH /sites/:siteId/settings → rule.manage",

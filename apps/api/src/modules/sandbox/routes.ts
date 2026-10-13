@@ -3,16 +3,28 @@ import {
   QuotaWhatIfSchema,
   SandboxCheckSchema,
   SandboxExamplesSchema,
+  SandboxPlateCheckSchema,
+  SandboxPlateResultSchema,
   SandboxResultSchema,
   SiteParamsSchema,
 } from '@oxrana/contracts';
-import { capacityOf, countOccupancy } from '@oxrana/engine';
+import { capacityOf, countOccupancy, formatDateTime } from '@oxrana/engine';
+import { normalizePlateText } from '@oxrana/plates';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { ctxOf } from '../../core/context';
+import { ctxOf, requirePermission } from '../../core/context';
 import { loadSite } from '../../core/loaders';
 import { AppError } from '../../errors';
 import { verdictView } from '../gate/actions';
+import {
+  approvedOverrides,
+  gateContextFor,
+  resolveSubject,
+  runEngine,
+  tenantState,
+} from '../gate/core';
+import { siteTimeLabel } from '../org/sites';
+import { passView, visitView } from '../passes/views';
 import { loadSandboxData, personNames, runSandbox } from './engine';
 import { buildExamples } from './examples';
 
@@ -46,6 +58,79 @@ export function registerSandboxModule(app: FastifyInstance): void {
           verdict: verdictView(out.verdict),
           subject: out.subject,
           assumptions: out.assumptions,
+        };
+      });
+    },
+  );
+
+  typed.post(
+    '/sites/:siteId/sandbox/check-plate',
+    {
+      config: { permission: 'sandbox.use' },
+      schema: {
+        tags,
+        summary:
+          'Песочница: проверить номер, как на посту — по настоящим пропускам, без записи в журнал КПП',
+        params: SiteParamsSchema,
+        body: SandboxPlateCheckSchema,
+        response: { 200: SandboxPlateResultSchema },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      // Видны пропуска всех арендаторов (имена, номера): нужно то же право, что у поста.
+      requirePermission(ctx, 'pass.view_all_tenants');
+      const { gateId, plate, direction } = request.body;
+      return ctx.tx(async (s) => {
+        const site = await loadSite(s, request.params.siteId);
+        const g = await gateContextFor(s, gateId);
+        if (g.site.id !== site.id) {
+          throw new AppError('validation_failed', {
+            field: 'gateId',
+            message: 'КПП не найден на этом объекте. Выберите из списка.',
+          });
+        }
+        const plateNorm = normalizePlateText(plate);
+        if (!plateNorm) {
+          throw new AppError('plate_required', {
+            field: 'plate',
+            message: 'Введите номер или хотя бы его цифры — по ним ищутся пропуска.',
+          });
+        }
+        const now = ctx.now();
+        const resolved = await resolveSubject(s, g, { plateQuery: plate }, direction, now);
+        const tenantId = resolved.pass?.tenantId;
+        const live = tenantId
+          ? (await tenantState(s, g, tenantId, now)).state
+          : { occupancy: [], queue: [], asOf: now };
+        const overrides = await approvedOverrides(
+          s,
+          g.gate.id,
+          resolved.pass?.id ?? null,
+          direction,
+          now,
+        );
+        const verdict = runEngine(g, resolved.subject, direction, now, live, overrides);
+        const candidates =
+          resolved.subject.kind === 'plate'
+            ? resolved.subject.candidates.length
+            : resolved.pass
+              ? 1
+              : 0;
+        return {
+          verdict: verdictView(verdict),
+          pass: resolved.pass ? passView(resolved.pass, now) : null,
+          openVisit: resolved.openVisit ? visitView(resolved.openVisit) : null,
+          tenantName: tenantId
+            ? (g.rules.tenants.find((t) => t.id === tenantId)?.name ?? null)
+            : null,
+          candidates,
+          subject: {
+            gateName: g.gate.name,
+            plateNorm,
+            atLabel: `${formatDateTime(now, site.timezone)} (${siteTimeLabel(site, now)})`,
+            directionLabel: direction === 'in' ? 'Въезд' : 'Выезд',
+          },
         };
       });
     },
