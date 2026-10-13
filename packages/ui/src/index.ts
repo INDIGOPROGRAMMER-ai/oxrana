@@ -13,6 +13,20 @@ export {
 } from './components/card';
 export { type ChipOption, ChipSelect } from './components/chip-select';
 export {
+  DateInput,
+  DateTimeInput,
+  FormDateInput,
+  FormDateTimeInput,
+  FormTimeInput,
+  isoToRuDate,
+  maskDate,
+  maskTime,
+  monthGrid,
+  parseRuDate,
+  parseTime,
+  TimeInput,
+} from './components/date-input';
+export {
   Dialog,
   DialogClose,
   DialogContent,

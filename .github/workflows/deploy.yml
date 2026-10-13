@@ -99,8 +99,19 @@ jobs:
         shell: bash
         run: |
           install -d -m 700 ~/.ssh
-          printf '%s\n' "$STAND_SSH_KEY" > ~/.ssh/stand_key
+          # Ключ, скопированный мышью из PowerShell, приходит с \r, пробелами в концах строк и пустыми
+          # строками (в теле настоящего ключа пустых строк нет) — OpenSSH отвечает на такой ключ невнятным «error in libcrypto».
+          # Чистим и проверяем заранее, чтобы ошибка называла причину и вела в инструкцию.
+          printf '%s\n' "$STAND_SSH_KEY" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | awk 'NF' > ~/.ssh/stand_key
           chmod 600 ~/.ssh/stand_key
+          if ! grep -q '^-----BEGIN OPENSSH PRIVATE KEY-----$' ~/.ssh/stand_key || ! grep -q '^-----END OPENSSH PRIVATE KEY-----$' ~/.ssh/stand_key; then
+            echo "::error title=Секрет STAND_SSH_KEY вставлен не целиком::В значении нет строки BEGIN или END. Нужен весь текст закрытого ключа: от -----BEGIN OPENSSH PRIVATE KEY----- до -----END OPENSSH PRIVATE KEY----- включительно. Как исправить — docs/STAND.md, раздел «Ключ деплоя в секрете GitHub»."
+            exit 1
+          fi
+          if ! ssh-keygen -y -f ~/.ssh/stand_key >/dev/null 2>&1; then
+            echo "::error title=Секрет STAND_SSH_KEY не читается как ключ::Ключ повреждён при копировании (лишние пробелы или переносы строк) или скопирован не тот файл. Нужен закрытый ключ деплоя из блока в консоли сервера. Как вставить заново — docs/STAND.md, раздел «Ключ деплоя в секрете GitHub»."
+            exit 1
+          fi
           printf '%s\n' "$STAND_KNOWN_HOSTS" > ~/.ssh/known_hosts
           cat > ~/.ssh/config <<EOF
           Host stand

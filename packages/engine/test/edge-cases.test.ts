@@ -697,12 +697,16 @@ describe('статусы, сроки, договор, рабочее время'
     expect(open.code).toBe('allow');
   });
 
-  it('арендатор заблокирован на въезд или в архиве — отказ; блокировка новых пропусков не мешает', () => {
-    const tenants = (status: 'blocked_entry' | 'archived' | 'blocked_new_passes') =>
-      fx.rules.tenants.map((t) => (t.id === tenantId('dns') ? { ...t, status } : t));
+  it('арендатор заблокирован на въезд (или полностью) или в архиве — отказ; блокировка новых пропусков не мешает', () => {
+    const tenants = (
+      status: 'blocked_entry' | 'blocked_full' | 'archived' | 'blocked_new_passes',
+    ) => fx.rules.tenants.map((t) => (t.id === tenantId('dns') ? { ...t, status } : t));
     const pass = vehiclePass({ tenant: 'dns', category: 'car' });
     expect(
       check({ gate: 'kpp1', subject: pass, rules: { tenants: tenants('blocked_entry') } }).headline,
+    ).toBe('Въезд арендатору ДНС запрещён администратором');
+    expect(
+      check({ gate: 'kpp1', subject: pass, rules: { tenants: tenants('blocked_full') } }).headline,
     ).toBe('Въезд арендатору ДНС запрещён администратором');
     expect(
       check({ gate: 'kpp1', subject: pass, rules: { tenants: tenants('archived') } }).headline,

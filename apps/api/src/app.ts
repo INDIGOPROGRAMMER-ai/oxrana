@@ -14,8 +14,8 @@ import { type Clock, systemClock } from './clock';
 import type { AppDeps, ServiceHooks } from './core/context';
 import { RuleSetCache } from './core/ruleset-cache';
 import { registerErrorHandling } from './error-handler';
+import { type FileStore, LocalFileStore } from './files/store';
 import { registerHealthRoutes } from './health';
-import { useRussianZodMessages } from './i18n';
 import { registerModules } from './modules';
 import { type PermissionGuardOptions, registerPermissionGuard } from './permission-guard';
 import { EventHub } from './realtime/hub';
@@ -32,8 +32,13 @@ export interface AppServices {
   publicUrl?: string;
   /** Адрес приложения поста (QR привязки). */
   gateUrl?: string;
+  /** Хранилище файлов; по умолчанию — локальный каталог `./data/files`. */
+  files?: FileStore;
+  /** Предел размера загружаемого файла, байт. */
+  fileMaxBytes?: number;
 }
 
+export const DEFAULT_FILE_MAX_BYTES = 10 * 1024 * 1024;
 const DEV_PUBLIC_URL = 'http://127.0.0.1:5173';
 const DEV_GATE_URL = 'http://127.0.0.1:5174';
 
@@ -65,6 +70,8 @@ export function createDeps(services: AppServices, log: MessengerLog | null = nul
     hub: services.hub ?? new EventHub(),
     ruleSets: new RuleSetCache(clock),
     hooks: services.hooks ?? {},
+    files: services.files ?? new LocalFileStore('./data/files'),
+    fileMaxBytes: services.fileMaxBytes ?? DEFAULT_FILE_MAX_BYTES,
   };
 }
 
@@ -73,8 +80,6 @@ export function createDeps(services: AppServices, log: MessengerLog | null = nul
  * а проверка прав сработает при `ready()` — маршрут без права не стартует.
  */
 export async function buildApp(options: AppOptions = {}): Promise<FastifyInstance> {
-  useRussianZodMessages();
-
   const app = Fastify({
     logger: options.logger ?? false,
     trustProxy: options.trustProxy ?? false,
@@ -126,6 +131,12 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   });
 
   if (deps) {
+    // Файл договора приходит телом запроса как есть (PDF или изображение): без multipart-зависимости.
+    app.addContentTypeParser(
+      ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'],
+      { parseAs: 'buffer', bodyLimit: deps.fileMaxBytes },
+      (_request, body, done) => done(null, body),
+    );
     app.decorate('deps', deps);
     registerModules(app);
   }

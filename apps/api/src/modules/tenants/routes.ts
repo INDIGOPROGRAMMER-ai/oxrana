@@ -10,10 +10,14 @@ import {
   DockAssignmentCreateSchema,
   DockAssignmentPatchSchema,
   DockAssignmentViewSchema,
+  ParkingAssignmentCreateSchema,
+  ParkingAssignmentPatchSchema,
+  ParkingAssignmentViewSchema,
   PedestrianRuleCreateSchema,
   PedestrianRulePatchSchema,
   PedestrianRuleViewSchema,
   SiteParamsSchema,
+  type StoredFileView,
   TenantBatchSchema,
   TenantCreateSchema,
   TenantParamsSchema,
@@ -21,38 +25,18 @@ import {
   TenantViewSchema,
 } from '@oxrana/contracts';
 import { schema } from '@oxrana/db';
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { runBatch } from '../../core/batch';
 import { assertSiteAccess, assertTenantAccess, ctxOf, type Scope } from '../../core/context';
-import { registerResource, type ScopeInfo } from '../../core/crud';
-import { loadTenant, notFound } from '../../core/loaders';
+import { registerResource } from '../../core/crud';
 import { assertRef } from '../../core/refs';
 import { AppError } from '../../errors';
-
-type Row = Record<string, unknown> & { id: string };
-
-/** Запись арендатора: область — его объект и он сам (пользователь арендатора видит только своих). */
-async function tenantRowScope(s: Scope, row: Row): Promise<ScopeInfo> {
-  const tenant = await loadTenant(s, String(row.tenantId), { includeDeleted: true });
-  return { siteId: tenant.siteId, tenantId: tenant.id };
-}
-
-async function contractScope(s: Scope, contractId: string): Promise<ScopeInfo> {
-  const [contract] = await s.db
-    .select({ tenantId: schema.contracts.tenantId })
-    .from(schema.contracts)
-    .where(
-      and(
-        eq(schema.contracts.organizationId, s.organizationId),
-        eq(schema.contracts.id, contractId),
-      ),
-    );
-  if (!contract) throw notFound('Договор');
-  const tenant = await loadTenant(s, contract.tenantId, { includeDeleted: true });
-  return { siteId: tenant.siteId, tenantId: tenant.id };
-}
+import { registerBlockingRoutes } from './blocking';
+import { fileViews, registerContractFileRoutes } from './contract-files';
+import { contractScope, tenantRowScope } from './scope';
+import { contractView, tenantView } from './views';
 
 /** Пункт договора-основание принадлежит договору этого арендатора. */
 async function assertClauseOfTenant(
@@ -81,6 +65,59 @@ async function assertClauseOfTenant(
   }
 }
 
+const pedestrianTwin = (everywhere: boolean) =>
+  new AppError('conflict', {
+    field: 'zoneId',
+    message: everywhere
+      ? 'У этого арендатора уже есть правило «везде». Измените его — два правила на одно место охране не нужны.'
+      : 'Для этой зоны у арендатора уже есть правило. Измените его — два правила на одно место охране не нужны.',
+  });
+
+const ruDate = (iso: string) => iso.split('-').reverse().join('.');
+const ruPeriod = (from: string, to: string | null) =>
+  `с ${ruDate(from)} ${to ? `по ${ruDate(to)}` : 'бессрочно'}`;
+
+/**
+ * Док не бывает у двух арендаторов сразу, а у одного — двумя пересекающимися назначениями. Проверка
+ * заранее даёт понятный текст (в том числе в предпросмотре пакета): базе остаётся последняя линия
+ * (exclusion-ограничение), но её ошибка не называет, кто занял док.
+ */
+async function assertDockFree(
+  s: Scope,
+  dockId: string,
+  tenantId: string,
+  from: string,
+  to: string | null,
+  selfId: string | null,
+): Promise<void> {
+  const [clash] = await s.db
+    .select({
+      tenantId: schema.tenantDockAssignments.tenantId,
+      tenantName: schema.tenants.shortName,
+      dockNumber: schema.docks.number,
+      validFrom: schema.tenantDockAssignments.validFrom,
+      validTo: schema.tenantDockAssignments.validTo,
+    })
+    .from(schema.tenantDockAssignments)
+    .innerJoin(schema.tenants, eq(schema.tenants.id, schema.tenantDockAssignments.tenantId))
+    .innerJoin(schema.docks, eq(schema.docks.id, schema.tenantDockAssignments.dockId))
+    .where(
+      and(
+        eq(schema.tenantDockAssignments.organizationId, s.organizationId),
+        eq(schema.tenantDockAssignments.dockId, dockId),
+        selfId ? ne(schema.tenantDockAssignments.id, selfId) : undefined,
+        sql`daterange(${schema.tenantDockAssignments.validFrom}, ${schema.tenantDockAssignments.validTo}, '[]') && daterange(${from}::date, ${to}::date, '[]')`,
+      ),
+    )
+    .limit(1);
+  if (!clash) return;
+  const who =
+    clash.tenantId === tenantId
+      ? `уже закреплён за этим арендатором на пересекающийся период (${ruPeriod(clash.validFrom, clash.validTo)}). Измените то назначение или выберите другие даты.`
+      : `на эти даты закреплён за арендатором «${clash.tenantName}» (${ruPeriod(clash.validFrom, clash.validTo)}). Док не бывает у двух арендаторов сразу: завершите то назначение или выберите другой док.`;
+  throw new AppError('conflict', { field: 'dockId', message: `Док ${clash.dockNumber} ${who}` });
+}
+
 export function registerTenantsModule(app: FastifyInstance): void {
   const tenants = registerResource(app, {
     entity: 'tenant',
@@ -96,20 +133,7 @@ export function registerTenantsModule(app: FastifyInstance): void {
     viewSchema: TenantViewSchema,
     event: 'tenant.changed',
     labels: { defaultCategoryId: 'category' },
-    toView: (r) => ({
-      id: r.id,
-      siteId: r.siteId,
-      legalName: r.legalName,
-      shortName: r.shortName,
-      inn: r.inn,
-      isOperator: r.isOperator,
-      status: r.status,
-      trucksDockRequired: r.trucksDockRequired,
-      defaultCategoryId: r.defaultCategoryId,
-      responsiblePhone: r.responsiblePhone,
-      emergencyPhone: r.emergencyPhone,
-      color: r.color,
-    }),
+    toView: (r) => tenantView(r as never),
     prepare: async (s, input) => {
       await assertRef(s, schema.vehicleCategories, input.defaultCategoryId as string | undefined, {
         field: 'defaultCategoryId',
@@ -144,16 +168,26 @@ export function registerTenantsModule(app: FastifyInstance): void {
     patchSchema: ContractPatchSchema,
     viewSchema: ContractViewSchema,
     event: 'tenant.changed',
-    toView: (r) => ({
-      id: r.id,
-      tenantId: r.tenantId,
-      number: r.number,
-      signedOn: r.signedOn,
-      validFrom: r.validFrom,
-      validTo: r.validTo,
-      status: r.status,
-      notes: r.notes,
-    }),
+    toView: (r, extra) => {
+      const e = extra as { file: StoredFileView | null; canViewFile: boolean } | undefined;
+      return contractView(r as never, e?.file ?? null, e?.canViewFile ?? false);
+    },
+    // Файл показывается только с правом `contract.file`; без него договор виден, файл — нет.
+    loadExtras: async (s, rows) => {
+      const canViewFile = s.ctx.holds('contract.file');
+      const files = canViewFile
+        ? await fileViews(
+            s,
+            rows.map((r) => (r.fileRef as string | null) ?? null),
+          )
+        : new Map<string, StoredFileView>();
+      return new Map(
+        rows.map((r) => [
+          r.id,
+          { canViewFile, file: files.get((r.fileRef as string | null) ?? '') ?? null },
+        ]),
+      );
+    },
     scopeOf: tenantRowScope,
     orderBy: (c) => [asc(c('validFrom')), asc(c('id'))],
   });
@@ -211,13 +245,21 @@ export function registerTenantsModule(app: FastifyInstance): void {
           message: 'Окончание назначения раньше начала. Проверьте даты.',
         });
       }
+      await assertDockFree(
+        s,
+        String(input.dockId ?? existing?.dockId),
+        scope.tenantId ?? '',
+        from,
+        to ?? null,
+        existing?.id ?? null,
+      );
       return input;
     },
     onConflict: () =>
       new AppError('conflict', {
         field: 'dockId',
         message:
-          'Этот док на эти даты уже закреплён за другим арендатором (док не бывает у двух сразу). Завершите прежнее назначение или выберите другой док.',
+          'Этот док на эти даты уже закреплён (док не бывает у двух арендаторов сразу). Завершите прежнее назначение или выберите другой док.',
       }),
     scopeOf: tenantRowScope,
     orderBy: (c) => [asc(c('validFrom'))],
@@ -260,9 +302,102 @@ export function registerTenantsModule(app: FastifyInstance): void {
             'Укажите телефон, куда звонить за сопровождающим, — охрана увидит его в карточке.',
         });
       }
+      // Одно правило на «арендатор × зона» и одно «везде» (Q-66): иначе движок взял бы первое найденное.
+      const zoneId = ((input.zoneId !== undefined ? input.zoneId : existing?.zoneId) ?? null) as
+        | string
+        | null;
+      const [twin] = await s.db
+        .select({ id: schema.pedestrianRules.id })
+        .from(schema.pedestrianRules)
+        .where(
+          and(
+            eq(schema.pedestrianRules.organizationId, s.organizationId),
+            eq(schema.pedestrianRules.tenantId, scope.tenantId ?? ''),
+            isNull(schema.pedestrianRules.deletedAt),
+            zoneId === null
+              ? isNull(schema.pedestrianRules.zoneId)
+              : eq(schema.pedestrianRules.zoneId, zoneId),
+            existing ? ne(schema.pedestrianRules.id, existing.id) : undefined,
+          ),
+        );
+      if (twin) throw pedestrianTwin(zoneId === null);
       return existing ? input : { ...input, siteId: scope.siteId };
     },
+    onConflict: () => pedestrianTwin(false),
     scopeOf: tenantRowScope,
+  });
+
+  registerResource(app, {
+    entity: 'tenant_parking_assignment',
+    title: 'Закрепление мест',
+    table: schema.tenantParkingAssignments,
+    collection: 'parking-assignments',
+    parent: 'tenant',
+    parentField: 'tenantId',
+    read: 'tenant.manage',
+    write: 'tenant.manage',
+    createSchema: ParkingAssignmentCreateSchema,
+    patchSchema: ParkingAssignmentPatchSchema,
+    viewSchema: ParkingAssignmentViewSchema,
+    labels: { basisClauseId: 'clause' },
+    toView: (r) => ({
+      id: r.id,
+      tenantId: r.tenantId,
+      parkingAreaId: r.parkingAreaId,
+      spaces: r.spaces,
+      validFrom: r.validFrom,
+      validTo: r.validTo,
+      basisClauseId: r.basisClauseId,
+    }),
+    prepare: async (s, input, existing, scope) => {
+      await assertRef(s, schema.parkingAreas, input.parkingAreaId as string | undefined, {
+        siteId: scope.siteId,
+        field: 'parkingAreaId',
+        title: 'Парковочный участок',
+      });
+      await assertClauseOfTenant(s, input.basisClauseId, scope.tenantId ?? '');
+      const from = (input.validFrom ?? existing?.validFrom) as string;
+      const to = (input.validTo !== undefined ? input.validTo : existing?.validTo) as string | null;
+      if (to !== null && to !== undefined && to < from) {
+        throw new AppError('invalid_period', {
+          field: 'validTo',
+          message: 'Окончание закрепления раньше начала. Проверьте даты.',
+        });
+      }
+      // Мест закреплено не больше, чем на участке: считаем пересекающиеся по датам закрепления всех
+      // арендаторов (с запасом — без учёта того, что они могут не совпадать по времени в течение периода).
+      const areaId = String(input.parkingAreaId ?? existing?.parkingAreaId);
+      const spaces = Number(input.spaces ?? existing?.spaces);
+      const [area] = await s.db
+        .select({ name: schema.parkingAreas.name, spaces: schema.parkingAreas.spaces })
+        .from(schema.parkingAreas)
+        .where(eq(schema.parkingAreas.id, areaId));
+      if (area?.spaces != null) {
+        const [taken] = await s.db
+          .select({
+            n: sql<number>`coalesce(sum(${schema.tenantParkingAssignments.spaces}), 0)::int`,
+          })
+          .from(schema.tenantParkingAssignments)
+          .where(
+            and(
+              eq(schema.tenantParkingAssignments.organizationId, s.organizationId),
+              eq(schema.tenantParkingAssignments.parkingAreaId, areaId),
+              existing ? ne(schema.tenantParkingAssignments.id, existing.id) : undefined,
+              sql`daterange(${schema.tenantParkingAssignments.validFrom}, ${schema.tenantParkingAssignments.validTo}, '[]') && daterange(${from}::date, ${to ?? null}::date, '[]')`,
+            ),
+          );
+        const already = taken?.n ?? 0;
+        if (already + spaces > area.spaces) {
+          throw new AppError('conflict', {
+            field: 'spaces',
+            message: `На участке «${area.name}» всего ${area.spaces} мест, на эти даты уже закреплено ${already}. Можно закрепить не больше ${Math.max(0, area.spaces - already)}.`,
+          });
+        }
+      }
+      return input;
+    },
+    scopeOf: tenantRowScope,
+    orderBy: (c) => [asc(c('validFrom'))],
   });
 
   // Пакетное добавление арендаторов (вставка из Excel): строки независимы, повторы названий — ошибка строки.
@@ -349,4 +484,7 @@ export function registerTenantsModule(app: FastifyInstance): void {
       );
     },
   );
+
+  registerBlockingRoutes(app);
+  registerContractFileRoutes(app);
 }

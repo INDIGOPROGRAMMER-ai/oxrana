@@ -12,7 +12,12 @@ export type PassageDirection = 'in' | 'out';
 export type RuleDirection = 'in' | 'out' | 'both';
 export type GateKind = 'perimeter' | 'internal';
 export type GateAdmits = 'vehicles_and_pedestrians' | 'vehicles' | 'pedestrians';
-export type TenantStatus = 'active' | 'blocked_new_passes' | 'blocked_entry' | 'archived';
+export type TenantStatus =
+  | 'active'
+  | 'blocked_new_passes'
+  | 'blocked_entry'
+  | 'blocked_full'
+  | 'archived';
 export type PassType = 'single' | 'multi' | 'permanent';
 export type PassStatus =
   | 'draft'

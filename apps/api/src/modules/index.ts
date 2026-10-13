@@ -4,11 +4,13 @@ import { registerAuditModule } from './audit/routes';
 import { registerDeviceRoutes } from './auth/devices';
 import { registerAuthRoutes } from './auth/routes';
 import { registerUserRoutes } from './auth/users';
+import { registerBlacklistModule } from './blacklist/routes';
 import { registerGateModule } from './gate/routes';
 import { registerOccupancyModule } from './occupancy/routes';
 import { registerOrgModule } from './org/routes';
 import { registerPassesModule } from './passes/routes';
 import { registerRulesModule } from './rules/routes';
+import { registerSandboxModule } from './sandbox/routes';
 import { registerTenantsModule } from './tenants/routes';
 
 /** Бизнес-модули API (ARCHITECTURE §2): каждый регистрирует свои маршруты с правами. */
@@ -23,5 +25,7 @@ export function registerModules(app: FastifyInstance): void {
   registerGateModule(app);
   registerOccupancyModule(app);
   registerAuditModule(app);
+  registerBlacklistModule(app);
+  registerSandboxModule(app);
   registerRealtimeRoutes(app);
 }

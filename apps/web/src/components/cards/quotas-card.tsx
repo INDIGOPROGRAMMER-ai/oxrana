@@ -24,12 +24,10 @@ import {
   Select,
   useCreateForm,
   useEditForm,
-  useLinkComponent,
   useToast,
 } from '@oxrana/ui';
 import { Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { z } from 'zod';
 import {
   type CategoryView,
   type QuotaView,
@@ -38,6 +36,7 @@ import {
   useDocks,
   useMutate,
   useQuotas,
+  useTrackContracts,
 } from '../../lib/data';
 import { ENFORCEMENT_LABEL, ENFORCEMENT_SHORT } from '../../lib/labels';
 import { count } from '../../lib/setup';
@@ -53,23 +52,9 @@ import {
   useTenantClauses,
 } from './tenant-rule-helpers';
 
-// Тексты ошибок схем лимита — по-русски (стандартные сообщения zod английские).
-const CAPACITY = z
-  .int('Число мест — целое число.')
-  .min(0, 'Число мест не может быть отрицательным.');
-const TARIFF = z.number('Тариф — число.').min(0, 'Тариф не может быть отрицательным.');
-const OVERAGE_CAP = z.int('Потолок — целое число.').min(0, 'Потолок не может быть отрицательным.');
-
-const QuotaFormCreateSchema = QuotaCreateSchema.extend({
-  capacity: CAPACITY.optional(),
-  overageTariffRub: TARIFF.nullable().optional(),
-  overageCap: OVERAGE_CAP.nullable().optional(),
-});
-const QuotaFormPatchSchema = QuotaPatchSchema.extend({
-  capacity: CAPACITY.optional(),
-  overageTariffRub: TARIFF.nullable().optional(),
-  overageCap: OVERAGE_CAP.nullable().optional(),
-});
+// Русские сообщения — в самих схемах `contracts` (Q-67): экран их не переписывает.
+const QuotaFormCreateSchema = QuotaCreateSchema;
+const QuotaFormPatchSchema = QuotaPatchSchema;
 
 interface QuotaValues {
   name: string;
@@ -136,29 +121,22 @@ function BasisField({
   onChange: (v: string) => void;
   error: { message: string; settingLink?: string | null } | null;
 }) {
-  const Link = useLinkComponent();
-  const reason = !clauses.hasContracts
-    ? 'У арендатора нет договора, поэтому сослаться на пункт нельзя.'
-    : clauses.options.length === 0
-      ? 'В договорах арендатора нет пунктов — выпишите пункт, чтобы сослаться на него.'
-      : undefined;
+  // Договоры не ведутся — поля основания нет вовсе (настройка организации «Вести договоры»).
+  const track = useTrackContracts();
+  if (!track) return null;
+  const nothingToPick = clauses.options.length === 0;
   return (
     <Field
-      label="Основание — пункт договора"
+      label="Основание (необязательно)"
       hint={
-        reason ? (
-          <Link href="/admin/tenants" className="font-medium underline">
-            Добавьте договор в карточке арендатора
-          </Link>
-        ) : (
-          'Необязательно. Видно в журнале и в подсказках.'
-        )
+        nothingToPick
+          ? 'Не нужно: пунктов договора нет. Захотите ссылаться на пункт — добавьте его на вкладке «Договор».'
+          : 'Пункт договора, на который опирается лимит. Видно в журнале и в подсказках.'
       }
-      disabledReason={reason}
       error={error}
     >
-      <Select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— без основания —</option>
+      <Select value={value} disabled={nothingToPick} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{nothingToPick ? '— не нужно —' : '— без основания —'}</option>
         {clauses.options.map((o) => (
           <option key={o.id} value={o.id}>
             {o.label}
@@ -573,7 +551,8 @@ function QuotasBody({
   const categories = useCategories(siteId, true);
   const docks = useDocks(siteId);
   const assignments = useDockAssignments(canTenant ? tenantId : null);
-  const clauses = useTenantClauses(canTenant ? tenantId : null);
+  const track = useTrackContracts();
+  const clauses = useTenantClauses(canTenant && track ? tenantId : null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<QuotaView | null>(null);
 
@@ -694,7 +673,7 @@ function QuotasBody({
           <DialogHeader>
             <DialogTitle>Новый лимит</DialogTitle>
             <DialogDescription>
-              Типы транспорта, число мест, режим и основание — пункт договора.
+              Типы транспорта, число мест, режим и (по желанию) основание — пункт договора.
             </DialogDescription>
           </DialogHeader>
           <CreateQuotaForm

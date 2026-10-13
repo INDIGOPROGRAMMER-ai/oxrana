@@ -170,9 +170,13 @@ test('мастер настройки на чистой базе: объект, 
   // 7. Лимит арендатору: доки 1–5 и лимит «[фура] — [число] · режим»
   await title('Шаг 7 из 11. Назначения и лимиты');
   await page.getByLabel('Номера доков').fill('1–5');
-  await page.getByLabel('С даты').first().fill('2026-01-01');
-  await page.getByRole('button', { name: 'Проверить' }).click();
-  await page.getByRole('button', { name: /^Закрепить/ }).click();
+  // «С даты» предзаполнена сегодняшней датой объекта и показана как ДД.ММ.ГГГГ; отдельной кнопки
+  // «Проверить» нет: проверка идёт сама, закрепляет одна кнопка
+  await expect(page.getByLabel('С даты').first()).toHaveValue(/^\d{2}\.\d{2}\.\d{4}$/);
+  await expect(page.getByRole('button', { name: 'Проверить', exact: true })).toHaveCount(0);
+  await page.getByLabel('С даты').first().fill('01012026');
+  await expect(page.getByLabel('С даты').first()).toHaveValue('01.01.2026');
+  await page.getByRole('button', { name: 'Закрепить 5 доков' }).click();
   await expect(page.getByRole('cell', { name: '№ 5', exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Добавить лимит' }).first().click();
   const limit = page.getByRole('dialog');
@@ -191,6 +195,13 @@ test('мастер настройки на чистой базе: объект, 
   await expect(page.getByRole('row', { name: /3\. Типы транспорта/ })).toContainText(
     'Рефрижератор',
   );
+  // прогон вердиктов по настроенным данным: 3–5 примеров тем же движком, каждый — ссылка в песочницу
+  const examples = page.getByTestId('examples').getByRole('listitem');
+  await expect(examples.first()).toBeVisible();
+  expect(await examples.count()).toBeGreaterThanOrEqual(3);
+  expect(await examples.count()).toBeLessThanOrEqual(5);
+  await expect(page.getByTestId('examples').locator('[data-color="green"]')).not.toHaveCount(0);
+  await expect(page.getByTestId('examples').locator('[data-color="yellow"]')).not.toHaveCount(0);
 });
 
 test('данные мастера видны в карточках; правка шлёт только изменённые поля; удаление показывает использование', async ({
@@ -242,6 +253,163 @@ test('данные мастера видны в карточках; правка
   await page.getByRole('button', { name: 'Далее: показать последствия' }).click();
   await expect(page.getByText('Последствия смены пояса')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Сменить пояс' })).toBeDisabled();
+});
+
+test('чёрный список → песочница показывает красный с причиной (и снова зелёный после удаления)', async ({
+  page,
+}) => {
+  await login(page, OWNER.email, OWNER.password);
+  await page.goto(`${WEB_URL}/admin/blacklist`);
+  await expect(page.getByText('Чёрный список пуст')).toBeVisible();
+  await page.getByRole('button', { name: 'Добавить', exact: true }).first().click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Номер машины').fill('в 777 ор 174');
+  await expect(dialog.getByText('B777OP174')).toBeVisible();
+  // причина обязательна
+  await dialog.getByRole('button', { name: 'Добавить в чёрный список' }).click();
+  await expect(dialog.getByRole('alert').first()).toBeVisible();
+  await dialog.getByLabel('Причина').fill('Драка на территории');
+  await dialog.getByRole('button', { name: 'Добавить в чёрный список' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('cell', { name: 'B777OP174', exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Драка на территории', exact: true })).toBeVisible();
+
+  // песочница: тот же вердикт, что получит пост — красный и с причиной
+  await page.goto(`${WEB_URL}/admin/sandbox`);
+  await page
+    .getByRole('combobox', { name: 'Арендатор', exact: true })
+    .selectOption({ label: 'Альфа' });
+  await page.getByRole('combobox', { name: 'Тип транспорта' }).selectOption({ label: 'фура' });
+  await page.getByRole('combobox', { name: 'КПП', exact: true }).selectOption({ label: 'Въезд 2' });
+  await expect(page.getByTestId('verdict')).toHaveAttribute('data-color', 'green');
+  await page.getByLabel('Номер машины').fill('В777ОР174');
+  const verdict = page.getByTestId('verdict');
+  await expect(verdict).toHaveAttribute('data-color', 'red');
+  await expect(verdict).toContainText('В чёрном списке: Драка на территории');
+  await page.getByRole('button', { name: /Почему так/ }).click();
+  await expect(page.getByRole('row', { name: /Чёрный список/ })).toContainText('не пройдена');
+
+  // убрали из списка — снова зелёный
+  await page.goto(`${WEB_URL}/admin/blacklist`);
+  await page.getByRole('button', { name: 'Убрать из списка: B777OP174' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Убрать', exact: true }).click();
+  await expect(page.getByText('Чёрный список пуст')).toBeVisible();
+});
+
+test('блокировка арендатора с последствиями → песочница показывает причину; разблокировка возвращает всё', async ({
+  page,
+}) => {
+  await login(page, OWNER.email, OWNER.password);
+  await page.goto(`${WEB_URL}/admin/tenants`);
+  await page.getByRole('link', { name: 'Альфа', exact: true }).click();
+  await page.getByRole('button', { name: 'Заблокировать…' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Полная блокировка').check();
+  await dialog.getByLabel('Причина').fill('Задолженность по аренде');
+  await expect(dialog.getByText(/Сейчас на территории никого нет/)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Подтвердить блокировку' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText('заблокирован полностью').first()).toBeVisible();
+  await expect(page.getByText('Задолженность по аренде')).toBeVisible();
+
+  await page.goto(`${WEB_URL}/admin/sandbox`);
+  await page
+    .getByRole('combobox', { name: 'Арендатор', exact: true })
+    .selectOption({ label: 'Альфа (заблокирован)' });
+  await page.getByRole('combobox', { name: 'Тип транспорта' }).selectOption({ label: 'фура' });
+  await page.getByRole('combobox', { name: 'КПП', exact: true }).selectOption({ label: 'Въезд 2' });
+  const verdict = page.getByTestId('verdict');
+  await expect(verdict).toHaveAttribute('data-color', 'red');
+  await expect(verdict).toContainText('Въезд арендатору Альфа запрещён');
+  // выезд заблокированным разрешён всегда
+  await page.getByLabel('Направление').selectOption('out');
+  await expect(verdict).not.toHaveAttribute('data-color', 'red');
+
+  await page.goto(`${WEB_URL}/admin/tenants`);
+  await page.getByRole('link', { name: 'Альфа', exact: true }).click();
+  await page.getByRole('button', { name: 'Снять блокировку…' }).click();
+  await page.getByRole('dialog').getByLabel('Причина').fill('Долг погашен');
+  await page.getByRole('dialog').getByRole('button', { name: 'Снять блокировку' }).click();
+  await expect(page.getByText('активен', { exact: true }).first()).toBeVisible();
+});
+
+test('закрепление доков одной кнопкой: проверка идёт сама, «Основание» необязательно', async ({
+  page,
+}) => {
+  await login(page, OWNER.email, OWNER.password);
+  await page.goto(`${WEB_URL}/admin/tenants`);
+  await page.getByRole('link', { name: 'Бета', exact: true }).click();
+  await page.getByRole('tab', { name: 'Доки' }).click();
+  await expect(page.getByLabel('Основание (необязательно)')).toBeVisible();
+  await expect(page.getByText('У арендатора нет договора')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Проверить', exact: true })).toHaveCount(0);
+  const apply = page.getByRole('button', { name: /^Закрепить/ });
+  await expect(apply).toBeDisabled();
+  await page.getByLabel('Номера доков').fill('6–7');
+  // «по дату» пусто и подписано «бессрочно»
+  await expect(page.getByText('бессрочно').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Закрепить 2 дока' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Закрепить 2 дока' }).click();
+  await expect(page.getByRole('cell', { name: '№ 6', exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '№ 7', exact: true })).toBeVisible();
+  // док 6 уже занят: проверка сама скажет, кем, до всякого нажатия
+  await page.getByRole('link', { name: 'Все арендаторы' }).click();
+  await page.getByRole('link', { name: 'Альфа', exact: true }).click();
+  await page.getByRole('tab', { name: 'Доки' }).click();
+  await page.getByLabel('Номера доков').fill('6');
+  await expect(page.getByText(/закреплён за арендатором «Бета»/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Закрепить/ })).toBeDisabled();
+});
+
+test('«Вести договоры» выключено скрывает вкладку и поля договоров; включено — возвращает', async ({
+  page,
+}) => {
+  await login(page, OWNER.email, OWNER.password);
+  await page.goto(`${WEB_URL}/admin/setup/site`);
+  // переключатель — скрытый флажок внутри подписи: нажимаем на подпись, как человек
+  await page.locator('label', { hasText: 'Вести договоры' }).click();
+  await expect(page.getByRole('checkbox', { name: /Вести договоры/ })).not.toBeChecked();
+  await page.getByRole('button', { name: 'Сохранить' }).last().click();
+  await expect(page.getByText('Договоры выключены и скрыты').first()).toBeVisible();
+
+  await page.goto(`${WEB_URL}/admin/tenants`);
+  await page.getByRole('link', { name: 'Бета', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Договор' })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Доки' }).click();
+  await expect(page.getByLabel('Основание (необязательно)')).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Лимиты' }).click();
+  await expect(page.getByText('Основание', { exact: false })).toHaveCount(0);
+
+  await page.goto(`${WEB_URL}/admin/setup/site`);
+  await page.locator('label', { hasText: 'Вести договоры' }).click();
+  await expect(page.getByRole('checkbox', { name: /Вести договоры/ })).toBeChecked();
+  await page.getByRole('button', { name: 'Сохранить' }).last().click();
+  await expect(page.getByText('Договоры включены').first()).toBeVisible();
+  await page.goto(`${WEB_URL}/admin/tenants`);
+  await page.getByRole('link', { name: 'Бета', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Договор' })).toBeVisible();
+});
+
+test('дата вводится как ДД.ММ.ГГГГ при локали браузера en-US; нативного поля даты нет', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ locale: 'en-US', timezoneId: 'Asia/Yekaterinburg' });
+  const page = await context.newPage();
+  await login(page, OWNER.email, OWNER.password);
+  await page.goto(`${WEB_URL}/admin/tenants`);
+  await page.getByRole('link', { name: 'Бета', exact: true }).click();
+  await page.getByRole('tab', { name: 'Доки' }).click();
+  const from = page.getByLabel('С даты');
+  await expect(from).toHaveValue(/^\d{2}\.\d{2}\.\d{4}$/);
+  await from.fill('13102026');
+  await expect(from).toHaveValue('13.10.2026');
+  await expect(
+    page.locator('input[type="date"], input[type="time"], input[type="datetime-local"]'),
+  ).toHaveCount(0);
+  // календарь тоже по-русски
+  await page.getByRole('button', { name: 'Выбрать дату в календаре' }).first().click();
+  await expect(page.getByText('октябрь 2026')).toBeVisible();
+  await context.close();
 });
 
 test('владелец приглашает администратора объекта; подделанный запрос с чужого сайта отклоняется', async ({

@@ -47,12 +47,23 @@ export const QuotaCreateSchema = z.strictObject({
   name: TextSchema(100).optional(),
   categoryIds: z.array(IdSchema).optional(),
   /** Не указывается при `capacityFromDocks` — считается по докам арендатора. */
-  capacity: z.int().min(0).optional(),
+  capacity: z
+    .int('Число мест — целое число.')
+    .min(0, 'Число мест не может быть отрицательным.')
+    .optional(),
   capacityFromDocks: z.boolean().optional(),
   counting: QuotaCountingSchema.optional(),
   enforcement: QuotaEnforcementSchema.optional(),
-  overageTariffRub: z.number().min(0).nullable().optional(),
-  overageCap: z.int().min(0).nullable().optional(),
+  overageTariffRub: z
+    .number('Тариф — число.')
+    .min(0, 'Тариф не может быть отрицательным.')
+    .nullable()
+    .optional(),
+  overageCap: z
+    .int('Потолок — целое число.')
+    .min(0, 'Потолок не может быть отрицательным.')
+    .nullable()
+    .optional(),
   schedule: WorkingHoursSchema.nullable().optional(),
   basisClauseId: IdSchema.nullable().optional(),
   validFrom: InstantInputSchema.optional(),
@@ -100,8 +111,15 @@ export const TimeWindowPolicyCreateSchema = z.strictObject({
   /** Пусто — ко всем типам. */
   categoryIds: z.array(IdSchema).optional(),
   windowRequired: z.boolean().optional(),
-  earlyToleranceMin: z.int().min(0).optional(),
-  lateToleranceMin: z.int().min(0).nullable().optional(),
+  earlyToleranceMin: z
+    .int('Допуск «раньше» — целое число минут.')
+    .min(0, 'Допуск «раньше» не может быть отрицательным.')
+    .optional(),
+  lateToleranceMin: z
+    .int('Допуск «опоздание» — целое число минут.')
+    .min(0, 'Допуск «опоздание» не может быть отрицательным.')
+    .nullable()
+    .optional(),
   onViolation: WindowViolationModeSchema.optional(),
 });
 export const TimeWindowPolicyPatchSchema = TimeWindowPolicyCreateSchema.partial();
@@ -119,6 +137,7 @@ export const ExceptionViewSchema = z.object({
   validFrom: InstantSchema,
   validTo: InstantSchema.nullable(),
 });
+export const ExceptionListQuerySchema = z.strictObject({ tenantId: IdSchema.optional() });
 export const ExceptionCreateSchema = z.strictObject({
   tenantId: IdSchema.nullable().optional(),
   name: TextSchema(200),
@@ -149,7 +168,11 @@ export const ApprovalPolicyCreateSchema = z.strictObject({
   passType: PassTypeSchema,
   mode: ApprovalModeSchema,
   commentRequired: z.boolean().optional(),
-  escalationHours: z.int().min(1).nullable().optional(),
+  escalationHours: z
+    .int('Эскалация — целое число часов.')
+    .min(1, 'Эскалация — не меньше 1 часа.')
+    .nullable()
+    .optional(),
   onTimeout: ApprovalTimeoutActionSchema.nullable().optional(),
 });
 export const ApprovalPolicyPatchSchema = ApprovalPolicyCreateSchema.omit({

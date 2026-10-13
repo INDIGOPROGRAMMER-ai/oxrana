@@ -14,6 +14,7 @@ REPO_RAW="${OXRANA_REPO_RAW:-https://raw.githubusercontent.com/INDIGOPROGRAMMER-
 HOME_DIR="${OXRANA_HOME:-/opt/oxrana}"
 DEPLOY_USER="${OXRANA_DEPLOY_USER:-deploy}"
 KEY_DIR="${OXRANA_KEY_DIR:-/root/.oxrana}"
+ROOT_AUTH_KEYS="${OXRANA_ROOT_AUTH_KEYS:-/root/.ssh/authorized_keys}"
 SWAP_SIZE_GB=2
 
 DOMAIN=''
@@ -55,6 +56,43 @@ check_os() {
   if [ "${ID:-}" != ubuntu ] || [ "${VERSION_ID:-}" != "24.04" ]; then
     die "скрипт рассчитан на Ubuntu 24.04, а здесь ${PRETTY_NAME:-неизвестная система}. Пересоздайте сервер с Ubuntu 24.04."
   fi
+}
+
+# В файле есть хотя бы один ключ администратора: непустая строка, не комментарий, с типом ключа
+# (допускаются параметры перед ним). Ключ деплоя пишется в authorized_keys пользователя deploy, не root.
+admin_key_present() {
+  local file=$1
+  [ -f "$file" ] || return 1
+  grep -Eq '^[[:space:]]*([^#[:space:]][^[:space:]]*[[:space:]]+)?(ssh-(ed25519|rsa|dss)|ecdsa-sha2-nistp[0-9]+|sk-(ssh-ed25519|ecdsa-sha2-nistp256)@openssh\.com)[[:space:]]+[A-Za-z0-9+/=]{20,}' "$file"
+}
+
+# Без ключа администратора отключение входа по паролю закрыло бы сервер для владельца: не отключаем
+# молча, а останавливаемся до любых изменений и объясняем, как добавить ключ.
+require_admin_key() {
+  admin_key_present "$ROOT_AUTH_KEYS" && return 0
+  cat >&2 <<EOF
+
+Остановлено: на сервере нет вашего ключа SSH (файл $ROOT_AUTH_KEYS пуст или отсутствует).
+
+Скрипт отключает вход по паролю — дальше на сервер пускают только по ключу. Если ключа нет, вы
+заперли бы себя на сервере (останется только консоль хостера). Ничего не изменено.
+
+Что сделать (один раз):
+  1. На своём компьютере создайте ключ (если ещё нет) и покажите его открытую часть:
+       Windows (PowerShell):  ssh-keygen -t ed25519
+                              Get-Content \$env:USERPROFILE\.ssh\id_ed25519.pub
+       macOS (Терминал):      ssh-keygen -t ed25519
+                              cat ~/.ssh/id_ed25519.pub
+     Это одна строка, начинается с ssh-ed25519. Закрытый файл (без .pub) никому не отправляйте.
+  2. Добавьте её на сервер — в панели хостера («SSH-ключи») или командой здесь, в консоли сервера:
+       mkdir -p ~/.ssh && chmod 700 ~/.ssh
+       echo "ВАША_СТРОКА_ЦЕЛИКОМ" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+  3. Проверьте с компьютера, что вход по ключу работает:  ssh root@IP_СЕРВЕРА  (пароль не спросит).
+  4. Запустите ту же команду установки ещё раз.
+
+Подробнее: docs/STAND.md, шаг 1 «Как получить ключ».
+EOF
+  exit 1
 }
 
 install_packages() {
@@ -211,6 +249,7 @@ fetch_files() {
 
 harden_ssh() {
   local conf=/etc/ssh/sshd_config.d/00-oxrana.conf
+  admin_key_present "$ROOT_AUTH_KEYS" || die "нет ключа администратора в $ROOT_AUTH_KEYS — вход по паролю не отключаем."
   log "SSH: вход только по ключу"
   install -d /etc/ssh/sshd_config.d
   # Имя начинается с 00: в sshd первое найденное значение главнее, а cloud-init кладёт свой файл
@@ -389,6 +428,7 @@ main() {
   parse_args "$@"
   require_root
   check_os
+  require_admin_key
   install_packages
   set_time
   setup_swap

@@ -387,6 +387,31 @@ ask() {
   printf -v "$__var" '%s' "$answer"
 }
 
+# Проверка значения тем же кодом, что и при создании (Intl для пояса): неверное — сразу, а не после
+# всех вопросов. Контейнер без базы (--no-deps); код выхода 1 — значение неверно, текст на stderr.
+check_field() {
+  local field=$1 value=$2 problem rc=0
+  problem="$(OXRANA_TAG="$CUR_TAG" dc run --rm -T --no-deps cli node dist/bootstrap.js --check "$field=$value" 2>&1 </dev/null)" || rc=$?
+  if [ "$rc" -eq 0 ]; then return 0; fi
+  if [ "$rc" -eq 1 ]; then
+    say "$problem"
+  else
+    say "Не удалось проверить значение (код $rc): $problem"
+  fi
+  return 1
+}
+
+# ask_checked ПЕРЕМЕННАЯ ПОЛЕ "Вопрос" [по умолчанию]: переспрашивает, пока значение не пройдёт проверку.
+ask_checked() {
+  local __var=$1 field=$2 prompt=$3 default=${4:-} value=''
+  while true; do
+    ask value "$prompt" "$default"
+    if check_field "$field" "$value"; then break; fi
+    say "Введите значение ещё раз."
+  done
+  printf -v "$__var" '%s' "$value"
+}
+
 cmd_bootstrap() {
   need_env
   read_state
@@ -394,11 +419,12 @@ cmd_bootstrap() {
   if [ $# -eq 0 ]; then
     local org slug tz owner_name owner_email answer
     say "Чистый старт: создадим организацию и владельца. Данные объекта владелец введёт сам в кабинете."
-    ask org "Название организации (как оно будет показано)"
-    ask slug "Короткое имя латиницей, без пробелов (например, integraciya)"
-    ask tz "Часовой пояс объекта" "Asia/Yekaterinburg"
-    ask owner_name "ФИО владельца"
-    ask owner_email "E-mail владельца (это его логин)"
+    say "Каждый ответ проверяется сразу; при ошибке вопрос повторится."
+    ask_checked org org "Название организации (как оно будет показано)"
+    ask_checked slug slug "Короткое имя латиницей, без пробелов (например, integraciya)"
+    ask_checked tz timezone "Часовой пояс объекта (Область/Город)" "Asia/Yekaterinburg"
+    ask_checked owner_name owner-name "ФИО владельца"
+    ask_checked owner_email owner-email "E-mail владельца (это его логин)"
     say ""
     say "Организация: $org ($slug), пояс $tz"
     say "Владелец:    $owner_name <$owner_email>"

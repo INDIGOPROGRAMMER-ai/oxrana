@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { type PermissionCode, roleTemplate } from '@oxrana/contracts';
 import { createDb, createPool, type Db, type DbPool, schema } from '@oxrana/db';
 import { applySeed, DEMO_SEED, fixtureKeys, seedId } from '@oxrana/db/seed';
@@ -9,6 +12,7 @@ import { randomToken, sha256Hex } from '../../src/auth/crypto';
 import { MemoryMessenger } from '../../src/auth/messenger';
 import { FixedClock } from '../../src/clock';
 import type { ServiceHooks } from '../../src/core/context';
+import { LocalFileStore } from '../../src/files/store';
 import { EventHub } from '../../src/realtime/hub';
 
 /**
@@ -42,10 +46,20 @@ export function appPool(max = 10): DbPool {
   return pool;
 }
 
+/**
+ * Одно соединение владельца на тестовый файл. Раньше каждый вызов открывал свой пул и держал
+ * соединения до конца файла: файл с десятками вызовов съедал десятки слотов, а при параллельном
+ * прогоне в CI (4 воркера, `max_connections = 100`) слоты кончались — «remaining connection slots
+ * are reserved», тесты других файлов падали «Failed query» (Q-74).
+ */
+let owner: Db | undefined;
 export function ownerDb(): Db {
-  const pool = createPool({ connectionString: env('DATABASE_ADMIN_URL'), max: 2 });
-  pools.push(pool);
-  return createDb(pool);
+  if (!owner) {
+    const pool = createPool({ connectionString: env('DATABASE_ADMIN_URL'), max: 2 });
+    pools.push(pool);
+    owner = createDb(pool);
+  }
+  return owner;
 }
 
 let seeded: Promise<void> | undefined;
@@ -313,18 +327,22 @@ export interface TestApp {
 }
 
 export async function startTestApp(
-  options: { poolSize?: number; hooks?: ServiceHooks; now?: string } = {},
+  options: { poolSize?: number; hooks?: ServiceHooks; now?: string; fileMaxBytes?: number } = {},
 ): Promise<TestApp> {
   const clock = new FixedClock(options.now ?? NOON);
   const hub = new EventHub();
   const db = createDb(appPool(options.poolSize ?? 10));
   const messenger = new MemoryMessenger();
+  // Файлы договоров — во временный каталог, который убирается вместе с приложением.
+  const filesDir = mkdtempSync(join(tmpdir(), 'oxrana-files-'));
   const app = await buildApp({
     services: {
       db,
       clock,
       hub,
       messenger,
+      files: new LocalFileStore(filesDir),
+      fileMaxBytes: options.fileMaxBytes ?? 1_048_576,
       publicUrl: TEST_ORIGIN,
       ...(options.hooks ? { hooks: options.hooks } : {}),
     },
@@ -346,6 +364,9 @@ export async function startTestApp(
       return app.inject({ ...inject, headers });
     },
     headersFor: authHeaders,
-    close: () => app.close(),
+    close: async () => {
+      await app.close();
+      rmSync(filesDir, { recursive: true, force: true });
+    },
   };
 }

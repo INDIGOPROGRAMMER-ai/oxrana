@@ -50,6 +50,13 @@
       "when": 1791781789313,
       "tag": "0006_auth_functions",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791869819515,
+      "tag": "0007_admin_rules",
+      "breakpoints": true
     }
   ]
 }

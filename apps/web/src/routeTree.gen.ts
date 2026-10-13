@@ -16,13 +16,18 @@ import { Route as InviteRouteImport } from './routes/invite'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PasswordRouteImport } from './routes/password'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminBlacklistRouteImport } from './routes/admin.blacklist'
+import { Route as AdminCatalogsRouteImport } from './routes/admin.catalogs'
 import { Route as AdminCategoriesRouteImport } from './routes/admin.categories'
 import { Route as AdminDevicesRouteImport } from './routes/admin.devices'
 import { Route as AdminDocksRouteImport } from './routes/admin.docks'
 import { Route as AdminGatesRouteImport } from './routes/admin.gates'
+import { Route as AdminHardwareRouteImport } from './routes/admin.hardware'
+import { Route as AdminMemoRouteImport } from './routes/admin.memo'
 import { Route as AdminPoliciesRouteImport } from './routes/admin.policies'
 import { Route as AdminRolesRouteImport } from './routes/admin.roles'
 import { Route as AdminRoutingRouteImport } from './routes/admin.routing'
+import { Route as AdminSandboxRouteImport } from './routes/admin.sandbox'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as AdminRulesApprovalPoliciesRouteImport } from './routes/admin.rules.approval-policies'
 import { Route as AdminSetupIndexRouteImport } from './routes/admin.setup.index'
@@ -68,6 +73,16 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminBlacklistRoute = AdminBlacklistRouteImport.update({
+  id: '/blacklist',
+  path: '/blacklist',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminCatalogsRoute = AdminCatalogsRouteImport.update({
+  id: '/catalogs',
+  path: '/catalogs',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminCategoriesRoute = AdminCategoriesRouteImport.update({
   id: '/categories',
   path: '/categories',
@@ -88,6 +103,16 @@ const AdminGatesRoute = AdminGatesRouteImport.update({
   path: '/gates',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminHardwareRoute = AdminHardwareRouteImport.update({
+  id: '/hardware',
+  path: '/hardware',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminMemoRoute = AdminMemoRouteImport.update({
+  id: '/memo',
+  path: '/memo',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminPoliciesRoute = AdminPoliciesRouteImport.update({
   id: '/policies',
   path: '/policies',
@@ -101,6 +126,11 @@ const AdminRolesRoute = AdminRolesRouteImport.update({
 const AdminRoutingRoute = AdminRoutingRouteImport.update({
   id: '/routing',
   path: '/routing',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSandboxRoute = AdminSandboxRouteImport.update({
+  id: '/sandbox',
+  path: '/sandbox',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -160,13 +190,18 @@ export interface FileRoutesByFullPath {
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/password': typeof PasswordRoute
+  '/admin/blacklist': typeof AdminBlacklistRoute
+  '/admin/catalogs': typeof AdminCatalogsRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/docks': typeof AdminDocksRoute
   '/admin/gates': typeof AdminGatesRoute
+  '/admin/hardware': typeof AdminHardwareRoute
+  '/admin/memo': typeof AdminMemoRoute
   '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
+  '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/': typeof AdminIndexRoute
   '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
@@ -184,13 +219,18 @@ export interface FileRoutesByTo {
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/password': typeof PasswordRoute
+  '/admin/blacklist': typeof AdminBlacklistRoute
+  '/admin/catalogs': typeof AdminCatalogsRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/docks': typeof AdminDocksRoute
   '/admin/gates': typeof AdminGatesRoute
+  '/admin/hardware': typeof AdminHardwareRoute
+  '/admin/memo': typeof AdminMemoRoute
   '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
+  '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin': typeof AdminIndexRoute
   '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
@@ -210,13 +250,18 @@ export interface FileRoutesById {
   '/invite': typeof InviteRoute
   '/login': typeof LoginRoute
   '/password': typeof PasswordRoute
+  '/admin/blacklist': typeof AdminBlacklistRoute
+  '/admin/catalogs': typeof AdminCatalogsRoute
   '/admin/categories': typeof AdminCategoriesRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/docks': typeof AdminDocksRoute
   '/admin/gates': typeof AdminGatesRoute
+  '/admin/hardware': typeof AdminHardwareRoute
+  '/admin/memo': typeof AdminMemoRoute
   '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
+  '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/': typeof AdminIndexRoute
   '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
@@ -237,13 +282,18 @@ export interface FileRouteTypes {
     | '/invite'
     | '/login'
     | '/password'
+    | '/admin/blacklist'
+    | '/admin/catalogs'
     | '/admin/categories'
     | '/admin/devices'
     | '/admin/docks'
     | '/admin/gates'
+    | '/admin/hardware'
+    | '/admin/memo'
     | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
+    | '/admin/sandbox'
     | '/admin/users'
     | '/admin/'
     | '/admin/rules/approval-policies'
@@ -261,13 +311,18 @@ export interface FileRouteTypes {
     | '/invite'
     | '/login'
     | '/password'
+    | '/admin/blacklist'
+    | '/admin/catalogs'
     | '/admin/categories'
     | '/admin/devices'
     | '/admin/docks'
     | '/admin/gates'
+    | '/admin/hardware'
+    | '/admin/memo'
     | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
+    | '/admin/sandbox'
     | '/admin/users'
     | '/admin'
     | '/admin/rules/approval-policies'
@@ -286,13 +341,18 @@ export interface FileRouteTypes {
     | '/invite'
     | '/login'
     | '/password'
+    | '/admin/blacklist'
+    | '/admin/catalogs'
     | '/admin/categories'
     | '/admin/devices'
     | '/admin/docks'
     | '/admin/gates'
+    | '/admin/hardware'
+    | '/admin/memo'
     | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
+    | '/admin/sandbox'
     | '/admin/users'
     | '/admin/'
     | '/admin/rules/approval-policies'
@@ -365,6 +425,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/blacklist': {
+      id: '/admin/blacklist'
+      path: '/blacklist'
+      fullPath: '/admin/blacklist'
+      preLoaderRoute: typeof AdminBlacklistRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/catalogs': {
+      id: '/admin/catalogs'
+      path: '/catalogs'
+      fullPath: '/admin/catalogs'
+      preLoaderRoute: typeof AdminCatalogsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/categories': {
       id: '/admin/categories'
       path: '/categories'
@@ -393,6 +467,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminGatesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/hardware': {
+      id: '/admin/hardware'
+      path: '/hardware'
+      fullPath: '/admin/hardware'
+      preLoaderRoute: typeof AdminHardwareRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/memo': {
+      id: '/admin/memo'
+      path: '/memo'
+      fullPath: '/admin/memo'
+      preLoaderRoute: typeof AdminMemoRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/policies': {
       id: '/admin/policies'
       path: '/policies'
@@ -412,6 +500,13 @@ declare module '@tanstack/react-router' {
       path: '/routing'
       fullPath: '/admin/routing'
       preLoaderRoute: typeof AdminRoutingRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/sandbox': {
+      id: '/admin/sandbox'
+      path: '/sandbox'
+      fullPath: '/admin/sandbox'
+      preLoaderRoute: typeof AdminSandboxRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/users': {
@@ -481,13 +576,18 @@ declare module '@tanstack/react-router' {
 }
 
 interface AdminRouteChildren {
+  AdminBlacklistRoute: typeof AdminBlacklistRoute
+  AdminCatalogsRoute: typeof AdminCatalogsRoute
   AdminCategoriesRoute: typeof AdminCategoriesRoute
   AdminDevicesRoute: typeof AdminDevicesRoute
   AdminDocksRoute: typeof AdminDocksRoute
   AdminGatesRoute: typeof AdminGatesRoute
+  AdminHardwareRoute: typeof AdminHardwareRoute
+  AdminMemoRoute: typeof AdminMemoRoute
   AdminPoliciesRoute: typeof AdminPoliciesRoute
   AdminRolesRoute: typeof AdminRolesRoute
   AdminRoutingRoute: typeof AdminRoutingRoute
+  AdminSandboxRoute: typeof AdminSandboxRoute
   AdminUsersRoute: typeof AdminUsersRoute
   AdminIndexRoute: typeof AdminIndexRoute
   AdminRulesApprovalPoliciesRoute: typeof AdminRulesApprovalPoliciesRoute
@@ -501,13 +601,18 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminBlacklistRoute: AdminBlacklistRoute,
+  AdminCatalogsRoute: AdminCatalogsRoute,
   AdminCategoriesRoute: AdminCategoriesRoute,
   AdminDevicesRoute: AdminDevicesRoute,
   AdminDocksRoute: AdminDocksRoute,
   AdminGatesRoute: AdminGatesRoute,
+  AdminHardwareRoute: AdminHardwareRoute,
+  AdminMemoRoute: AdminMemoRoute,
   AdminPoliciesRoute: AdminPoliciesRoute,
   AdminRolesRoute: AdminRolesRoute,
   AdminRoutingRoute: AdminRoutingRoute,
+  AdminSandboxRoute: AdminSandboxRoute,
   AdminUsersRoute: AdminUsersRoute,
   AdminIndexRoute: AdminIndexRoute,
   AdminRulesApprovalPoliciesRoute: AdminRulesApprovalPoliciesRoute,

@@ -36,14 +36,24 @@ export const DockKindSchema = z.enum(DOCK_KINDS);
 export type DockKind = (typeof DOCK_KINDS)[number];
 
 // 2.3 Арендаторы и договоры
+/**
+ * Статус арендатора. Блокировка (Q-73): `blocked_new_passes` — нельзя оформлять новые пропуска;
+ * `blocked_entry` — нельзя въезжать (пропуска оформлять можно); `blocked_full` — и то и другое.
+ * Выезд разрешён при любом статусе.
+ */
 export const TENANT_STATUSES = [
   'active',
   'blocked_new_passes',
   'blocked_entry',
+  'blocked_full',
   'archived',
 ] as const;
 export const TenantStatusSchema = z.enum(TENANT_STATUSES);
 export type TenantStatus = (typeof TENANT_STATUSES)[number];
+
+/** Для чего хранится файл (`stored_files.kind`). */
+export const STORED_FILE_KINDS = ['contract'] as const;
+export type StoredFileKind = (typeof STORED_FILE_KINDS)[number];
 
 export const CONTRACT_STATUSES = ['draft', 'active', 'expired', 'terminated'] as const;
 export const ContractStatusSchema = z.enum(CONTRACT_STATUSES);

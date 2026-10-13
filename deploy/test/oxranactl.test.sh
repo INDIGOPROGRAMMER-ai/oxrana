@@ -130,6 +130,10 @@ check "ссылка напечатана в терминал" bash -c "[[ '$out'
 check "параметры переданы команде" bash -c "[[ '$out' == *'--slug test'* ]]"
 out="$(printf 'Тест\ntest\n\nИван\no@example.test\nд\n' | ctl bootstrap)"
 check "вопросы по шагам: часовой пояс по умолчанию" bash -c "[[ '$out' == *'--timezone Asia/Yekaterinburg'* ]]"
+out="$(printf 'Тест\nbad\ntest\nyes\n\nИван\no@example.test\nд\n' | ctl bootstrap)"
+check "неверное имя и пояс переспрашиваются сразу" bash -c "[[ '$out' == *'--slug test --timezone Asia/Yekaterinburg'* ]]"
+check "сообщение называет неверное значение" bash -c "[[ '$out' == *'«yes» неверно'* ]]"
+check "проверка шла до создания" grep -q 'check timezone=yes' "$FAKE_DIR/checks.log"
 check "ответ «нет» ничего не создаёт" fails bash -c "printf 'Тест\ntest\n\nИван\no@example.test\nн\n' | bash '$OXRANA_HOME/oxranactl' bootstrap"
 
 echo "служебные команды"

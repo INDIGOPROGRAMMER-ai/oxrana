@@ -1,13 +1,18 @@
 import type {
   ApprovalPolicyGapSchema,
   ApprovalPolicyViewSchema,
+  BlacklistViewSchema,
   ClauseViewSchema,
   ContractViewSchema,
   DockAssignmentViewSchema,
   DockViewSchema,
   ExceptionViewSchema,
   GateViewSchema,
+  HardwareDeviceViewSchema,
   Me,
+  OrganizationViewSchema,
+  ParkingAreaViewSchema,
+  ParkingAssignmentViewSchema,
   PedestrianRuleViewSchema,
   QuotaViewSchema,
   RoutingRuleViewSchema,
@@ -15,6 +20,7 @@ import type {
   TenantViewSchema,
   TimeWindowPolicyViewSchema,
   VehicleCategoryViewSchema,
+  VisitPurposeViewSchema,
   ZoneViewSchema,
 } from '@oxrana/contracts';
 import { api } from '@oxrana/ui';
@@ -39,6 +45,26 @@ export type TimeWindowPolicyView = z.infer<typeof TimeWindowPolicyViewSchema>;
 export type ExceptionView = z.infer<typeof ExceptionViewSchema>;
 export type ApprovalPolicyView = z.infer<typeof ApprovalPolicyViewSchema>;
 export type ApprovalGap = z.infer<typeof ApprovalPolicyGapSchema>;
+export type OrganizationView = z.infer<typeof OrganizationViewSchema>;
+export type BlacklistView = z.infer<typeof BlacklistViewSchema>;
+export type VisitPurposeView = z.infer<typeof VisitPurposeViewSchema>;
+export type ParkingAreaView = z.infer<typeof ParkingAreaViewSchema>;
+export type ParkingAssignmentView = z.infer<typeof ParkingAssignmentViewSchema>;
+export type HardwareDeviceView = z.infer<typeof HardwareDeviceViewSchema>;
+
+/** Организация пользователя и её настройки. */
+export function useOrganization() {
+  const q = useApi<OrganizationView>('/org');
+  return { ...q, org: q.data };
+}
+
+/**
+ * «Вести договоры» (настройка организации, по умолчанию включено): выключено — разделы и поля
+ * договоров скрыты везде. Пока организация не загрузилась, считается включённым (без мигания).
+ */
+export function useTrackContracts(): boolean {
+  return useOrganization().org?.settings.trackContracts ?? true;
+}
 
 /**
  * Данные экранов: один ключ `['data', путь]` на запрос. Любое изменение через `useMutate`
@@ -102,12 +128,24 @@ export const useRoutingRules = (siteId: string | null) =>
   list<RoutingRuleView>(siteId ? `/sites/${siteId}/routing-rules` : null);
 export const useQuotas = (siteId: string | null) =>
   list<QuotaView>(siteId ? `/sites/${siteId}/quotas` : null);
-export const useExceptions = (siteId: string | null) =>
-  list<ExceptionView>(siteId ? `/sites/${siteId}/exceptions` : null);
+export const useExceptions = (siteId: string | null, tenantId?: string) =>
+  list<ExceptionView>(
+    siteId ? `/sites/${siteId}/exceptions${tenantId ? `?tenantId=${tenantId}` : ''}` : null,
+  );
 export const useTimeWindows = (siteId: string | null) =>
   list<TimeWindowPolicyView>(siteId ? `/sites/${siteId}/time-window-policies` : null);
 export const useApprovalPolicies = (siteId: string | null) =>
   list<ApprovalPolicyView>(siteId ? `/sites/${siteId}/approval-policies` : null);
+export const useBlacklist = (siteId: string | null) =>
+  list<BlacklistView>(siteId ? `/sites/${siteId}/blacklist` : null);
+export const useVisitPurposes = (siteId: string | null) =>
+  list<VisitPurposeView>(siteId ? `/sites/${siteId}/visit-purposes` : null);
+export const useParkingAreas = (siteId: string | null) =>
+  list<ParkingAreaView>(siteId ? `/sites/${siteId}/parking-areas` : null);
+export const useParkingAssignments = (tenantId: string | null) =>
+  list<ParkingAssignmentView>(tenantId ? `/tenants/${tenantId}/parking-assignments` : null);
+export const useHardwareDevices = (siteId: string | null) =>
+  list<HardwareDeviceView>(siteId ? `/sites/${siteId}/hardware-devices` : null);
 export const useContracts = (tenantId: string | null) =>
   list<ContractView>(tenantId ? `/tenants/${tenantId}/contracts` : null);
 export const useClauses = (contractId: string | null) =>

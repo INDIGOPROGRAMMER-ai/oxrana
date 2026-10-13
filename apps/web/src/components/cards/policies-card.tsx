@@ -43,7 +43,6 @@ import {
 } from '@oxrana/ui';
 import { Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { z } from 'zod';
 import {
   type ApprovalPolicyView,
   type CategoryView,
@@ -116,7 +115,11 @@ const INT_SETTINGS: Record<
   singlePassMaxHours: { label: 'Разовый пропуск: действует не дольше, часов', min: 1 },
   multiPassMinDays: { label: 'Многоразовый пропуск: срок от, дней', min: 1 },
   multiPassMaxDays: { label: 'Многоразовый пропуск: срок до, дней', min: 1 },
-  singleReturnWindowMin: { label: 'Возврат по разовому пропуску, минут', min: 1, nullable: true },
+  singleReturnWindowMin: {
+    label: 'Повторный въезд по разовому пропуску после выезда, мин',
+    min: 1,
+    nullable: true,
+  },
   gateRequestTimeoutMin: { label: 'Запрос «машина без пропуска» ждёт ответа, минут', min: 1 },
   pastStartToleranceMin: {
     label: 'Допуск на начало пропуска в прошлом, минут',
@@ -145,7 +148,7 @@ function SettingsSection({ site }: { site: SiteView }) {
   const mutate = useMutate();
   const toast = useToast();
   const perms = usePermissions();
-  const canEdit = !perms.loaded || perms.can('site.manage');
+  const canEdit = !perms.loaded || perms.can('rule.manage');
   const f = useEditForm<SettingsValues>({
     values: settingsValues(site),
     onPatch: async (patch) => {
@@ -175,7 +178,7 @@ function SettingsSection({ site }: { site: SiteView }) {
         );
       }
       assertValid(SiteSettingsPatchSchema, settings);
-      await mutate(`/sites/${site.id}`, 'PATCH', { settings });
+      await mutate(`/sites/${site.id}/settings`, 'PATCH', settings);
       toast('Сроки и рабочее время сохранены');
     },
   });
@@ -187,8 +190,8 @@ function SettingsSection({ site }: { site: SiteView }) {
     >
       {canEdit ? null : (
         <Alert tone="warning" className="mb-4">
-          Менять сроки может пользователь с правом «настройки объекта». Сейчас значения только для
-          просмотра.
+          Менять сроки может пользователь с правом «правила: маршруты, окна, исключения, политики».
+          Сейчас значения только для просмотра.
         </Alert>
       )}
       <fieldset disabled={!canEdit} className="min-w-0 border-0 p-0">
@@ -203,7 +206,7 @@ function SettingsSection({ site }: { site: SiteView }) {
             </Field>
             <Field
               label={INT_SETTINGS.singleReturnWindowMin.label}
-              hint="Сколько минут после выезда можно вернуться по тому же разовому пропуску. Пусто — выключено: после выезда разовый пропуск использован."
+              hint="Сколько минут после выезда можно снова въехать по тому же разовому пропуску. Пусто — выключено: после выезда разовый пропуск использован."
               error={f.fieldError('singleReturnWindowMin')}
             >
               <Input
@@ -288,14 +291,6 @@ const VIOLATION_LABEL: Record<WindowViolationMode, string> = {
   hard: 'отказать (жёстко)',
   warn: 'предупредить и пропустить',
 };
-
-const MINUTES = (label: string) =>
-  z.int(`${label} — целое число минут.`).min(0, `${label} не может быть отрицательным.`);
-
-const WindowFormCreateSchema = TimeWindowPolicyCreateSchema.extend({
-  earlyToleranceMin: MINUTES('Допуск «раньше»'),
-  lateToleranceMin: MINUTES('Допуск «опоздание»').nullable().optional(),
-});
 
 interface WindowValues {
   categoryIds: string[];
@@ -440,7 +435,7 @@ function CreateWindowForm({
   const mutate = useMutate();
   const toast = useToast();
   const f = useCreateForm<WindowValues>({
-    schema: WindowFormCreateSchema,
+    schema: TimeWindowPolicyCreateSchema,
     initial: NEW_WINDOW,
     toBody: (v) => ({
       categoryIds: v.categoryIds,
@@ -656,7 +651,7 @@ function WindowsSection({ site }: { site: SiteView }) {
 
 const TIMEOUT_LABEL: Record<ApprovalTimeoutAction, string> = {
   reject: 'отклонить пропуск',
-  escalate: 'эскалировать администратору',
+  escalate: 'передать администратору',
 };
 
 interface ApprovalValues {
@@ -666,17 +661,14 @@ interface ApprovalValues {
   onTimeout: ApprovalTimeoutAction | '';
 }
 
-const ApprovalFormCreateSchema = ApprovalPolicyCreateSchema.extend({
-  mode: z.enum(APPROVAL_MODES, { error: 'Выберите, как согласуются такие пропуска.' }),
-  escalationHours: z
-    .int('Эскалация — целое число часов.')
-    .min(1, 'Эскалация — не меньше 1 часа.')
-    .nullable()
-    .optional(),
-}).refine((v) => v.escalationHours == null || Boolean(v.onTimeout), {
-  path: ['onTimeout'],
-  message: 'Выберите, что делать, если согласующий не ответил.',
-});
+// Сообщения о типах и границах — в самих схемах `contracts` (Q-67); здесь только связь полей.
+const ApprovalFormCreateSchema = ApprovalPolicyCreateSchema.refine(
+  (v) => v.escalationHours == null || Boolean(v.onTimeout),
+  {
+    path: ['onTimeout'],
+    message: 'Выберите, что делать, если согласующий не ответил.',
+  },
+);
 
 function ApprovalFields({
   f,

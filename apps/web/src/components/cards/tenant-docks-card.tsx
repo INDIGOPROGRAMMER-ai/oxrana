@@ -6,9 +6,9 @@ import {
 } from '@oxrana/contracts';
 import {
   Alert,
-  api,
   Badge,
   Button,
+  DateInput,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -19,8 +19,8 @@ import {
   type ErrorView,
   errorView,
   Field,
+  FormDateInput,
   formatLocalDate,
-  Input,
   Section,
   Select,
   Table,
@@ -42,8 +42,10 @@ import {
   useDockAssignments,
   useDocks,
   useMutate,
+  useTrackContracts,
 } from '../../lib/data';
 import { count } from '../../lib/setup';
+import { useAutoPreview } from '../../lib/use-auto-preview';
 import { DeleteAction, Empty, LoadError, RequireSite } from '../common';
 import {
   assertValid,
@@ -82,10 +84,11 @@ function DocksBody({
   tenantId: string;
 }) {
   const perms = usePermissions();
+  const track = useTrackContracts();
   const allowed = !perms.loaded || perms.can('tenant.manage');
   const docks = useDocks(siteId);
   const assignments = useDockAssignments(allowed ? tenantId : null);
-  const clauses = useTenantClauses(allowed ? tenantId : null);
+  const clauses = useTenantClauses(allowed && track ? tenantId : null);
   const [editing, setEditing] = useState<DockAssignmentView | null>(null);
   const today = siteToday(timezone);
   const dockById = useMemo(
@@ -117,7 +120,7 @@ function DocksBody({
     <>
       <Section
         title="Доки арендатора"
-        description="Какие доки закреплены за арендатором и на какой срок. Лимит «по докам» считает только действующие назначения. Док не бывает у двух арендаторов сразу."
+        description="Какие доки закреплены за арендатором и на какой срок. Даты — история смены арендаторов дока: с какого дня док числится за этим арендатором и до какого. Лимит «по докам» считает только действующие назначения. Док не бывает у двух арендаторов сразу."
       >
         {loading ? (
           <p className="text-sm text-muted-foreground" role="status">
@@ -135,7 +138,7 @@ function DocksBody({
                 <TH>Док</TH>
                 <TH>С даты</TH>
                 <TH>По дату</TH>
-                <TH>Основание</TH>
+                {track ? <TH>Основание</TH> : null}
                 <TH>Сейчас</TH>
                 <TH className="w-24" />
               </TR>
@@ -155,11 +158,13 @@ function DocksBody({
                         <span className="text-muted-foreground">без окончания</span>
                       )}
                     </TD>
-                    <TD>
-                      {clauses.refOf(a.basisClauseId) ?? (
-                        <span className="text-muted-foreground">не указано</span>
-                      )}
-                    </TD>
+                    {track ? (
+                      <TD>
+                        {clauses.refOf(a.basisClauseId) ?? (
+                          <span className="text-muted-foreground">не указано</span>
+                        )}
+                      </TD>
+                    ) : null}
                     <TD>
                       <AssignmentStatus assignment={a} today={today} />
                     </TD>
@@ -193,7 +198,7 @@ function DocksBody({
         tenantId={tenantId}
         docks={docks.items ?? []}
         clauses={clauses}
-        timezone={timezone}
+        track={track}
         today={today}
         loading={docks.isLoading}
       />
@@ -213,6 +218,8 @@ function DocksBody({
             <EditAssignmentForm
               assignment={editing}
               clauses={clauses}
+              track={track}
+              today={today}
               onDone={() => setEditing(null)}
             />
           ) : null}
@@ -242,31 +249,37 @@ interface AssignmentValues {
   basisClauseId: string;
 }
 
+/**
+ * Основание — пункт договора: необязательно. Если договор не ведётся (настройка организации),
+ * поле скрыто; если договора или пунктов нет — поле остаётся, но спокойно говорит, что оно не нужно.
+ */
 function ClauseSelect({
   clauses,
+  track,
   value,
   onChange,
   error,
 }: {
   clauses: TenantClauses;
+  track: boolean;
   value: string;
   onChange: (v: string) => void;
   error?: { message: string; settingLink?: string | null } | null;
 }) {
-  const reason = !clauses.hasContracts
-    ? 'У арендатора нет договора — основание появится, когда вы добавите договор и его пункты.'
-    : clauses.options.length === 0
-      ? 'В договорах арендатора нет пунктов — выпишите пункт, чтобы сослаться на него.'
-      : undefined;
+  if (!track) return null;
+  const nothingToPick = clauses.options.length === 0;
   return (
     <Field
-      label="Основание — пункт договора"
-      hint="Необязательно. Показывается в журнале и в подсказках."
-      disabledReason={reason}
+      label="Основание (необязательно)"
+      hint={
+        nothingToPick
+          ? 'Не нужно: пунктов договора нет. Захотите ссылаться на пункт — добавьте его на вкладке «Договор».'
+          : 'Пункт договора, на который опирается назначение. Показывается в журнале и в подсказках.'
+      }
       error={error ?? null}
     >
-      <Select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— без основания —</option>
+      <Select value={value} disabled={nothingToPick} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{nothingToPick ? '— не нужно —' : '— без основания —'}</option>
         {clauses.options.map((o) => (
           <option key={o.id} value={o.id}>
             {o.label}
@@ -280,10 +293,14 @@ function ClauseSelect({
 function EditAssignmentForm({
   assignment,
   clauses,
+  track,
+  today,
   onDone,
 }: {
   assignment: DockAssignmentView;
   clauses: TenantClauses;
+  track: boolean;
+  today: string;
   onDone: () => void;
 }) {
   const mutate = useMutate();
@@ -305,21 +322,25 @@ function EditAssignmentForm({
       onDone();
     },
   });
-  const { register, watch, setValue } = f.form;
+  const { watch, setValue, control } = f.form;
   return (
     <EditForm form={f}>
       <Field label="С даты" required error={f.fieldError('validFrom')}>
-        <Input type="date" {...register('validFrom')} />
+        <FormDateInput control={control} name="validFrom" todayIso={today} />
       </Field>
       <Field
         label="По дату"
-        hint="Последний день назначения включительно. Пусто — без окончания."
+        hint="Последний день назначения включительно. Пусто — бессрочно."
         error={f.fieldError('validTo')}
       >
-        <Input type="date" {...register('validTo')} />
+        <FormDateInput control={control} name="validTo" todayIso={today} />
+        {watch('validTo') === '' ? (
+          <p className="text-xs text-muted-foreground">бессрочно</p>
+        ) : null}
       </Field>
       <ClauseSelect
         clauses={clauses}
+        track={track}
         value={watch('basisClauseId')}
         onChange={(v) => setValue('basisClauseId', v, { shouldDirty: true })}
         error={f.fieldError('basisClauseId')}
@@ -328,24 +349,18 @@ function EditAssignmentForm({
   );
 }
 
-/** Итог отправки: предпросмотр (`dryRun`) или фактическое закрепление. */
-interface Outcome {
-  readonly applied: boolean;
-  readonly result: BatchResult;
-}
-
 function AddDocks({
   tenantId,
   docks,
   clauses,
-  timezone,
+  track,
   today,
   loading,
 }: {
   tenantId: string;
   docks: readonly DockView[];
   clauses: TenantClauses;
-  timezone: string;
+  track: boolean;
   today: string;
   loading: boolean;
 }) {
@@ -353,13 +368,13 @@ function AddDocks({
   const toast = useToast();
   const Link = useLinkComponent();
   const [spec, setSpec] = useState('');
-  const [validFrom, setValidFrom] = useState('');
+  // «С даты» предзаполнена сегодняшней датой объекта и подписана; «По дату» пусто — бессрочно.
+  const [validFrom, setValidFrom] = useState(today);
   const [validTo, setValidTo] = useState('');
   const [basis, setBasis] = useState('');
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [result, setResult] = useState<BatchResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrorView | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const parsed = useMemo(() => expandNumberSpec(spec), [spec]);
   const byDockNumber = useMemo(() => new Map(docks.map((d) => [d.number, d] as const)), [docks]);
@@ -375,70 +390,61 @@ function AddDocks({
     ...(validTo ? { validTo } : {}),
     ...(basis ? { basisClauseId: basis } : {}),
   };
-  const current = outcome && !outcome.applied ? outcome.result : null;
-
-  const reasonNotReady =
+  const valid = DockAssignmentBatchSchema.safeParse(body);
+  const dateError =
+    validFrom === ''
+      ? 'Укажите, с какой даты док закреплён.'
+      : validTo !== '' && validTo < validFrom
+        ? 'Окончание раньше начала. Проверьте даты.'
+        : null;
+  const missingReason =
     parsed.values.length === 0
       ? 'Введите номера доков.'
       : found.length === 0
         ? 'Ни одного дока с такими номерами нет на объекте.'
-        : validFrom === ''
-          ? 'Укажите, с какой даты док закреплён.'
-          : null;
+        : dateError;
 
-  function changed<T>(setter: (v: T) => void) {
-    return (v: T) => {
+  // Проверка сервером — сама, при вводе: кто уже занял док, пересечения по датам.
+  const preview = useAutoPreview({
+    path: `/tenants/${tenantId}/dock-assignments/batch`,
+    body: valid.success && missingReason === null ? body : null,
+  });
+  const checked = preview.status === 'ready' ? preview.result : null;
+  const canApply = checked !== null && checked.created > 0;
+
+  const edit =
+    <T,>(setter: (v: T) => void) =>
+    (v: T) => {
       setter(v);
       setError(null);
-      setFieldErrors({});
-      setOutcome(null);
+      setResult(null);
     };
-  }
 
-  async function send(dryRun: boolean) {
+  async function apply() {
+    if (!valid.success) return;
     setError(null);
-    setFieldErrors({});
-    const payload = DockAssignmentBatchSchema.safeParse({ ...body, dryRun });
-    if (!payload.success) {
-      const next: Record<string, string> = {};
-      for (const issue of payload.error.issues) {
-        next[String(issue.path[0] ?? '')] = issue.message;
-      }
-      setFieldErrors(next);
-      return;
-    }
     setBusy(true);
     try {
-      const path = `/tenants/${tenantId}/dock-assignments/batch`;
-      if (dryRun) {
-        // предпросмотр ничего не меняет — данные экранов не обновляем
-        setOutcome({
-          applied: false,
-          result: await api<BatchResult>(path, { method: 'POST', body: payload.data }),
-        });
-        return;
-      }
-      const result = await mutate<BatchResult>(path, 'POST', payload.data);
-      if (result.created > 0) toast(result.summary);
-      if (result.errors.length === 0) {
+      const done = await mutate<BatchResult>(
+        `/tenants/${tenantId}/dock-assignments/batch`,
+        'POST',
+        valid.data,
+      );
+      if (done.created > 0) toast(done.summary);
+      if (done.errors.length === 0) {
         setSpec('');
-        setOutcome(null);
+        setResult(null);
       } else {
-        setOutcome({ applied: true, result });
+        setResult(done);
       }
     } catch (raw) {
-      const view = errorView(raw);
-      if (view.field === 'validFrom' || view.field === 'validTo') {
-        setFieldErrors({ [view.field]: view.message });
-      } else {
-        setError(view);
-      }
+      setError(errorView(raw));
     } finally {
       setBusy(false);
     }
   }
 
-  const rowErrors = (outcome?.result.errors ?? []).map((e) => {
+  const rowErrors = (result ?? checked)?.errors.map((e) => {
     const dock = found[e.row - 1];
     return { id: `${e.row}-${e.code}`, text: `Док № ${dock?.number ?? e.row}: ${e.message}` };
   });
@@ -446,7 +452,7 @@ function AddDocks({
   return (
     <Section
       title="Добавить доки"
-      description="Номера диапазоном или списком: «1–10», «33–61, 70». Все доки получат одни и те же даты и основание."
+      description="Номера диапазоном или списком: «1–10», «33–61, 70». Все доки получат одни и те же даты. Проверка идёт сама, пока вы вводите."
     >
       <div className="space-y-4">
         <Field
@@ -458,7 +464,7 @@ function AddDocks({
             value={spec}
             rows={2}
             placeholder="1–10, 33–61, 70"
-            onChange={(e) => changed(setSpec)(e.target.value)}
+            onChange={(e) => edit(setSpec)(e.target.value)}
           />
         </Field>
 
@@ -500,57 +506,39 @@ function AddDocks({
           <Field
             label="С даты"
             required
-            hint={`Дата объекта (${timezone}), день включительно.`}
-            error={fieldErrors.validFrom ? { message: fieldErrors.validFrom } : null}
+            hint={
+              validFrom === today
+                ? 'Сегодня — дата объекта. Можно выбрать другую.'
+                : 'Первый день, когда док числится за арендатором.'
+            }
+            error={dateError && validFrom === '' ? { message: dateError } : null}
           >
-            <Input
-              type="date"
-              value={validFrom}
-              onChange={(e) => changed(setValidFrom)(e.target.value)}
-            />
-            <div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => changed(setValidFrom)(today)}
-                title="Подставить сегодняшнюю дату объекта"
-              >
-                Сегодня: {formatLocalDate(today)}
-              </Button>
-            </div>
+            <DateInput value={validFrom} todayIso={today} onChange={edit(setValidFrom)} />
           </Field>
           <Field
             label="По дату"
-            hint="Последний день включительно. Пусто — без окончания."
-            error={fieldErrors.validTo ? { message: fieldErrors.validTo } : null}
+            hint="Последний день включительно. Пусто — бессрочно."
+            error={dateError && validFrom !== '' ? { message: dateError } : null}
           >
-            <Input
-              type="date"
-              value={validTo}
-              onChange={(e) => changed(setValidTo)(e.target.value)}
-            />
+            <DateInput value={validTo} todayIso={today} onChange={edit(setValidTo)} />
+            {validTo === '' ? <p className="text-xs text-muted-foreground">бессрочно</p> : null}
           </Field>
         </div>
 
-        <ClauseSelect clauses={clauses} value={basis} onChange={changed(setBasis)} />
+        <ClauseSelect clauses={clauses} track={track} value={basis} onChange={edit(setBasis)} />
 
-        {fieldErrors.dockIds ? <Alert tone="danger">{fieldErrors.dockIds}</Alert> : null}
-        <ErrorAlert error={error} />
-
-        {outcome ? (
-          <Alert
-            tone={outcome.result.errors.length > 0 ? 'warning' : 'success'}
-            title={outcome.applied ? 'Результат' : 'Проверка'}
-          >
-            {outcome.result.summary}
-            {outcome.result.errors.length > 0
-              ? outcome.applied
-                ? '. Доки с ошибками не закреплены — исправьте и добавьте повторно.'
-                : '. Доки с ошибками закреплены не будут, остальные — будут.'
-              : '.'}
+        <ErrorAlert error={error ?? preview.error} />
+        {checked && checked.errors.length > 0 ? (
+          <Alert tone="warning" title="Проверка">
+            {checked.summary}. Доки с ошибками закреплены не будут, остальные — будут.
           </Alert>
         ) : null}
-        {rowErrors.length > 0 ? (
+        {result && result.errors.length > 0 ? (
+          <Alert tone="warning" title="Результат">
+            {result.summary}. Доки с ошибками не закреплены — исправьте и добавьте повторно.
+          </Alert>
+        ) : null}
+        {rowErrors && rowErrors.length > 0 ? (
           <ul className="list-disc space-y-1 pl-5 text-sm text-destructive">
             {rowErrors.map((r) => (
               <li key={r.id}>{r.text}</li>
@@ -559,30 +547,21 @@ function AddDocks({
         ) : null}
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="outline"
-            disabled={busy || reasonNotReady !== null}
-            onClick={() => void send(true)}
-          >
-            {busy && !current ? <Loader2 aria-hidden className="animate-spin" /> : null}
-            Проверить
+          <Button disabled={busy || !canApply} onClick={() => void apply()}>
+            {busy || preview.status === 'checking' ? (
+              <Loader2 aria-hidden className="animate-spin" />
+            ) : null}
+            {canApply
+              ? `Закрепить ${count(checked.created, 'док', 'дока', 'доков')}`
+              : 'Закрепить доки'}
           </Button>
-          <Button
-            disabled={busy || reasonNotReady !== null || !current || current.created === 0}
-            onClick={() => void send(false)}
-          >
-            {busy && current ? <Loader2 aria-hidden className="animate-spin" /> : null}
-            {current && current.created > 0
-              ? `Закрепить ${count(current.created, 'док', 'дока', 'доков')}`
-              : 'Закрепить'}
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            {reasonNotReady ??
-              (current
-                ? current.created === 0
+          <span className="text-xs text-muted-foreground" aria-live="polite">
+            {missingReason ??
+              (preview.status === 'checking'
+                ? 'Проверяем…'
+                : checked && checked.created === 0
                   ? 'Ни один док не может быть закреплён — исправьте ошибки выше.'
-                  : null
-                : 'Сначала проверьте: сервер покажет, какие доки уже заняты.')}
+                  : null)}
           </span>
         </div>
       </div>

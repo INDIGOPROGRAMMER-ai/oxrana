@@ -1,4 +1,5 @@
 import { EXCEPTION_WAIVES, type ExceptionWaive, ExceptionWaiveSchema } from '@oxrana/contracts';
+import { normalizePlate } from '@oxrana/plates';
 import {
   ApiError,
   Badge,
@@ -12,6 +13,7 @@ import {
   EditForm,
   Field,
   type FormController,
+  FormDateTimeInput,
   formatInZone,
   Input,
   localToInstant,
@@ -79,7 +81,7 @@ const FormSchema = z
       .string()
       .refine(
         (v) => v === '' || /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v),
-        'Укажите дату и время окончания полностью или очистите поле',
+        'Укажите дату и время окончания полностью (ДД.ММ.ГГГГ и ЧЧ:ММ) или очистите поле',
       ),
   })
   .loose();
@@ -171,8 +173,11 @@ function ExceptionFields({
   fixedTenant: TenantView | null;
   editingPasses: boolean;
 }) {
-  const { register, watch, setValue } = f.form;
+  const { register, watch, setValue, control } = f.form;
   const target = watch('target');
+  const platesText = watch('plates');
+  // нормализованный номер виден сразу, при вводе (Q-69): по нему ищет охрана и считает движок
+  const normalized = splitPlates(platesText ?? '').map((p) => normalizePlate(p));
   const tenantId = watch('tenantId');
   const waives = watch('waives');
   const categoryIds = watch('categoryIds');
@@ -242,11 +247,24 @@ function ExceptionFields({
           <Field
             label="Номера машин"
             hint={
-              <>
-                По одному в строке или через запятую. Номер запишется заглавными латинскими буквами
-                без пробелов и тире: «а 123 вс 174» станет «A123BC174». Итог виден в списке после
-                сохранения.
-              </>
+              normalized.length === 0 ? (
+                <>
+                  По одному в строке или через запятую. Номер запишется заглавными латинскими
+                  буквами без пробелов и тире: «а 123 вс 174» станет «A123BC174».
+                </>
+              ) : (
+                <>
+                  Запишется как:{' '}
+                  {normalized.map((n, i) => (
+                    <span key={`${n.norm}-${i}`} className="mr-2 font-mono font-medium">
+                      {n.norm || '—'}
+                      {n.norm && !n.recognized ? (
+                        <span className="font-sans text-warning"> (формат не распознан)</span>
+                      ) : null}
+                    </span>
+                  ))}
+                </>
+              )
             }
             error={f.fieldError('plates')}
           >
@@ -317,7 +335,7 @@ function ExceptionFields({
         hint={`Время объекта (${site.timezoneLabel}). Пусто — исключение действует без срока.`}
         error={f.fieldError('validTo')}
       >
-        <Input type="datetime-local" {...register('validTo')} />
+        <FormDateTimeInput control={control} name="validTo" defaultTime="23:59" />
       </Field>
     </>
   );
@@ -492,15 +510,15 @@ function TenantExceptions({ tenantId }: { tenantId: string }) {
 }
 
 function ExceptionsBody({ site, tenant }: { site: SiteView; tenant: TenantView | null }) {
-  const exceptions = useExceptions(site.id);
+  const exceptions = useExceptions(site.id, tenant?.id);
   const tenants = useTenants(site.id);
   const categories = useCategories(site.id, true);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ExceptionView | null>(null);
   if (exceptions.error)
     return <LoadError error={exceptions.error} retry={() => void exceptions.refetch()} />;
-  const all = exceptions.items ?? [];
-  const items = tenant ? all.filter((e) => e.tenantId === tenant.id) : all;
+  // вкладка арендатора получает от сервера только его исключения (Q-66)
+  const items = exceptions.items ?? [];
   const tenantList = tenants.items ?? [];
   const categoryList = categories.items ?? [];
   const env: FormEnv = { site, tenants: tenantList, categories: categoryList, fixedTenant: tenant };

@@ -271,6 +271,9 @@ importers:
       '@oxrana/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@oxrana/plates':
+        specifier: workspace:*
+        version: link:../../packages/plates
       '@oxrana/ui':
         specifier: workspace:*
         version: link:../../packages/ui

@@ -94,7 +94,7 @@ export function AppShell({
   );
   return (
     <div className="flex min-h-screen">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 overflow-y-auto border-r bg-sidebar lg:block">
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 overflow-y-auto border-r bg-sidebar lg:block print:hidden">
         <div className="flex h-14 items-center px-4 font-semibold">{brand}</div>
         {menu}
       </aside>
@@ -123,7 +123,7 @@ export function AppShell({
         </div>
       ) : null}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur print:hidden">
           <Button
             variant="ghost"
             size="icon"
@@ -135,7 +135,9 @@ export function AppShell({
           </Button>
           <div className="flex min-w-0 flex-1 items-center gap-2">{topbar}</div>
         </header>
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">{children}</main>
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 print:max-w-none print:p-0">
+          {children}
+        </main>
       </div>
     </div>
   );

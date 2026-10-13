@@ -10,6 +10,7 @@ import { type AccessScope, type Actor, coversSite, coversTenant, permissionsIn }
 import type { AuthMessenger } from '../auth/messenger';
 import type { Clock } from '../clock';
 import { AppError } from '../errors';
+import type { FileStore } from '../files/store';
 import { forbiddenFor, permissionList } from '../permission-guard';
 import type { EventHub } from '../realtime/hub';
 import type { AuditDiff } from './diff';
@@ -39,6 +40,9 @@ export interface AppDeps {
   readonly hub: EventHub;
   readonly ruleSets: RuleSetCache;
   readonly hooks: ServiceHooks;
+  /** Файлы (договоры) и предел размера загрузки. */
+  readonly files: FileStore;
+  readonly fileMaxBytes: number;
 }
 
 declare module 'fastify' {

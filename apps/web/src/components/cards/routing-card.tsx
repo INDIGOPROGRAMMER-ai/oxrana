@@ -22,6 +22,7 @@ import {
   useZones,
 } from '../../lib/data';
 import { Empty, GuardPreview, LoadError, RequireSite } from '../common';
+import { useTenant } from './tenant-shared';
 
 interface RowSpec {
   key: string;
@@ -36,11 +37,26 @@ interface RowSpec {
  * правило, не связанное с лимитами и местом назначения (CLAUDE.md п. 2). Если для типа ничего не
  * отмечено, машина пройдёт через любой КПП, который её пропускает (RULES_ENGINE §9).
  */
-export function RoutingCard() {
-  return <RequireSite>{(site) => <RoutingBody siteId={site.id} />}</RequireSite>;
+export function RoutingCard({ tenantId }: { tenantId?: string | undefined } = {}) {
+  if (tenantId) return <TenantRouting tenantId={tenantId} />;
+  return <RequireSite>{(site) => <RoutingBody siteId={site.id} tenantId={null} />}</RequireSite>;
 }
 
-function RoutingBody({ siteId }: { siteId: string }) {
+/** Вкладка «Маршруты» арендатора (Q-70): его собственные правила приоритетнее общей матрицы объекта. */
+function TenantRouting({ tenantId }: { tenantId: string }) {
+  const tenant = useTenant(tenantId);
+  if (tenant.error) return <LoadError error={tenant.error} retry={() => void tenant.refetch()} />;
+  if (!tenant.data) {
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        Загрузка…
+      </p>
+    );
+  }
+  return <RoutingBody siteId={tenant.data.siteId} tenantId={tenantId} />;
+}
+
+function RoutingBody({ siteId, tenantId }: { siteId: string; tenantId: string | null }) {
   const gates = useGates(siteId);
   const categories = useCategories(siteId, false);
   const rules = useRoutingRules(siteId);
@@ -66,8 +82,10 @@ function RoutingBody({ siteId }: { siteId: string }) {
 
   const allGates = [...(gates.items ?? [])].sort((a, b) => a.sort - b.sort);
   const cats = categories.items ?? [];
-  const siteRules = (rules.items ?? []).filter((r) => r.tenantId === null);
-  const tenantRules = (rules.items ?? []).filter((r) => r.tenantId !== null);
+  // Правила этого экрана: общие для объекта или собственные у арендатора.
+  const siteRules = (rules.items ?? []).filter((r) => r.tenantId === tenantId);
+  const inherited = tenantId ? (rules.items ?? []).filter((r) => r.tenantId === null) : [];
+  const tenantRules = tenantId ? [] : (rules.items ?? []).filter((r) => r.tenantId !== null);
 
   if (allGates.length === 0 || cats.length === 0) {
     return (
@@ -92,6 +110,26 @@ function RoutingBody({ siteId }: { siteId: string }) {
         r.direction !== 'out',
     );
 
+  // у арендатора строка без собственных отметок идёт по общей матрице объекта
+  const ownCount = (row: RowSpec) =>
+    siteRules.filter(
+      (r) =>
+        r.participant === row.participant &&
+        r.categoryId === row.categoryId &&
+        r.destinationZoneId === row.destinationZoneId,
+    ).length;
+  const inheritedMark = (row: RowSpec, gateId: string) =>
+    tenantId !== null &&
+    ownCount(row) === 0 &&
+    inherited.some(
+      (r) =>
+        r.participant === row.participant &&
+        r.categoryId === row.categoryId &&
+        r.destinationZoneId === row.destinationZoneId &&
+        r.gateId === gateId &&
+        r.direction !== 'out',
+    );
+
   async function toggle(row: RowSpec, gate: GateView) {
     const key = `${row.key}:${gate.id}`;
     setPending(key);
@@ -103,6 +141,7 @@ function RoutingBody({ siteId }: { siteId: string }) {
         await mutate(`/routing-rules/${existing.id}?confirm=false`, 'DELETE');
       } else {
         await mutate(`/sites/${siteId}/routing-rules`, 'POST', {
+          ...(tenantId ? { tenantId } : {}),
           participant: row.participant,
           categoryId: row.categoryId,
           destinationZoneId: row.destinationZoneId,
@@ -167,8 +206,17 @@ function RoutingBody({ siteId }: { siteId: string }) {
             ? `КПП «${gate.name}» пропускает только пешеходов`
             : `КПП «${gate.name}» пропускает только машины`;
         const checked = shown[`${row.key}:${gate.id}`] ?? findRule(row, gate.id) !== undefined;
+        const fromSite = !checked && inheritedMark(row, gate.id);
         return (
           <TD key={gate.id} className="text-center">
+            {fromSite ? (
+              <span
+                className="mr-1 text-muted-foreground"
+                title="Отметка общей матрицы объекта: пока у арендатора своих отметок в этой строке нет, действует она"
+              >
+                ✓
+              </span>
+            ) : null}
             <input
               type="checkbox"
               className="size-4 accent-[var(--primary)] disabled:cursor-not-allowed"
@@ -204,8 +252,12 @@ function RoutingBody({ siteId }: { siteId: string }) {
   return (
     <>
       <Section
-        title="Машины: тип × КПП"
-        description="Отметьте, через какие КПП может въезжать каждый тип. Если для типа не отмечено ничего — он проедет через любой КПП, который пропускает машины. Выезд — через любой КПП."
+        title={tenantId ? 'Машины арендатора: тип × КПП' : 'Машины: тип × КПП'}
+        description={
+          tenantId
+            ? 'Собственные маршруты арендатора. Пока в строке нет отметок арендатора, действует общая матрица объекта (серая галочка ✓). Как только отметите хотя бы один КПП в строке — общая матрица для этого типа не действует.'
+            : 'Отметьте, через какие КПП может въезжать каждый тип. Если для типа не отмечено ничего — он проедет через любой КПП, который пропускает машины. Выезд — через любой КПП.'
+        }
       >
         <Table>
           {head}
@@ -266,7 +318,7 @@ function RoutingBody({ siteId }: { siteId: string }) {
       {tenantRules.length > 0 ? (
         <Alert tone="info">
           У арендаторов заведено собственных маршрутов: {tenantRules.length}. Они приоритетнее общей
-          матрицы; редактор маршрутов арендатора появится позже.
+          матрицы; правятся в карточке арендатора, вкладка «Маршруты».
         </Alert>
       ) : null}
 

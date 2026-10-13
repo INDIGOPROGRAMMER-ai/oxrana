@@ -27,6 +27,8 @@ export class ApiError extends Error {
 export interface ApiOptions {
   method?: string;
   body?: unknown;
+  /** Файл как есть телом запроса (договор): тип — из самого файла. */
+  file?: Blob;
 }
 
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
@@ -35,8 +37,16 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     res = await fetch(`/api${path}`, {
       method: options.method ?? 'GET',
       credentials: 'same-origin',
-      headers: options.body === undefined ? {} : { 'content-type': 'application/json' },
-      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      headers: options.file
+        ? { 'content-type': options.file.type }
+        : options.body === undefined
+          ? {}
+          : { 'content-type': 'application/json' },
+      ...(options.file
+        ? { body: options.file }
+        : options.body === undefined
+          ? {}
+          : { body: JSON.stringify(options.body) }),
     });
   } catch {
     throw new ApiError(0, { message: 'Нет связи с сервером. Проверьте сеть и повторите.' });

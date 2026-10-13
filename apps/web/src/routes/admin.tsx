@@ -2,14 +2,19 @@ import { AppShell, Button, type NavGroup, Select, Skeleton, ThemeToggle } from '
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
 import {
+  Ban,
   Building2,
+  Cpu,
   DoorOpen,
   FileText,
+  FlaskConical,
   Layers,
   LayoutDashboard,
   ListChecks,
   LogOut,
   type LucideIcon,
+  ParkingSquare,
+  Printer,
   Route as RouteIcon,
   Smartphone,
   Truck,
@@ -144,6 +149,35 @@ function Shell() {
           icon: FileText,
           disabledReason: noSite,
         }),
+        ...item('blacklist.manage', {
+          href: '/admin/blacklist',
+          label: 'Чёрный список',
+          icon: Ban,
+          disabledReason: noSite,
+        }),
+        ...item('site.manage', {
+          href: '/admin/catalogs',
+          label: 'Цели и парковки',
+          icon: ParkingSquare,
+          disabledReason: noSite,
+        }),
+      ],
+    },
+    {
+      title: 'Проверка',
+      items: [
+        ...item('sandbox.use', {
+          href: '/admin/sandbox',
+          label: 'Песочница правил',
+          icon: FlaskConical,
+          disabledReason: noSite,
+        }),
+        ...item(['rule.manage', 'site.manage'], {
+          href: '/admin/memo',
+          label: 'Памятка КПП',
+          icon: Printer,
+          disabledReason: noSite,
+        }),
       ],
     },
     {
@@ -163,6 +197,12 @@ function Shell() {
           href: '/admin/devices',
           label: 'Устройства КПП',
           icon: Smartphone,
+          disabledReason: noSite,
+        }),
+        ...item('hardware.manage', {
+          href: '/admin/hardware',
+          label: 'Оборудование',
+          icon: Cpu,
           disabledReason: noSite,
         }),
       ],

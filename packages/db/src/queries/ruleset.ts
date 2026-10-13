@@ -1,4 +1,4 @@
-import { SiteSettingsSchema } from '@oxrana/contracts';
+import { OrganizationSettingsSchema, SiteSettingsSchema } from '@oxrana/contracts';
 import type {
   BlacklistEntryView,
   CategoryView,
@@ -191,8 +191,14 @@ export async function loadRuleSet(
     )
     .orderBy(asc(schema.tenants.id));
   const tenantIds = tenantRows.map((t) => t.id);
+  // «Вести договоры» выключено: срок договора не проверяется, как у арендатора без договора.
+  const [orgRow] = await db
+    .select({ settings: schema.organizations.settings })
+    .from(schema.organizations)
+    .where(eq(schema.organizations.id, organizationId));
+  const trackContracts = OrganizationSettingsSchema.parse(orgRow?.settings ?? {}).trackContracts;
   const contractRows =
-    tenantIds.length === 0
+    tenantIds.length === 0 || !trackContracts
       ? []
       : await db
           .select({
