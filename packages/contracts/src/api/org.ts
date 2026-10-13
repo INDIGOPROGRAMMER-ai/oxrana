@@ -4,9 +4,17 @@ import {
   DockKindSchema,
   GateAdmitsSchema,
   GateKindSchema,
+  HardwareDeviceKindSchema,
+  HardwareDeviceStatusSchema,
   ZoneKindSchema,
 } from '../enums';
-import { SiteSettingsPatchSchema, SiteSettingsSchema, WorkingHoursSchema } from '../settings';
+import {
+  OrganizationSettingsPatchSchema,
+  OrganizationSettingsSchema,
+  SiteSettingsPatchSchema,
+  SiteSettingsSchema,
+  WorkingHoursSchema,
+} from '../settings';
 import { VehicleCategoryPresetCodeSchema } from '../vehicle-categories';
 import { IdSchema, ReasonSchema, SiteTimeSchema, TextSchema } from './common';
 
@@ -19,12 +27,14 @@ export const OrganizationViewSchema = z.object({
   /** Пояс, которым предзаполняется новый объект (ADR-009); `null` — не задан. */
   defaultTimezone: z.string().nullable(),
   defaultTimezoneLabel: z.string().nullable(),
+  settings: OrganizationSettingsSchema,
 });
 export type OrganizationView = z.infer<typeof OrganizationViewSchema>;
 
 export const OrganizationPatchSchema = z.strictObject({
   name: TextSchema().optional(),
   defaultTimezone: z.string().min(1).nullable().optional(),
+  settings: OrganizationSettingsPatchSchema.optional(),
 });
 
 export const TimezonesQuerySchema = z.strictObject({
@@ -65,6 +75,9 @@ export const SiteViewSchema = z.object({
   settings: SiteSettingsSchema,
 });
 export type SiteView = z.infer<typeof SiteViewSchema>;
+
+/** Настройки объекта «сроки и рабочее время» меняет администратор правил (`rule.manage`, Q-64). */
+export const SiteSettingsChangeSchema = SiteSettingsPatchSchema;
 
 export const SiteListViewSchema = z.object({ items: z.array(SiteViewSchema) });
 
@@ -155,6 +168,48 @@ export const DockBatchSchema = z.strictObject({
   size: z.string().trim().max(50).nullable().optional(),
   /** Предпросмотр: проверить все строки без сохранения. */
   dryRun: z.boolean().optional(),
+});
+
+/** Цели визита (`visit_purposes`): справочник объекта с нормативом времени на территории. */
+export const VisitPurposeViewSchema = z.object({
+  id: IdSchema,
+  siteId: IdSchema,
+  name: z.string(),
+  maxStayMinutes: z.int().nullable(),
+  sort: z.int().nullable(),
+});
+export const VisitPurposeCreateSchema = z.strictObject({
+  name: TextSchema(100),
+  maxStayMinutes: z.int().min(1).max(10080).nullable().optional(),
+  sort: z.int().nullable().optional(),
+});
+export const VisitPurposePatchSchema = VisitPurposeCreateSchema.partial();
+
+/** Парковочные участки: число мест; закрепление за арендатором — в карточке арендатора. */
+export const ParkingAreaViewSchema = z.object({
+  id: IdSchema,
+  siteId: IdSchema,
+  zoneId: IdSchema.nullable(),
+  name: z.string(),
+  spaces: z.int().nullable(),
+});
+export const ParkingAreaCreateSchema = z.strictObject({
+  name: TextSchema(100),
+  zoneId: IdSchema.nullable().optional(),
+  spaces: z.int().min(0).max(100000).nullable().optional(),
+});
+export const ParkingAreaPatchSchema = ParkingAreaCreateSchema.partial();
+
+/** Реестр оборудования КПП (ADR-008): в MVP пустой, подключается через агент КПП. */
+export const HardwareDeviceViewSchema = z.object({
+  id: IdSchema,
+  gateId: IdSchema,
+  gateName: z.string(),
+  kind: HardwareDeviceKindSchema,
+  name: z.string(),
+  adapter: z.string(),
+  status: HardwareDeviceStatusSchema,
+  lastSeenAt: z.string().nullable(),
 });
 
 export const VehicleCategoryViewSchema = z.object({

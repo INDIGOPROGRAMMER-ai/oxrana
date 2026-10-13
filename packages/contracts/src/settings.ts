@@ -36,6 +36,19 @@ export type WorkingHours = z.infer<typeof WorkingHoursSchema>;
 /** Въезд вне рабочего времени объекта. */
 export const OUTSIDE_WORKING_HOURS_MODES = ['deny', 'warn', 'allow'] as const;
 
+/**
+ * `organizations.settings` (DATA_MODEL §10). «Вести договоры» (`trackContracts`): договоры бывают
+ * коммерческой тайной, поэтому ведение выключаемо; выключено — разделы и поля договоров скрыты,
+ * проверка срока договора в движке не выполняется (как у арендатора без договора).
+ */
+export const OrganizationSettingsSchema = z.strictObject({
+  trackContracts: z.boolean().default(true),
+});
+export type OrganizationSettings = z.infer<typeof OrganizationSettingsSchema>;
+export const OrganizationSettingsPatchSchema = z.strictObject({
+  trackContracts: z.boolean().optional(),
+});
+
 /** `sites.settings` (DATA_MODEL §3). */
 export const SiteSettingsSchema = z.strictObject({
   singlePassMaxHours: z.int().min(1).default(24),

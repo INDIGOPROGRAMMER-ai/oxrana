@@ -6,6 +6,9 @@ export const PERMISSIONS = [
   // настройка объекта
   'site.manage',
   'tenant.manage',
+  'tenant.block', // блокировка арендатора с последствиями
+  'contract.file', // файл договора: загрузка и просмотр
+  'blacklist.manage',
   'quota.manage',
   'rule.manage', // маршруты, окна, исключения, политики
   'user.manage',
@@ -55,6 +58,9 @@ export type PermissionCode = (typeof PERMISSIONS)[number];
 export const PERMISSION_LABELS: Record<PermissionCode, string> = {
   'site.manage': 'Настройка объекта: КПП, зоны, доки, типы транспорта',
   'tenant.manage': 'Арендаторы, договоры, доки арендаторов',
+  'tenant.block': 'Блокировка и разблокировка арендатора',
+  'contract.file': 'Файлы договоров: загрузка и просмотр',
+  'blacklist.manage': 'Чёрный список',
   'quota.manage': 'Лимиты',
   'rule.manage': 'Маршруты, окна, исключения, политики согласования',
   'user.manage': 'Пользователи и приглашения',

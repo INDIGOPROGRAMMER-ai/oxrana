@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { registerRealtimeRoutes } from '../realtime/routes';
 import { registerAuditModule } from './audit/routes';
+import { registerBlacklistModule } from './blacklist/routes';
+import { registerSandboxModule } from './sandbox/routes';
 import { registerDeviceRoutes } from './auth/devices';
 import { registerAuthRoutes } from './auth/routes';
 import { registerUserRoutes } from './auth/users';
@@ -23,5 +25,7 @@ export function registerModules(app: FastifyInstance): void {
   registerGateModule(app);
   registerOccupancyModule(app);
   registerAuditModule(app);
+  registerBlacklistModule(app);
+  registerSandboxModule(app);
   registerRealtimeRoutes(app);
 }

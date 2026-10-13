@@ -48,7 +48,7 @@ export const vehicleCategories = pgTable(
   (t) => [
     uniqueIndex('vehicle_categories_preset_key')
       .on(t.organizationId, sql`coalesce(${t.siteId}, '${sql.raw(NIL_UUID)}'::uuid)`, t.presetCode)
-      .where(sql`${t.presetCode} is not null`),
+      .where(sql`${t.presetCode} is not null and ${t.deletedAt} is null`),
     enumCheck('vehicle_categories', t.presetCode, VEHICLE_CATEGORY_PRESET_CODES),
     organizationIsolation(),
   ],

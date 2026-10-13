@@ -2,12 +2,14 @@ import {
   DEFAULT_APPROVAL_POLICIES,
   isValidTimezone,
   OrganizationPatchSchema,
+  OrganizationSettingsSchema,
   type OrganizationView,
   OrganizationViewSchema,
   SiteCreateSchema,
   SiteListViewSchema,
   SiteParamsSchema,
   SitePatchSchema,
+  SiteSettingsChangeSchema,
   SiteSettingsSchema,
   SiteTimezoneChangeSchema,
   type SiteView,
@@ -25,6 +27,7 @@ import { schema } from '@oxrana/db';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import type { z } from 'zod';
 import { type Ctx, ctxOf, type Scope } from '../../core/context';
 import { changedFields, diffOf } from '../../core/diff';
 import { loadSite, notFound, type SiteRow } from '../../core/loaders';
@@ -45,6 +48,22 @@ export function siteView(site: SiteRow, at: number): SiteView {
     workingHours: site.workingHours ?? null,
     settings: SiteSettingsSchema.parse(site.settings),
   };
+}
+
+type SettingsPatch = z.infer<typeof SiteSettingsChangeSchema>;
+
+/** Хранятся только заданные ключи (DATA_MODEL §7 п. 9): присланные — поверх сохранённых. */
+function mergeSiteSettings(stored: unknown, settings: SettingsPatch): Record<string, unknown> {
+  const current = (stored ?? {}) as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...current, ...settings };
+  if (settings.retentionDays) {
+    merged.retentionDays = {
+      ...((current.retentionDays as Record<string, unknown> | undefined) ?? {}),
+      ...settings.retentionDays,
+    };
+  }
+  SiteSettingsSchema.parse(merged);
+  return merged;
 }
 
 export function assertTimezone(tz: string, field = 'timezone'): void {
@@ -91,6 +110,7 @@ function organizationView(
     slug: org.slug,
     defaultTimezone: org.defaultTimezone,
     defaultTimezoneLabel: org.defaultTimezone ? timezoneLabel(org.defaultTimezone, at) : null,
+    settings: OrganizationSettingsSchema.parse(org.settings ?? {}),
   };
 }
 
@@ -124,13 +144,22 @@ export function registerSiteRoutes(app: FastifyInstance): void {
     async (request) => {
       const ctx = ctxOf(request);
       requireOrganizationScope(ctx, 'Настройки организации');
-      const input = request.body;
+      const { settings, ...input } = request.body;
       if (input.defaultTimezone) assertTimezone(input.defaultTimezone, 'defaultTimezone');
       return ctx.tx(async (s) => {
         const org = await loadOrganization(s);
         const patch = Object.fromEntries(
           Object.entries(input).filter(([, v]) => v !== undefined),
         ) as Partial<typeof org>;
+        if (settings !== undefined) {
+          // Хранятся только заданные ключи: присланные — поверх сохранённых (как у настроек объекта).
+          const merged = {
+            ...((org.settings ?? {}) as Record<string, unknown>),
+            ...Object.fromEntries(Object.entries(settings).filter(([, v]) => v !== undefined)),
+          };
+          OrganizationSettingsSchema.parse(merged);
+          patch.settings = merged;
+        }
         const fields = changedFields(org, patch);
         if (fields.length === 0) return organizationView(org, ctx.now());
         const [updated = org] = await s.db
@@ -145,6 +174,15 @@ export function registerSiteRoutes(app: FastifyInstance): void {
           action: 'update',
           diff: diffOf(org, updated, fields),
         });
+        if (fields.includes('settings')) {
+          // «Вести договоры» меняет срез правил всех объектов организации.
+          await s.emit('rules.changed', {
+            siteId: null,
+            aggregate: 'organization',
+            aggregateId: org.id,
+            payload: { entity: 'organization', entityId: org.id },
+          });
+        }
         return organizationView(updated, ctx.now());
       });
     },
@@ -324,19 +362,7 @@ export function registerSiteRoutes(app: FastifyInstance): void {
           Object.entries(rest).filter(([, v]) => v !== undefined),
         );
         if (rest.workingHours) WorkingHoursSchema.parse(rest.workingHours);
-        if (settings !== undefined) {
-          // Хранятся только заданные ключи (DATA_MODEL §7 п. 9): присланные — поверх сохранённых.
-          const stored = (site.settings ?? {}) as Record<string, unknown>;
-          const merged: Record<string, unknown> = { ...stored, ...settings };
-          if (settings.retentionDays) {
-            merged.retentionDays = {
-              ...((stored.retentionDays as Record<string, unknown> | undefined) ?? {}),
-              ...settings.retentionDays,
-            };
-          }
-          SiteSettingsSchema.parse(merged);
-          patch.settings = merged;
-        }
+        if (settings !== undefined) patch.settings = mergeSiteSettings(site.settings, settings);
         const fields = changedFields(site, patch);
         if (fields.length === 0) return siteView(site, ctx.now());
         const [updated = site] = await s.db
@@ -358,6 +384,52 @@ export function registerSiteRoutes(app: FastifyInstance): void {
           aggregate: 'site',
           aggregateId: site.id,
           payload: { siteId: site.id, fields },
+        });
+        return siteView(updated, ctx.now());
+      });
+    },
+  );
+
+  // Сроки и рабочее время — правила, не устройство объекта: право `rule.manage` (Q-64).
+  typed.patch(
+    '/sites/:siteId/settings',
+    {
+      config: { permission: 'rule.manage' },
+      schema: {
+        tags,
+        summary: 'Изменить настройки объекта: сроки пропусков, рабочее время, допуски (только переданные ключи)',
+        params: SiteParamsSchema,
+        body: SiteSettingsChangeSchema,
+        response: { 200: SiteViewSchema },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      return ctx.tx(async (s) => {
+        const site = await loadSite(s, request.params.siteId);
+        const merged = mergeSiteSettings(site.settings, request.body);
+        const patch: Partial<SiteRow> = { settings: merged };
+        const fields = changedFields(site, patch);
+        if (fields.length === 0) return siteView(site, ctx.now());
+        const [updated = site] = await s.db
+          .update(schema.sites)
+          .set({ settings: merged })
+          .where(
+            and(eq(schema.sites.organizationId, s.organizationId), eq(schema.sites.id, site.id)),
+          )
+          .returning();
+        await s.audit({
+          siteId: site.id,
+          entity: 'site',
+          entityId: site.id,
+          action: 'update',
+          diff: diffOf(site, updated, fields),
+        });
+        await s.emit('site.changed', {
+          siteId: site.id,
+          aggregate: 'site',
+          aggregateId: site.id,
+          payload: { siteId: site.id, fields: ['settings'] },
         });
         return siteView(updated, ctx.now());
       });

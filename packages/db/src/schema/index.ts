@@ -10,3 +10,4 @@ export * from './people';
 export * from './rules';
 export * from './tenants';
 export * from './visits';
+export * from './files';

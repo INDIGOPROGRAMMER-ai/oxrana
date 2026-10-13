@@ -119,6 +119,7 @@ export const ExceptionViewSchema = z.object({
   validFrom: InstantSchema,
   validTo: InstantSchema.nullable(),
 });
+export const ExceptionListQuerySchema = z.strictObject({ tenantId: IdSchema.optional() });
 export const ExceptionCreateSchema = z.strictObject({
   tenantId: IdSchema.nullable().optional(),
   name: TextSchema(200),

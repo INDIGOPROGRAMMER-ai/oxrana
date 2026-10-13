@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { type PermissionCode, roleTemplate } from '@oxrana/contracts';
 import { createDb, createPool, type Db, type DbPool, schema } from '@oxrana/db';
 import { applySeed, DEMO_SEED, fixtureKeys, seedId } from '@oxrana/db/seed';
@@ -7,6 +10,7 @@ import { afterAll } from 'vitest';
 import { buildApp } from '../../src/app';
 import { randomToken, sha256Hex } from '../../src/auth/crypto';
 import { MemoryMessenger } from '../../src/auth/messenger';
+import { LocalFileStore } from '../../src/files/store';
 import { FixedClock } from '../../src/clock';
 import type { ServiceHooks } from '../../src/core/context';
 import { EventHub } from '../../src/realtime/hub';
@@ -313,18 +317,22 @@ export interface TestApp {
 }
 
 export async function startTestApp(
-  options: { poolSize?: number; hooks?: ServiceHooks; now?: string } = {},
+  options: { poolSize?: number; hooks?: ServiceHooks; now?: string; fileMaxBytes?: number } = {},
 ): Promise<TestApp> {
   const clock = new FixedClock(options.now ?? NOON);
   const hub = new EventHub();
   const db = createDb(appPool(options.poolSize ?? 10));
   const messenger = new MemoryMessenger();
+  // Файлы договоров — во временный каталог, который убирается вместе с приложением.
+  const filesDir = mkdtempSync(join(tmpdir(), 'oxrana-files-'));
   const app = await buildApp({
     services: {
       db,
       clock,
       hub,
       messenger,
+      files: new LocalFileStore(filesDir),
+      fileMaxBytes: options.fileMaxBytes ?? 1_048_576,
       publicUrl: TEST_ORIGIN,
       ...(options.hooks ? { hooks: options.hooks } : {}),
     },
@@ -346,6 +354,9 @@ export async function startTestApp(
       return app.inject({ ...inject, headers });
     },
     headersFor: authHeaders,
-    close: () => app.close(),
+    close: async () => {
+      await app.close();
+      rmSync(filesDir, { recursive: true, force: true });
+    },
   };
 }

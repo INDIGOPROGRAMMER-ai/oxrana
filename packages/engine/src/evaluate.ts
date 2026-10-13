@@ -294,6 +294,7 @@ const tenantStatus: Check = (ctx) => {
     case 'blocked_new_passes':
       return pass('tenant_status', { status: tenant.status });
     case 'blocked_entry':
+    case 'blocked_full':
       return fail('tenant_status', 'deny', {
         code: 'tenant_blocked_entry',
         message: `Въезд арендатору ${tenant.name} запрещён администратором`,

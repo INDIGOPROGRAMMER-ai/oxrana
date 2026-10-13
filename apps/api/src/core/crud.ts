@@ -182,6 +182,12 @@ export interface ResourceHandle {
     parentId: string,
     body: Record<string, unknown>,
   ) => Promise<{ id: string } & Record<string, unknown>>;
+  /** Изменить запись как PATCH (только присланные поля); для пакетной правки внутри `s.nested`. */
+  readonly update: (
+    s: Scope,
+    id: string,
+    body: Record<string, unknown>,
+  ) => Promise<{ id: string } & Record<string, unknown>>;
 }
 
 export function registerResource(app: FastifyInstance, spec: ResourceSpec): ResourceHandle {
@@ -347,6 +353,55 @@ export function registerResource(app: FastifyInstance, spec: ResourceSpec): Reso
     },
   );
 
+  /** Правка одной записи: только изменённые поля, аудит «было → стало», событие. Общий путь для PATCH и пакетной правки. */
+  const updateRecord = async (
+    s: Scope,
+    id: string,
+    body: Record<string, unknown>,
+  ): Promise<unknown> => {
+    const input = provided(body);
+    const existing = await findRow(s, spec, id);
+    const scope = await spec.scopeOf(s, existing);
+    const prepared = spec.prepare ? await spec.prepare(s, input, existing, scope) : input;
+    const fields = changedFields(existing, prepared);
+    let row = existing;
+    if (fields.length > 0) {
+      const set = Object.fromEntries(fields.map((f) => [f, prepared[f]]));
+      [row = existing] = (await s.db
+        .update(spec.table)
+        .set(set as PgUpdateSetSource<PgTable>)
+        .where(
+          and(
+            eq(col(spec.table, 'organizationId'), s.organizationId),
+            eq(col(spec.table, 'id'), existing.id),
+          ),
+        )
+        .returning()
+        .catch((error: unknown) => {
+          throw translateWriteError(spec, error);
+        })) as Row[];
+    }
+    const related = spec.afterWrite ? await spec.afterWrite(s, row, input, existing) : {};
+    const changed = [...fields, ...Object.keys(related)];
+    if (changed.length > 0) {
+      const diff = await labelDiff(
+        s,
+        { ...diffOf(existing, row, fields), ...related },
+        spec.labels ?? {},
+      );
+      await s.audit({
+        siteId: scope.siteId,
+        entity: spec.entity,
+        entityId: row.id,
+        action: 'update',
+        diff,
+      });
+      await emitChange(s, row, scope, changed);
+    }
+    const [view] = await views(s, spec, [row]);
+    return view;
+  };
+
   typed.patch(
     itemPath,
     {
@@ -361,54 +416,15 @@ export function registerResource(app: FastifyInstance, spec: ResourceSpec): Reso
     },
     async (request) => {
       const ctx = ctxOf(request);
-      const input = provided(request.body as Record<string, unknown>);
-      return ctx.tx(async (s) => {
-        const existing = await findRow(s, spec, request.params.id);
-        const scope = await spec.scopeOf(s, existing);
-        const prepared = spec.prepare ? await spec.prepare(s, input, existing, scope) : input;
-        const fields = changedFields(existing, prepared);
-        let row = existing;
-        if (fields.length > 0) {
-          const set = Object.fromEntries(fields.map((f) => [f, prepared[f]]));
-          [row = existing] = (await s.db
-            .update(spec.table)
-            .set(set as PgUpdateSetSource<PgTable>)
-            .where(
-              and(
-                eq(col(spec.table, 'organizationId'), s.organizationId),
-                eq(col(spec.table, 'id'), existing.id),
-              ),
-            )
-            .returning()
-            .catch((error: unknown) => {
-              throw translateWriteError(spec, error);
-            })) as Row[];
-        }
-        const related = spec.afterWrite ? await spec.afterWrite(s, row, input, existing) : {};
-        const changed = [...fields, ...Object.keys(related)];
-        if (changed.length > 0) {
-          const diff = await labelDiff(
-            s,
-            { ...diffOf(existing, row, fields), ...related },
-            spec.labels ?? {},
-          );
-          await s.audit({
-            siteId: scope.siteId,
-            entity: spec.entity,
-            entityId: row.id,
-            action: 'update',
-            diff,
-          });
-          await emitChange(s, row, scope, changed);
-        }
-        const [view] = await views(s, spec, [row]);
-        return view;
-      });
+      return ctx.tx((s) =>
+        updateRecord(s, request.params.id, request.body as Record<string, unknown>),
+      );
     },
   );
 
   const handle: ResourceHandle = {
     create: createRecord as ResourceHandle['create'],
+    update: updateRecord as ResourceHandle['update'],
   };
   if (spec.deletable === false) return handle;
 

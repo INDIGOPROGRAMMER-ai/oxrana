@@ -33,6 +33,10 @@ const EnvSchema = z.object({
     .enum(['true', 'false'], { error: 'TRUST_PROXY — true или false' })
     .default('false')
     .transform((value) => value === 'true'),
+  /** Каталог файлов (договоры): локальный том; на сервере — смонтированный том (Q-63). */
+  FILES_DIR: z.string().min(1).default('./data/files'),
+  /** Предел размера загружаемого файла, байт. */
+  FILE_MAX_BYTES: z.coerce.number().int().min(1024).max(52_428_800).default(10_485_760),
   /** Версия сборки для `/healthz` и `/readyz`: тег образа; проверка после деплоя сверяет её. */
   APP_VERSION: z.string().min(1).optional(),
 });

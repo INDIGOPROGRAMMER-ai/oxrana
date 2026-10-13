@@ -230,10 +230,11 @@ function asEnginePass(values: PassValues, tenantId: string): EnginePass {
 /** Новые пропуска не оформляются заблокированному арендатору и после конца договора. */
 export function assertTenantAcceptsPasses(ctx: PassContext): void {
   const { tenant } = ctx;
-  if (tenant.status !== 'active') {
+  // Блокировка «запретить въезд» новые пропуска не запрещает (Q-73): они оформляются и ждут снятия.
+  if (tenant.status !== 'active' && tenant.status !== 'blocked_entry') {
     const why = {
       blocked_new_passes: 'новые пропуска арендатору запрещены',
-      blocked_entry: 'въезд арендатору запрещён',
+      blocked_full: 'арендатор заблокирован полностью',
       archived: 'арендатор в архиве',
     }[tenant.status];
     throw new AppError('tenant_blocked', {

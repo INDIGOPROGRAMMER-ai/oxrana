@@ -673,3 +673,17 @@ notifications
 | 5 | `invitations.revoked_at`, `device_enrollments.created_by`, `users.consent_at` | отзыв и повторная отправка приглашения; кто выдал код привязки; согласие на ПДн при принятии приглашения | аудит и 152-ФЗ (§6) |
 | 6 | `passes.approval_escalated_at` | время эскалации согласования | эскалация по `approval_policies.escalation_hours` выполняется один раз |
 | 7 | функции `auth_org_of_token(kind, hash)`, `auth_user_organizations(user_id)`, `app_organization_ids()` | `SECURITY DEFINER`, владелец `oxrana_owner`, `EXECUTE` — только `oxrana_app`; возвращают **только id организации** | токен устройства, код привязки и ссылка приглашения приходят без организации, а таблицы под RLS; дальше запрос идёт обычным путём в контексте найденной организации |
+
+## 10. Уточнения реализации (этап 6b)
+
+Решения — ADR-021. Миграция `0007_admin_rules.sql` (сгенерирована; права и RLS новой таблицы — в ней же).
+
+| # | Где | Что | Почему |
+|---|---|---|---|
+| 1 | `tenants.status` | + `blocked_full` (полная блокировка: нельзя ни оформлять пропуска, ни въезжать; выезд разрешён всегда). `blocked_new_passes` — только новые пропуска; `blocked_entry` — только въезд (новые пропуска оформлять можно) | три режима блокировки арендатора с последствиями (Q-73) |
+| 2 | `tenants.status_reason`, `tenants.status_changed_at` | причина и время последней смены статуса | карточка арендатора показывает, почему он заблокирован; подробности — в `audit_log` |
+| 3 | `stored_files` (новая) | `id`, `organization_id`, `kind` (`contract`), `file_name`, `content_type`, `size_bytes`, `sha256`, `created_by`, `created_at`, `deleted_at`; сам файл — в `FileStore` по ключу `<organization_id>/<id>` | файл договора необязателен, лежит на локальном томе (Q-63, ADR-021); `contracts.file_ref` = `stored_files.id` |
+| 4 | `vehicle_categories_preset_key` | частичный индекс: `where preset_code is not null and deleted_at is null` | повторное включение мягко удалённого типа из набора (Q-68) |
+| 5 | `pedestrian_rules_tenant_zone_key` (новый) | `unique (tenant_id, coalesce(zone_id, nil)) where deleted_at is null` | одно правило на «арендатор × зона» и одно «везде у арендатора»; движок берёт первое найденное, дубль был бы молчаливой неоднозначностью (Q-66) |
+| 6 | `organizations.settings` | ключ `trackContracts` (bool, по умолчанию `true`) — `OrganizationSettings` | «Вести договоры»: выключено — разделы и поля договоров скрыты (договоры могут быть коммерческой тайной) |
+| 7 | `blacklist` | без изменений схемы; запись «объект» (`site_id`) или «организация» (`site_id is null`); срок `valid_to` (`null` — бессрочно); `created_by` | ADR-017: API и экраны — этап 6b |

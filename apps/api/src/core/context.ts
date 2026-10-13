@@ -8,6 +8,7 @@ import { type Db, type DbTx, schema, withOrganization } from '@oxrana/db';
 import type { FastifyRequest } from 'fastify';
 import { type AccessScope, type Actor, coversSite, coversTenant, permissionsIn } from '../actor';
 import type { AuthMessenger } from '../auth/messenger';
+import type { FileStore } from '../files/store';
 import type { Clock } from '../clock';
 import { AppError } from '../errors';
 import { forbiddenFor, permissionList } from '../permission-guard';
@@ -39,6 +40,9 @@ export interface AppDeps {
   readonly hub: EventHub;
   readonly ruleSets: RuleSetCache;
   readonly hooks: ServiceHooks;
+  /** Файлы (договоры) и предел размера загрузки. */
+  readonly files: FileStore;
+  readonly fileMaxBytes: number;
 }
 
 declare module 'fastify' {

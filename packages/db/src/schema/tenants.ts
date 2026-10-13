@@ -11,7 +11,15 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { deletedAt, enumCheck, id, organizationIsolation, timestamps } from './_helpers';
+import {
+  deletedAt,
+  enumCheck,
+  id,
+  NIL_UUID,
+  organizationIsolation,
+  timestamps,
+  tstz,
+} from './_helpers';
 import { vehicleCategories } from './catalogs';
 import { docks, organizationId, parkingAreas, siteId, zones } from './organization';
 
@@ -29,6 +37,9 @@ export const tenants = pgTable(
     /** A6: оператор объекта — арендатор без лимитов. */
     isOperator: boolean('is_operator').notNull().default(false),
     status: text('status', { enum: TENANT_STATUSES }).notNull().default('active'),
+    /** Почему арендатор заблокирован и когда статус менялся (подробности — в аудите). */
+    statusReason: text('status_reason'),
+    statusChangedAt: tstz('status_changed_at'),
     /** A5: грузовые только к докам. */
     trucksDockRequired: boolean('trucks_dock_required').notNull().default(false),
     /** Предзаполняется в форме, но не подставляется молча (ADR-012 п. 6). */
@@ -151,7 +162,14 @@ export const pedestrianRules = pgTable(
     deletedAt: deletedAt(),
     ...timestamps(),
   },
-  (t) => [enumCheck('pedestrian_rules', t.escort, PEDESTRIAN_ESCORTS), organizationIsolation()],
+  (t) => [
+    enumCheck('pedestrian_rules', t.escort, PEDESTRIAN_ESCORTS),
+    // одно правило на «арендатор × зона» и одно «везде» (zone_id is null): движок берёт первое найденное
+    uniqueIndex('pedestrian_rules_tenant_zone_key')
+      .on(t.tenantId, sql`coalesce(${t.zoneId}, '${sql.raw(NIL_UUID)}'::uuid)`)
+      .where(sql`${t.deletedAt} is null`),
+    organizationIsolation(),
+  ],
 );
 
 export const fleetVehicles = pgTable(

@@ -1,6 +1,7 @@
 import { createDb, createPool, pingDb } from '@oxrana/db';
 import { buildApp } from './app';
 import { ConfigError, loadConfig } from './config';
+import { LocalFileStore } from './files/store';
 import { loggerOptions } from './logger';
 import { processApprovalTimeouts } from './modules/passes/approvals';
 import { EventHub } from './realtime/hub';
@@ -26,7 +27,14 @@ const app = await buildApp({
   trustProxy: config.TRUST_PROXY,
   readiness: () => pingDb(pool),
   exposeOpenApi: config.NODE_ENV !== 'production',
-  services: { db, hub, publicUrl: config.PUBLIC_URL, gateUrl: config.GATE_URL },
+  services: {
+    db,
+    hub,
+    publicUrl: config.PUBLIC_URL,
+    gateUrl: config.GATE_URL,
+    files: new LocalFileStore(config.FILES_DIR),
+    fileMaxBytes: config.FILE_MAX_BYTES,
+  },
 });
 // Outbox → LISTEN/NOTIFY → SSE (ADR-004): одно выделенное соединение на процесс.
 const listener = new EventListener({

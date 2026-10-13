@@ -1,3 +1,5 @@
+import './i18n';
+
 export * from './api';
 export * from './batch';
 export * from './enums';

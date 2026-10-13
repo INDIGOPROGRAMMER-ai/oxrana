@@ -5,6 +5,7 @@ import {
   ApprovalPolicyPatchSchema,
   ApprovalPolicyViewSchema,
   ExceptionCreateSchema,
+  ExceptionListQuerySchema,
   type ExceptionMatch,
   ExceptionPatchSchema,
   ExceptionViewSchema,
@@ -395,6 +396,11 @@ export function registerRulesModule(app: FastifyInstance): void {
     createSchema: ExceptionCreateSchema,
     patchSchema: ExceptionPatchSchema,
     viewSchema: ExceptionViewSchema,
+    // Вкладка арендатора просит только его исключения: фильтр на сервере, а не на экране (Q-66).
+    listQuery: ExceptionListQuerySchema,
+    listFilter: (_ctx, query) => [
+      typeof query.tenantId === 'string' ? eq(schema.exceptions.tenantId, query.tenantId) : undefined,
+    ],
     labels: { tenantId: 'tenant', basisClauseId: 'clause' },
     toView: (r) => ({
       id: r.id,
