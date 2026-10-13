@@ -1,6 +1,13 @@
 import { parseArgs } from 'node:util';
 import { createDb, createPool } from '@oxrana/db';
-import { BootstrapError, bootstrapOrganization, issueOwnerLink } from './bootstrap-core';
+import {
+  BootstrapError,
+  type CheckableField,
+  CHECKABLE_FIELDS,
+  bootstrapOrganization,
+  checkBootstrapField,
+  issueOwnerLink,
+} from './bootstrap-core';
 
 /**
  * `pnpm bootstrap --org "…" --slug … --timezone … --owner-name "…" --owner-email …` — чистый
@@ -16,6 +23,9 @@ const USAGE = `Чистый старт: организация и владеле
 Новая ссылка установки пароля для владельца (прежняя истекла):
   pnpm bootstrap --new-owner-link --owner-email owner@example.ru
 
+Проверка одного значения без базы (её использует oxranactl при вводе; код выхода 1 — значение неверно):
+  node dist/bootstrap.js --check timezone=Asia/Yekaterinburg
+
 Переменные: DATABASE_ADMIN_URL (владелец схемы), PUBLIC_URL (адрес веб-кабинета для ссылки).`;
 
 const { values } = parseArgs({
@@ -27,6 +37,7 @@ const { values } = parseArgs({
     'owner-email': { type: 'string' },
     'owner-phone': { type: 'string' },
     'new-owner-link': { type: 'boolean' },
+    check: { type: 'string' },
     help: { type: 'boolean', short: 'h' },
   },
   allowPositionals: false,
@@ -34,6 +45,21 @@ const { values } = parseArgs({
 
 if (values.help) {
   console.log(USAGE);
+  process.exit(0);
+}
+if (values.check !== undefined) {
+  const eq = values.check.indexOf('=');
+  const field = values.check.slice(0, eq);
+  const value = values.check.slice(eq + 1);
+  if (eq < 0 || !(CHECKABLE_FIELDS as readonly string[]).includes(field)) {
+    console.error(`--check: ожидается поле=значение, поле — одно из ${CHECKABLE_FIELDS.join(', ')}.`);
+    process.exit(2);
+  }
+  const problem = checkBootstrapField(field as CheckableField, value);
+  if (problem) {
+    console.error(problem);
+    process.exit(1);
+  }
   process.exit(0);
 }
 const adminUrl = process.env.DATABASE_ADMIN_URL;

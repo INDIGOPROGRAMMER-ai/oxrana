@@ -39,6 +39,29 @@ check "лишние параметры — отказ" rejects stand.example.ru 
 parse_args Stand.Example.RU owner@example.ru
 check "домен приводится к нижнему регистру" test "$DOMAIN" = stand.example.ru
 
+echo "ключ администратора (защита от запирания на сервере)"
+keys="$work/authorized_keys"
+body='AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKKsL3f0BiY4uJaQuSnEXAMPLE'
+check "нет файла — ключа нет" bash -c ". '$here/../setup-vps.sh'; ! admin_key_present '$work/нет-такого'"
+: >"$keys"
+check "пустой файл — ключа нет" bash -c ". '$here/../setup-vps.sh'; ! admin_key_present '$keys'"
+printf '# ssh-ed25519 %s закомментирован\n\n' "$body" >"$keys"
+check "закомментированный ключ не считается" bash -c ". '$here/../setup-vps.sh'; ! admin_key_present '$keys'"
+printf 'restrict ssh-ed25519 %s oxrana-deploy\n' "$body" >"$keys"
+check "ключ с параметрами (restrict) считается ключом" bash -c ". '$here/../setup-vps.sh'; admin_key_present '$keys'"
+printf 'ssh-ed25519 %s admin@laptop\n' "$body" >"$keys"
+check "обычный ключ ed25519 находится" bash -c ". '$here/../setup-vps.sh'; admin_key_present '$keys'"
+printf 'ssh-rsa %s\n' "$body" >"$keys"
+check "ключ rsa находится" bash -c ". '$here/../setup-vps.sh'; admin_key_present '$keys'"
+printf 'ssh-ed25519 коротко\n' >"$keys"
+check "обрезанная строка не считается ключом" bash -c ". '$here/../setup-vps.sh'; ! admin_key_present '$keys'"
+: >"$keys"
+out="$(bash -c "OXRANA_ROOT_AUTH_KEYS='$keys' SETUP_SOURCE_ONLY=1; . '$here/../setup-vps.sh'; require_admin_key" 2>&1)" && rc=0 || rc=$?
+check "без ключа скрипт останавливается с ошибкой" test "$rc" -ne 0
+check "…и объясняет, как добавить ключ" bash -c "[[ '$out' == *'authorized_keys'* && '$out' == *'ssh-keygen'* && '$out' == *'Ничего не изменено'* ]]"
+printf 'ssh-ed25519 %s a@b\n' "$body" >"$keys"
+check "с ключом проверка проходит молча" bash -c "OXRANA_ROOT_AUTH_KEYS='$keys' SETUP_SOURCE_ONLY=1; . '$here/../setup-vps.sh'; require_admin_key"
+
 echo "запись .env"
 env="$work/e.env"
 printf 'A=1\nSTAND_DOMAIN=old.example.ru\n' >"$env"

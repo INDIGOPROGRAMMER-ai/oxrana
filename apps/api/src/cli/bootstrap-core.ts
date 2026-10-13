@@ -40,24 +40,55 @@ export class BootstrapError extends Error {
   }
 }
 
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/;
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** Поля, которые `oxranactl bootstrap` проверяет сразу при вводе (`bootstrap.js --check поле=значение`). */
+export const CHECKABLE_FIELDS = ['org', 'slug', 'timezone', 'owner-name', 'owner-email'] as const;
+export type CheckableField = (typeof CHECKABLE_FIELDS)[number];
+
+/** Одна проверка поля; `null` — значение годится. Тексты называют причину и пример. */
+export function checkBootstrapField(field: CheckableField, value: string): string | null {
+  switch (field) {
+    case 'org':
+      return value.trim().length < 2 ? 'Название организации: не короче двух символов.' : null;
+    case 'slug':
+      return SLUG_RE.test(value)
+        ? null
+        : 'Короткое имя: латиница в нижнем регистре, цифры и дефис, 3–50 символов (например, integraciya).';
+    case 'timezone':
+      return isValidTimezone(value)
+        ? null
+        : `Неизвестный часовой пояс «${value}». Нужен адрес вида Область/Город, например Asia/Yekaterinburg (Челябинск) или Europe/Moscow.`;
+    case 'owner-name':
+      return value.trim().length < 2 ? 'ФИО владельца: фамилия и имя.' : null;
+    case 'owner-email':
+      return EMAIL_RE.test(value) ? null : 'E-mail в виде name@example.ru — это логин владельца.';
+  }
+}
+
 function validate(input: BootstrapInput): string[] {
   const problems: string[] = [];
-  if (input.organizationName.trim().length < 2) problems.push('--org: название организации');
-  if (!/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/.test(input.slug)) {
+  if (checkBootstrapField('org', input.organizationName)) {
+    problems.push('--org: название организации');
+  }
+  if (checkBootstrapField('slug', input.slug)) {
     problems.push(
       '--slug: латиница в нижнем регистре, цифры и дефис, 3–50 символов (для адресов и журналов)',
     );
   }
-  if (!isValidTimezone(input.timezone)) {
+  if (checkBootstrapField('timezone', input.timezone)) {
     problems.push(
       `--timezone: неизвестный часовой пояс «${input.timezone}», например Asia/Yekaterinburg`,
     );
   }
-  if (input.ownerName.trim().length < 2) problems.push('--owner-name: фамилия и имя владельца');
+  if (checkBootstrapField('owner-name', input.ownerName)) {
+    problems.push('--owner-name: фамилия и имя владельца');
+  }
   if (!input.ownerEmail && !input.ownerPhone) {
     problems.push('--owner-email или --owner-phone: логин владельца');
   }
-  if (input.ownerEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.ownerEmail)) {
+  if (input.ownerEmail && checkBootstrapField('owner-email', input.ownerEmail)) {
     problems.push('--owner-email: e-mail в виде name@example.ru');
   }
   if (input.ownerPhone && normalizePhone(input.ownerPhone).length < 12) {

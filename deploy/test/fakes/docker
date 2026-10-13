@@ -49,6 +49,15 @@ case "${1:-}" in
             if [ "${FAKE_FAIL_MIGRATE:-}" = 1 ]; then echo "migrate failed" >&2; exit 1; fi
             echo "Миграции применены."
             ;;
+          *bootstrap.js*--check*)
+            # поддельная проверка: значения с «bad» и пояс «yes» неверны (настоящая — Intl в контейнере)
+            all="$*"
+            value="${all##*--check }"
+            echo "check $value" >>"$FAKE_DIR/checks.log"
+            case "$value" in
+              *bad* | timezone=yes) echo "Значение «${value#*=}» неверно." >&2; exit 1 ;;
+            esac
+            ;;
           *bootstrap.js*) echo "ССЫЛКА https://fake.example/password#SECRET-TOKEN args: $*" ;;
         esac
         ;;
