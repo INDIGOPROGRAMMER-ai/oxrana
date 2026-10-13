@@ -2,6 +2,7 @@
  * `evaluate` (RULES_ENGINE §3, §9): цепочка проверок, trace и вердикт. Все проверки выполняются
  * до конца (кроме «пропуск не найден»), чтобы администратор видел всю цепочку.
  */
+import { findBlacklisted } from './blacklist';
 import { resolveCandidates, resolvePedestrian } from './candidates';
 import { applicableQuotas, capacityOf } from './quotas';
 import { matchingRoutes, participantAdmitted } from './routing';
@@ -15,6 +16,7 @@ import {
 } from './time';
 import type {
   ApprovedOverride,
+  BlacklistEntryView,
   CandidateView,
   CategoryView,
   CheckKind,
@@ -42,7 +44,7 @@ import type {
 import { collectWaivers, type Waivers } from './waivers';
 
 /** Семвер движка: пишется в `gate_decisions.engine_version`. */
-export const ENGINE_VERSION = '0.3.0';
+export const ENGINE_VERSION = '0.4.0';
 
 const SEVERITY_RANK: Readonly<Record<Severity, number>> = {
   allow: 0,
@@ -238,14 +240,12 @@ const passStatus: Check = (ctx) => {
 
 function blacklistHit(ctx: Ctx) {
   const { pass: p, input } = ctx;
-  const name = (p.personName ?? '').trim().toLocaleUpperCase('ru-RU');
-  return input.rules.blacklist.find(
-    (b) =>
-      (b.validTo === null || b.validTo > input.now) &&
-      ((b.plateNorm !== null && p.plateNorm !== null && b.plateNorm === p.plateNorm) ||
-        (b.personName !== null &&
-          name.length > 0 &&
-          b.personName.trim().toLocaleUpperCase('ru-RU') === name)),
+  return (
+    findBlacklisted(
+      input.rules.blacklist,
+      { plateNorm: p.plateNorm, personName: p.personName },
+      input.now,
+    ) ?? undefined
   );
 }
 
@@ -999,6 +999,41 @@ function describeCandidates(input: EvaluationInput, passes: readonly PassView[])
     .join(', ');
 }
 
+/**
+ * Номер или имя из чёрного списка без пропуска: красный вердикт с причиной, как и при найденном
+ * пропуске (решение этапа 7a). Действий «запросить пропуск» и «исключение» нет: остаются отказ и
+ * звонок администратору. Исключение не предусмотрено — запись в списке сильнее.
+ */
+function blacklistedNoPass(input: EvaluationInput, hit: BlacklistEntryView): Verdict {
+  const reason: Reason = {
+    code: 'blacklisted',
+    message: `В чёрном списке: ${hit.reason}`,
+    settingLink: 'Настройки → Чёрный список',
+  };
+  return compose({
+    input,
+    pass: null,
+    outcomes: [
+      {
+        trace: {
+          check: 'pass_found',
+          result: 'fail',
+          severity: 'info',
+          details: { candidates: 0 },
+        },
+      },
+      fail('blacklist', 'deny', reason, { details: { entryId: hit.id } }),
+    ],
+    waivers: null,
+    forcedCode: 'deny',
+  });
+}
+
+/** Предупреждение на выезде: выпускать всегда, но сообщить администратору (Q-10). */
+function blacklistedLeavingLine(hit: BlacklistEntryView | null): readonly string[] {
+  return hit ? [`В чёрном списке: ${hit.reason} — выпустить, сообщить администратору`] : [];
+}
+
 /** Пропуск, по которому идут проверки, или готовый вердикт «пропуска нет». */
 function resolveSubject(
   input: EvaluationInput,
@@ -1027,6 +1062,12 @@ function resolveSubject(
       const own = openVisit && openVisit.passId === resolved.pass.id ? openVisit : null;
       return { pass: resolved.pass, openVisit: own, pastVisits: [] };
     }
+    const listed = findBlacklisted(
+      input.rules.blacklist,
+      { plateNorm: subject.plateNorm },
+      input.now,
+    );
+    if (listed && input.direction === 'in') return blacklistedNoPass(input, listed);
     if (resolved.kind === 'choose') {
       return noPass(
         input,
@@ -1042,10 +1083,12 @@ function resolveSubject(
         resolved.similar,
         {
           secondary: ['check_out_flagged'],
-          infoLines:
-            resolved.similar.length > 0
+          infoLines: [
+            ...(resolved.similar.length > 0
               ? [`Похожие: ${describeCandidates(input, resolved.similar)}`]
-              : [],
+              : []),
+            ...blacklistedLeavingLine(listed),
+          ],
         },
       );
     }
@@ -1063,6 +1106,12 @@ function resolveSubject(
       null;
     return { pass: resolved.pass, openVisit, pastVisits: [] };
   }
+  const listedPerson = findBlacklisted(
+    input.rules.blacklist,
+    { personName: subject.nameQuery },
+    input.now,
+  );
+  if (listedPerson && input.direction === 'in') return blacklistedNoPass(input, listedPerson);
   if (resolved.kind === 'choose') {
     return noPass(
       input,
@@ -1074,7 +1123,9 @@ function resolveSubject(
       },
     );
   }
-  return noPass(input, `Пешеход не найден: «${subject.nameQuery}»`, []);
+  return noPass(input, `Пешеход не найден: «${subject.nameQuery}»`, [], {
+    infoLines: input.direction === 'out' ? blacklistedLeavingLine(listedPerson) : [],
+  });
 }
 
 /** Выезд через КПП периметра: открытый визит → выпускать; нет визита → выезд с отметкой. */

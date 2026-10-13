@@ -243,6 +243,32 @@ describe('сценарий 17: «Отменить» в течение 2 мину
 });
 
 describe('сценарий 15: машина без пропуска → запрос → «Оформить» → зелёный', () => {
+  it('номер из чёрного списка без пропуска: пост видит красное, а запрос арендатору не уходит (этап 7a)', async () => {
+    const plate = uniquePlate();
+    const listed = await t.as(admin, {
+      method: 'POST',
+      url: `/sites/${KEYS.siteId}/blacklist`,
+      payload: { level: 'site', plate, reason: 'Угроза охране' },
+    });
+    expect(listed.statusCode, listed.body).toBe(201);
+    const check = await t.as(kpp2, {
+      method: 'POST',
+      url: '/gate/check',
+      payload: { direction: 'in', plateQuery: plate },
+    });
+    expect(check.json().verdict).toMatchObject({ code: 'deny', color: 'red' });
+    expect(check.json().verdict.headline).toBe('В чёрном списке: Угроза охране');
+    const request = await t.as(kpp2, {
+      method: 'POST',
+      url: '/gate/requests',
+      payload: { participant: 'vehicle', plate, categoryId: semi, tenantId: dns },
+    });
+    expect(request.statusCode).toBe(403);
+    expect(error(request).field).toBe('plate');
+    expect(error(request).message).toContain('Угроза охране');
+    await t.as(admin, { method: 'DELETE', url: `/blacklist/${listed.json().id}` });
+  });
+
   it('сценарий 15: машина без пропуска — пост спрашивает арендатора, тот оформляет — на посту зелёная карточка', async () => {
     const plate = uniquePlate();
     const before = await t.as(kpp2, {

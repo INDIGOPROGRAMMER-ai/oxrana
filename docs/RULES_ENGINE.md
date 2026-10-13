@@ -110,7 +110,7 @@ evaluate(input):
   1 pass_found      pass != null                               иначе → NO_PASS
   2 pass_status     status == 'approved'                        'pending_approval' → deny «на согласовании»; 'used' → deny «разовый использован» (+ 'request_pass');
                                                                 'cancelled'/'rejected'/'expired' → deny с датой
-  3 blacklist       plate_norm / person_name не в списке        → deny
+  3 blacklist       plate_norm / person_name не в списке        → deny (и когда пропуска нет — см. «Чёрный список без пропуска» ниже)
   4 tenant_status   active | blocked_new_passes                 'blocked_entry'/'archived' → deny «въезд арендатору запрещён: …»
   5 contract        contractValidTo ≥ today(site tz) или нет договора в настройках → иначе deny
   6 pass_validity   valid_from ≤ now ≤ valid_to (permanent: только from)   раньше → wait «пропуск с …»; позже → deny «закончился …»
@@ -142,6 +142,8 @@ evaluate(input):
  15 override        есть ApprovedOverride для (pass|plate, gate, direction), не истёк → worst = ALLOW, appliedOverrideId
   → verdict = compose(worst, reasons, trace, …)
 ```
+
+**Чёрный список без пропуска (этап 7a).** Номер или человек из чёрного списка — красный вердикт `deny` «В чёрном списке: причина» и тогда, когда пропуска нет: ветка `resolveSubject` для `plate` (нет пропуска или номер у нескольких арендаторов) и `pedestrian_lookup` (имя совпало с записью целиком) проверяет `findBlacklisted(rules.blacklist, {plateNorm | personName}, now)` до ответа «пропуска нет». Такой вердикт: trace `pass_found: fail` + `blacklist: fail`, `primaryAction: refuse`, **без** `request_pass`, `override_request` и `choose_tenant`; `passId = null`. Номер с единственным пропуском идёт обычной цепочкой (проверка 3). На выезде без пропуска — прежний `no_pass` с отметкой, чёрный список — строкой «выпустить, сообщить администратору» (Q-10). `findBlacklisted` — чистая функция (время параметром), её же использует форма пропуска кабинета (предупреждение до сохранения) и запрос «машина без пропуска» (`POST /gate/requests` отвечает 403 для номера из списка).
 
 Строгость при объединении: `deny > wrong_gate > wait > allow_overage > allow`. `warn`-результаты не меняют код, но добавляют причину второй строкой.
 
@@ -281,7 +283,7 @@ export function evaluate(input: EvaluationInput): Verdict {
 }
 ```
 
-Публичный API пакета: `evaluate`, `countOccupancy`, `applicableQuotas`, `capacityOf`, `overageDays`, `collectWaivers`, `resolveCandidates`, `resolvePedestrian`, `routeGates` / `matchingRoutes` / `participantAdmitted` (маршрут — та же логика, что у проверки 9; подсказки формы пропуска «Фура → КПП-2», этап 4), `ENGINE_VERSION`, хелперы местного времени (`localParts`, `localDate`, `formatTime`, `formatDateTime`, `isWithinHours`) и типы. Всё остальное — внутреннее.
+Публичный API пакета: `evaluate`, `countOccupancy`, `applicableQuotas`, `capacityOf`, `overageDays`, `collectWaivers`, `findBlacklisted`, `resolveCandidates`, `resolvePedestrian`, `routeGates` / `matchingRoutes` / `participantAdmitted` (маршрут — та же логика, что у проверки 9; подсказки формы пропуска «Фура → КПП-2», этап 4), `ENGINE_VERSION`, хелперы местного времени (`localParts`, `localDate`, `localInstant`, `addLocalDays`, `formatTime`, `formatDateTime`, `isWithinHours`) и типы. Всё остальное — внутреннее.
 
 ## 10. Сценарии приёмки → проверка движка
 

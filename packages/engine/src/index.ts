@@ -2,8 +2,9 @@
  * Движок вердикта (docs/RULES_ENGINE.md): чистые функции без БД, сети и системных часов. Время и
  * все данные приходят параметрами; один и тот же код работает в API, на посту офлайн, в песочнице
  * и в тестах. Публичный API: `evaluate`, `countOccupancy`, `applicableQuotas`, `overageDays`,
- * `collectWaivers`, `resolveCandidates`, `routeGates`, `ENGINE_VERSION` и типы.
+ * `collectWaivers`, `findBlacklisted`, `resolveCandidates`, `routeGates`, `ENGINE_VERSION` и типы.
  */
+export { type BlacklistSubject, findBlacklisted } from './blacklist';
 export { type CandidateResolution, resolveCandidates, resolvePedestrian } from './candidates';
 export { ENGINE_VERSION, evaluate } from './evaluate';
 export {
@@ -20,13 +21,16 @@ export {
   routeGates,
 } from './routing';
 export {
+  addLocalDays,
   formatDate,
   formatDateTime,
   formatTime,
   isWithinHours,
   type LocalParts,
   localDate,
+  localInstant,
   localParts,
+  minutesOf,
 } from './time';
 export type * from './types';
 export { collectWaivers, type Waivers } from './waivers';
