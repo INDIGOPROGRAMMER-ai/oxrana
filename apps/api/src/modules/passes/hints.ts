@@ -19,6 +19,7 @@ import { normalizePlate } from '@oxrana/plates';
 import { isTenantUser } from '../../actor';
 import { can, type Scope } from '../../core/context';
 import type { TenantRow } from '../../core/loaders';
+import { loadActorForm } from '../pass-form/service';
 import {
   approvalPolicy,
   blacklistProblem,
@@ -187,9 +188,12 @@ export async function passHints(
   const policy = query.passType
     ? await approvalPolicy(s, site.id, tenant.id, creator, query.passType)
     : null;
+  const { form, enforced } = await loadActorForm(s, tenant);
   const passTypes: { passType: PassType; mode: ApprovalMode }[] = [];
   for (const passType of PASS_TYPES) {
     if (!can(s.ctx, `pass.create.${passType}`)) continue;
+    // Виды пропусков, отключённые в настройке формы, не показываются вовсе (ADR-023).
+    if (enforced && !form.passTypes.includes(passType)) continue;
     const p = await approvalPolicy(s, site.id, tenant.id, creator, passType);
     const mode = p?.mode ?? 'on_request';
     if (mode !== 'deny') passTypes.push({ passType, mode });
@@ -228,6 +232,24 @@ export async function passHints(
 
   const notices = formNotices(ctx, query);
 
+  // Окно прибытия: форма (уровни настройки) главнее политики окон, если форма применяется (ADR-023).
+  const policyRequires = (windowPolicy?.windowRequired ?? false) && !waived.has('time_window');
+  const windowMode = form.fields.window;
+  function windowHint() {
+    const base = {
+      earlyToleranceMin: windowPolicy?.earlyToleranceMin ?? 0,
+      lateToleranceMin: windowPolicy?.lateToleranceMin ?? null,
+    };
+    if (!enforced || windowMode === 'policy') {
+      return { required: policyRequires, autoFilled: false, ...base };
+    }
+    return {
+      required: windowMode === 'required',
+      autoFilled: windowMode !== 'required' && policyRequires,
+      ...base,
+    };
+  }
+
   const pedestrianRule =
     query.participant === 'pedestrian'
       ? (rules.pedestrianRules.find(
@@ -248,21 +270,20 @@ export async function passHints(
             : `${APPROVAL_TEXT.on_request}: политика согласования для такого пропуска не задана`,
         }
       : null,
-    commentRequired: policy?.commentRequired ?? false,
+    commentRequired:
+      (policy?.commentRequired ?? false) || (enforced && form.fields.comment === 'required'),
     dock: {
       required: dockRequired,
       docks: docks.map((d) => ({ id: d.id, number: d.number })),
       text: docks.length > 0 ? `${whose}: ${dockRanges(docks.map((d) => d.number))}` : null,
     },
-    window: {
-      required: (windowPolicy?.windowRequired ?? false) && !waived.has('time_window'),
-      earlyToleranceMin: windowPolicy?.earlyToleranceMin ?? 0,
-      lateToleranceMin: windowPolicy?.lateToleranceMin ?? null,
-    },
+    window: windowHint(),
     pedestrianRule,
     categories:
       query.participant === 'vehicle'
-        ? availableCategories(rules, tenant.id, now, tz).map((c) => ({ id: c.id, name: c.name }))
+        ? availableCategories(rules, tenant.id, now, tz)
+            .filter((c) => !enforced || form.categoryIds === null || form.categoryIds.includes(c.id))
+            .map((c) => ({ id: c.id, name: c.name }))
         : [],
     passTypes,
     notices,

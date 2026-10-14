@@ -78,6 +78,20 @@
       "when": 1791898938189,
       "tag": "0010_requester_occupancy_role_templates_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791960917830,
+      "tag": "0011_pass_form_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791964517830,
+      "tag": "0012_pass_form_role_templates_sync",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,7 @@ import type { FileStore } from '../files/store';
 import { forbiddenFor, permissionList } from '../permission-guard';
 import type { EventHub } from '../realtime/hub';
 import type { AuditDiff } from './diff';
+import { runEmitHooks } from './event-hooks';
 import type { RuleSetCache } from './ruleset-cache';
 
 /** Точки внедрения для тестов (гонка ADR-006): в рабочем сервере пусты. */
@@ -209,7 +210,16 @@ export class Scope {
       })
       .returning({ id: schema.domainEvents.id });
     this.emitted.push({ type, siteId: input.siteId });
-    return row?.id ?? 0;
+    const eventId = row?.id ?? 0;
+    await runEmitHooks(this, {
+      id: eventId,
+      type,
+      siteId: input.siteId,
+      aggregate: input.aggregate,
+      aggregateId: input.aggregateId,
+      payload,
+    });
+    return eventId;
   }
 }
 

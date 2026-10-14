@@ -1,6 +1,7 @@
 import { PERMISSIONS } from '@oxrana/contracts';
 import {
   type Db,
+  type DbTx,
   organizationOfToken,
   schema,
   userOrganizations,
@@ -35,34 +36,41 @@ function rolePermissions(role: { permissions: string[]; templateCode: string | n
 
 /** Назначения ролей пользователя в организации — права и область каждого (ADR-018). */
 export async function userGrants(db: Db, organizationId: string, userId: string): Promise<Grant[]> {
-  return withOrganization(db, organizationId, async (tx) => {
-    const rows = await tx
-      .select({
-        permissions: schema.roles.permissions,
-        templateCode: schema.roles.templateCode,
-        siteId: schema.roleAssignments.siteId,
-        tenantId: schema.roleAssignments.tenantId,
-        tenantSiteId: schema.tenants.siteId,
-        tenantDeleted: schema.tenants.deletedAt,
-      })
-      .from(schema.roleAssignments)
-      .innerJoin(schema.roles, eq(schema.roles.id, schema.roleAssignments.roleId))
-      .leftJoin(schema.tenants, eq(schema.tenants.id, schema.roleAssignments.tenantId))
-      .where(
-        and(
-          eq(schema.roleAssignments.organizationId, organizationId),
-          eq(schema.roleAssignments.userId, userId),
-          isNull(schema.roles.deletedAt),
-        ),
-      );
-    return rows
-      .filter((r) => r.tenantId === null || r.tenantDeleted === null)
-      .map((r) => ({
-        permissions: rolePermissions(r),
-        siteId: r.tenantId !== null ? (r.tenantSiteId ?? r.siteId) : r.siteId,
-        tenantId: r.tenantId,
-      }));
-  });
+  return withOrganization(db, organizationId, (tx) => grantsOf(tx, organizationId, userId));
+}
+
+/** То же внутри уже открытой транзакции организации: второе соединение из пула не нужно. */
+export async function grantsOf(
+  tx: DbTx,
+  organizationId: string,
+  userId: string,
+): Promise<Grant[]> {
+  const rows = await tx
+    .select({
+      permissions: schema.roles.permissions,
+      templateCode: schema.roles.templateCode,
+      siteId: schema.roleAssignments.siteId,
+      tenantId: schema.roleAssignments.tenantId,
+      tenantSiteId: schema.tenants.siteId,
+      tenantDeleted: schema.tenants.deletedAt,
+    })
+    .from(schema.roleAssignments)
+    .innerJoin(schema.roles, eq(schema.roles.id, schema.roleAssignments.roleId))
+    .leftJoin(schema.tenants, eq(schema.tenants.id, schema.roleAssignments.tenantId))
+    .where(
+      and(
+        eq(schema.roleAssignments.organizationId, organizationId),
+        eq(schema.roleAssignments.userId, userId),
+        isNull(schema.roles.deletedAt),
+      ),
+    );
+  return rows
+    .filter((r) => r.tenantId === null || r.tenantDeleted === null)
+    .map((r) => ({
+      permissions: rolePermissions(r),
+      siteId: r.tenantId !== null ? (r.tenantSiteId ?? r.siteId) : r.siteId,
+      tenantId: r.tenantId,
+    }));
 }
 
 /** Актор пользователя в организации; без назначений — `null` (входить некуда). */

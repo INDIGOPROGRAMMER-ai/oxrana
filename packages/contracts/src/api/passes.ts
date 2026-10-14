@@ -3,6 +3,7 @@ import {
   ApprovalModeSchema,
   ChangeRequestStatusSchema,
   ParticipantSchema,
+  PassPhaseSchema,
   PassSourceSchema,
   PassStatusSchema,
   PassTypeSchema,
@@ -102,6 +103,8 @@ export const PassViewSchema = z.object({
   updatedAt: InstantSchema,
   /** Пропуск уже начался — правка с причиной, у арендатора номер/тип/срок — заявкой (A8). */
   started: z.boolean(),
+  /** Что можно править: до въезда — почти всё; после въезда — комментарий и срок; иначе только просмотр. */
+  phase: PassPhaseSchema,
 });
 export type PassView = z.infer<typeof PassViewSchema>;
 
@@ -243,6 +246,8 @@ export const PassHintsSchema = z.object({
     required: z.boolean(),
     earlyToleranceMin: z.int(),
     lateToleranceMin: z.int().nullable(),
+    /** Политика окон требует окно, а форма — нет: не указанное окно = весь срок пропуска. */
+    autoFilled: z.boolean(),
   }),
   pedestrianRule: z.string().nullable(),
   /** Типы транспорта, доступные арендатору (лимит 0 — не предусмотрено договором — не показывается). */

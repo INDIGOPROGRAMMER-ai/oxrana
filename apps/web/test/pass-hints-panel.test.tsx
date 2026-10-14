@@ -18,7 +18,7 @@ const hints = (over: Partial<PassHints> = {}): PassHints => ({
   approval: { mode: 'on_request', text: 'Уйдёт на согласование' },
   commentRequired: false,
   dock: { required: true, docks: [{ id: 'd1', number: '1' }], text: 'Ваши доки: 1–18, 66–72' },
-  window: { required: true, earlyToleranceMin: 0, lateToleranceMin: 60 },
+  window: { required: true, autoFilled: false, earlyToleranceMin: 0, lateToleranceMin: 60 },
   pedestrianRule: null,
   categories: [],
   passTypes: [],

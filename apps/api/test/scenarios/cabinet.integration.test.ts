@@ -417,7 +417,8 @@ describe('«Повторить вчерашний день»', () => {
     const plateB = nextPlate();
     t.clock.set('2026-03-09T07:00:00.000Z');
     for (const plate of [plateA, plateB]) {
-      const res = await t.as(logist, {
+      // водителя вписал администратор: у логиста поле «ФИО водителя» по умолчанию скрыто (ADR-023)
+      const res = await t.as(admin, {
         method: 'POST',
         url: '/passes',
         payload: {
@@ -454,7 +455,8 @@ describe('«Повторить вчерашний день»', () => {
     expect(copy).toMatchObject({
       validFrom: at('12:00'),
       validTo: at('20:00'),
-      driverName: 'Вчерашний В. В.',
+      // скрытое настройкой формы поле в копию не переносится
+      driverName: null,
     });
 
     // второй раз — те же номера уже есть на сегодня: дубли отмечены ошибками строк, не падением

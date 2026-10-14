@@ -1,5 +1,6 @@
 import {
   CabinetContextSchema,
+  type PassFormFieldKey,
   PassBatchResultSchema,
   PassRepeatSchema,
   TenantParamsSchema,
@@ -11,6 +12,7 @@ import { and, asc, eq, gt, gte, inArray, isNull, lt, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { ctxOf } from '../../core/context';
+import { loadActorForm } from '../pass-form/service';
 import { loadSite, loadTenant } from '../../core/loaders';
 import { siteTimeLabel } from '../org/sites';
 import { createBatch } from './batch';
@@ -260,24 +262,27 @@ export function registerCabinetRoutes(app: FastifyInstance): void {
             clampToNow && shiftPastToNow && moved < nowMs ? nowMs : moved,
           ).toISOString();
         };
+        // Поля, скрытые настройкой формы, в копию не переносятся (ADR-023): копия следует нынешней форме.
+        const { form, enforced } = await loadActorForm(s, tenant);
+        const keep = (key: PassFormFieldKey) => !enforced || form.fields[key] !== 'hidden';
         const drafts = rows.map((p) => ({
           passType: 'single' as const,
           participant: p.participant,
           ...(p.plateRaw ? { plate: p.plateRaw } : {}),
           categoryId: p.categoryId,
-          brand: p.brand,
+          brand: keep('brand') ? p.brand : null,
           personName: p.personName,
           personDocument: p.personDocument,
-          driverName: p.driverName,
-          driverPhone: p.driverPhone,
-          purposeId: p.purposeId,
-          destinationZoneId: p.destinationZoneId,
+          driverName: keep('driverName') ? p.driverName : null,
+          driverPhone: keep('driverPhone') ? p.driverPhone : null,
+          purposeId: keep('purpose') ? p.purposeId : null,
+          destinationZoneId: keep('destination') ? p.destinationZoneId : null,
           dockId: p.dockId,
           validFrom: shift(p.validFrom, true) ?? undefined,
           validTo: shift(p.validTo),
-          windowFrom: shift(p.windowFrom, true),
-          windowTo: shift(p.windowTo),
-          comment: p.comment,
+          windowFrom: keep('window') ? shift(p.windowFrom, true) : null,
+          windowTo: keep('window') ? shift(p.windowTo) : null,
+          comment: keep('comment') ? p.comment : null,
         }));
         return createBatch(s, tenant, drafts, dryRun ?? false);
       });

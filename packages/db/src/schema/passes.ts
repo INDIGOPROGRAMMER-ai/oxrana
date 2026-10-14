@@ -1,11 +1,23 @@
 import {
   CHANGE_REQUEST_STATUSES,
+  PASS_FORM_LEVELS,
   PARTICIPANTS,
   PASS_SOURCES,
   PASS_STATUSES,
   PASS_TYPES,
 } from '@oxrana/contracts';
-import { type AnyPgColumn, index, integer, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+  type AnyPgColumn,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { createdAt, enumCheck, id, organizationIsolation, timestamps, tstz } from './_helpers';
 import { vehicleCategories, visitPurposes } from './catalogs';
 import { docks, organizationId, siteId, zones } from './organization';
@@ -146,4 +158,34 @@ export const passTokens = pgTable(
     createdAt: createdAt(),
   },
   () => [organizationIsolation()],
+);
+
+/**
+ * Настройка формы пропуска по уровням «объект → арендатор → сотрудник» (этап 7b, ADR-023).
+ * `settings` — только заданные на уровне ключи (zod `PassFormSettings`); пустой уровень не хранится.
+ */
+export const passFormSettings = pgTable(
+  'pass_form_settings',
+  {
+    id: id(),
+    organizationId: organizationId(),
+    siteId: siteId(),
+    level: text('level', { enum: PASS_FORM_LEVELS }).notNull(),
+    tenantId: uuid('tenant_id').references(() => tenants.id),
+    userId: uuid('user_id').references(() => users.id),
+    settings: jsonb('settings').notNull(),
+    updatedBy: uuid('updated_by'),
+    ...timestamps(),
+  },
+  (t) => [
+    unique('pass_form_settings_key').on(t.siteId, t.level, t.tenantId, t.userId).nullsNotDistinct(),
+    enumCheck('pass_form_settings', t.level, PASS_FORM_LEVELS),
+    check(
+      'pass_form_settings_level_scope_check',
+      sql`(${t.level} = 'site' and ${t.tenantId} is null and ${t.userId} is null)
+        or (${t.level} = 'tenant' and ${t.tenantId} is not null and ${t.userId} is null)
+        or (${t.level} = 'user' and ${t.tenantId} is not null and ${t.userId} is not null)`,
+    ),
+    organizationIsolation(),
+  ],
 );

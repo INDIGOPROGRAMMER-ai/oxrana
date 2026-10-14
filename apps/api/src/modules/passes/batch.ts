@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import type { Scope } from '../../core/context';
 import type { TenantRow } from '../../core/loaders';
 import { AppError } from '../../errors';
+import { loadActorForm } from '../pass-form/service';
 import { createPass, type PassWarning } from './service';
 
 /** Откат строки предпросмотра: пропуск проверен вставкой (в том числе на дубли) и не сохранён. */
@@ -64,12 +65,14 @@ export async function createBatch(
     passes: [],
   };
   const via = s.ctx.actor.kind === 'gate_account' ? 'gate' : 'web';
+  const form = await loadActorForm(s, tenant);
   for (const [index, draft] of rows.entries()) {
     const row = index + 1;
     try {
       const created = await s.nested(async (sp) => {
         const pass = await createPass(sp, tenant, draft, {
           via,
+          form,
           ...(batchId ? { batchId } : {}),
         });
         if (dryRun) throw new DryRunRollback(pass.row.status, pass.warnings);

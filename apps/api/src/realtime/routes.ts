@@ -16,7 +16,13 @@ const REPLAY_LIMIT = 1000;
 const HEARTBEAT_MS = 25_000;
 
 /** События объекта, которые видит любой подписчик объекта (без арендатора в payload). */
-const SITE_WIDE = new Set(['rules.changed', 'site.changed', 'site.timezone_changed']);
+const SITE_WIDE = new Set([
+  'rules.changed',
+  'site.changed',
+  'site.timezone_changed',
+  // уровень «объект» настройки формы пропуска (ADR-023)
+  'pass_form.changed',
+]);
 
 /**
  * Кому видно событие (ADR-004 п. 4): пост и сотрудники оператора — все события своего объекта;
@@ -27,6 +33,10 @@ export function visibleTo(actor: Actor, event: Pick<HubEvent, 'type' | 'payload'
   if (event.type === 'queue.slot_freed') {
     if (actor.kind === 'gate_account') return event.payload.gateId === actor.gateId;
     return !isTenantUser(actor);
+  }
+  // Адресные события (уведомление): только адресату, остальным — ни при каких правах.
+  if (typeof event.payload.userId === 'string' && event.type === 'notification.created') {
+    return actor.kind === 'user' && actor.id === event.payload.userId;
   }
   if (!isTenantUser(actor)) return true;
   const tenantId = event.payload.tenantId;
