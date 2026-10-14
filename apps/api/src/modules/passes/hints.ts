@@ -11,7 +11,6 @@ import {
   capacityOf,
   collectWaivers,
   countOccupancy,
-  findBlacklisted,
   type QuotaView,
   type RuleSet,
   routeGates,
@@ -22,6 +21,7 @@ import { can, type Scope } from '../../core/context';
 import type { TenantRow } from '../../core/loaders';
 import {
   approvalPolicy,
+  blacklistProblem,
   creatorKindOf,
   loadPassContext,
   type PassContext,
@@ -72,7 +72,12 @@ export function availableCategories(rules: RuleSet, tenantId: string, now: numbe
  */
 function formNotices(
   ctx: PassContext,
-  query: { participant: Participant; plate?: string | undefined; personName?: string | undefined },
+  query: {
+    participant: Participant;
+    plate?: string | undefined;
+    personName?: string | undefined;
+    validFrom?: string | undefined;
+  },
 ): PassNotice[] {
   const notices: PassNotice[] = [];
   const problem = tenantPassProblem(ctx);
@@ -97,23 +102,15 @@ function formNotices(
     query.participant === 'vehicle' && query.plate?.trim()
       ? normalizePlate(query.plate.trim())
       : null;
-  const listed = findBlacklisted(
-    ctx.rules.blacklist,
+  const listed = blacklistProblem(
+    ctx,
     {
       plateNorm: plate?.norm,
       personName: query.participant === 'pedestrian' ? query.personName : null,
     },
-    ctx.now,
+    query.validFrom ? Date.parse(query.validFrom) : null,
   );
-  if (listed) {
-    notices.push({
-      code: 'blacklisted',
-      severity: 'warning',
-      text: ctx.tenantUser
-        ? `${query.participant === 'vehicle' ? 'Этот номер' : 'Этот человек'} в чёрном списке объекта — на въезде не пропустят. Подробности — у администратора объекта.`
-        : `В чёрном списке: ${listed.reason}. На въезде не пропустят.`,
-    });
-  }
+  if (listed) notices.push({ code: 'blacklisted', severity: 'error', text: listed.message });
   return notices;
 }
 
@@ -128,6 +125,7 @@ export async function passHints(
     /** Номер или имя — только для проверки по чёрному списку; нигде не сохраняются. */
     plate?: string | undefined;
     personName?: string | undefined;
+    validFrom?: string | undefined;
   },
 ) {
   const ctx = await loadPassContext(s, tenant);

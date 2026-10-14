@@ -36,10 +36,16 @@ export function RepeatDay() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrorView | null>(null);
   const [done, setDone] = useState<Result | null>(null);
+  // Q-80: сдвиг начала прошедших на «сейчас» — только по нажатию, без молчаливых подмен
+  const [shiftPast, setShiftPast] = useState(false);
   const source = ctx ? addDays(ctx.today, -1) : '';
-  const body = { sourceDate: source, targetDate: ctx?.today ?? '' };
+  const body = {
+    sourceDate: source,
+    targetDate: ctx?.today ?? '',
+    ...(shiftPast ? { shiftPastToNow: true } : {}),
+  };
   const preview = useQuery({
-    queryKey: ['hints', tenant?.id, 'repeat', source, open],
+    queryKey: ['hints', tenant?.id, 'repeat', source, open, shiftPast],
     queryFn: () =>
       api<Result>(`/tenants/${tenant?.id}/passes/repeat`, {
         method: 'POST',
@@ -72,6 +78,7 @@ export function RepeatDay() {
         if (!next) {
           setDone(null);
           setError(null);
+          setShiftPast(false);
         }
       }}
     >
@@ -114,13 +121,30 @@ export function RepeatDay() {
           <div className="space-y-2" data-testid="repeat-preview">
             <p className="text-sm font-medium">{result.summary}</p>
             {result.errors.length > 0 ? (
-              <ul className="list-disc space-y-1 pl-4 text-sm text-destructive">
+              <ul className="list-disc space-y-1 pl-4 text-sm">
                 {result.errors.map((e) => (
-                  <li key={`${e.row}-${e.message}`}>
+                  <li
+                    key={`${e.row}-${e.message}`}
+                    data-code={e.code}
+                    className={e.code === 'starts_in_past' ? 'text-warning' : 'text-destructive'}
+                  >
                     строка {e.row}: {e.message}
                   </li>
                 ))}
               </ul>
+            ) : null}
+            {!shiftPast && result.errors.some((e) => e.code === 'starts_in_past') ? (
+              <Button variant="outline" size="sm" onClick={() => setShiftPast(true)}>
+                Сдвинуть начало прошедших на «сейчас»
+              </Button>
+            ) : null}
+            {shiftPast ? (
+              <p className="text-xs text-muted-foreground">
+                Пропуска, чьё начало уже прошло, начнутся «сейчас».{' '}
+                <button type="button" className="underline" onClick={() => setShiftPast(false)}>
+                  Не сдвигать
+                </button>
+              </p>
             ) : null}
           </div>
         ) : null}

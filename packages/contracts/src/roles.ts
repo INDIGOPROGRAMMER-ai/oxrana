@@ -106,6 +106,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       'pass.create.permanent',
       'pass.cancel_own',
       'pass.change_request.create',
+      'occupancy.view', // лимиты своей компании на главной кабинета (Q-77)
       'profile.manage_own',
     ],
   },

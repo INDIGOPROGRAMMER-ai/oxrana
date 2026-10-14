@@ -204,6 +204,8 @@ export const PassHintsQuerySchema = z.strictObject({
 export const PassHintsRequestSchema = PassHintsQuerySchema.extend({
   plate: z.string().max(30).optional(),
   personName: z.string().max(200).optional(),
+  /** Начало пропуска, если оно позже «сейчас»: запись чёрного списка, которая кончается раньше, не мешает. */
+  validFrom: InstantInputSchema.optional(),
 });
 
 /** Предупреждение формы до сохранения: `error` не даст сохранить, `warning` — предупреждает. */

@@ -215,7 +215,7 @@ export function registerCabinetRoutes(app: FastifyInstance): void {
     },
     async (request) => {
       const ctx = ctxOf(request);
-      const { sourceDate, targetDate, dryRun } = request.body;
+      const { sourceDate, targetDate, dryRun, shiftPastToNow } = request.body;
       return ctx.tx(async (s) => {
         const tenant = await loadTenant(s, request.params.tenantId);
         const site = await loadSite(s, tenant.siteId);
@@ -250,10 +250,15 @@ export function registerCabinetRoutes(app: FastifyInstance): void {
         const shiftDays =
           (Date.parse(`${targetDate}T00:00:00Z`) - Date.parse(`${sourceDate}T00:00:00Z`)) /
           86_400_000;
-        const shift = (d: Date | null): string | null => {
+        const nowMs = ctx.now();
+        const shift = (d: Date | null, clampToNow = false): string | null => {
           if (d === null) return null;
           const day = addLocalDays(localDate(d.getTime(), tz), shiftDays);
-          return new Date(localInstant(day, minuteOf(d.getTime(), tz), tz)).toISOString();
+          const moved = localInstant(day, minuteOf(d.getTime(), tz), tz);
+          // «Сдвинуть начало прошедших на сейчас» — только по явному флагу (без молчаливых подмен)
+          return new Date(
+            clampToNow && shiftPastToNow && moved < nowMs ? nowMs : moved,
+          ).toISOString();
         };
         const drafts = rows.map((p) => ({
           passType: 'single' as const,
@@ -268,9 +273,9 @@ export function registerCabinetRoutes(app: FastifyInstance): void {
           purposeId: p.purposeId,
           destinationZoneId: p.destinationZoneId,
           dockId: p.dockId,
-          validFrom: shift(p.validFrom) ?? undefined,
+          validFrom: shift(p.validFrom, true) ?? undefined,
           validTo: shift(p.validTo),
-          windowFrom: shift(p.windowFrom),
+          windowFrom: shift(p.windowFrom, true),
           windowTo: shift(p.windowTo),
           comment: p.comment,
         }));

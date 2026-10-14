@@ -102,5 +102,7 @@ export const FleetBatchSchema = z.strictObject({
 export const PassRepeatSchema = z.strictObject({
   sourceDate: LocalDateSchema,
   targetDate: LocalDateSchema,
+  /** Строки, чьё начало (и начало окна) оказалось в прошлом, начинаются «сейчас»; без флага — отклоняются с причиной. */
+  shiftPastToNow: z.boolean().optional(),
   dryRun: z.boolean().optional(),
 });

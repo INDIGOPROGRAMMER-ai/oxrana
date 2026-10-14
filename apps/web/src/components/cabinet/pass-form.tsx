@@ -13,6 +13,7 @@ import {
   Field,
   type FieldErrorLike,
   Input,
+  localToInstant,
   Select,
   Textarea,
   TimeInput,
@@ -63,6 +64,12 @@ function PlatePreview({ text }: { text: string }) {
         : ' · формат не распознан, номер сохранится как есть'}
     </p>
   );
+}
+
+/** Начало пропуска, если это не сегодня (иначе «сейчас» — сервер знает сам). */
+function laterStart(values: PassFormValues, today: string, timezone: string): string {
+  const date = values.passType === 'single' ? values.date : values.from;
+  return date && today && date > today ? localToInstant(date, '00:00', timezone) : '';
 }
 
 const PASS_TYPE_MODE: Record<string, string> = {
@@ -125,6 +132,8 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
     destinationZoneId: values.destinationZoneId,
     plate: values.participant === 'vehicle' ? values.plate.trim() : '',
     personName: values.participant === 'pedestrian' ? values.personName.trim() : '',
+    // начало пропуска в будущем: запись чёрного списка, что кончится раньше, не помешает (Q-76)
+    validFrom: laterStart(values, ctx?.today ?? '', ctx?.site.timezone ?? ''),
   };
   const hintKey = useDebounced(wanted);
   const hintsQuery = useQuery({
@@ -139,6 +148,7 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
           ...(hintKey.destinationZoneId ? { destinationZoneId: hintKey.destinationZoneId } : {}),
           ...(hintKey.plate ? { plate: hintKey.plate } : {}),
           ...(hintKey.personName ? { personName: hintKey.personName } : {}),
+          ...(hintKey.validFrom ? { validFrom: hintKey.validFrom } : {}),
         },
       }),
     enabled: Boolean(tenant),

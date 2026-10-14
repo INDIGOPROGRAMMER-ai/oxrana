@@ -690,7 +690,7 @@ notifications
 
 ## 11. Уточнения реализации (этап 7a)
 
-Решения — ADR-022. Миграция `0009_fleet_role_templates_sync.sql` — только данные: добор права `fleet.manage` ролям по шаблонам (схема не менялась).
+Решения — ADR-022. Миграции `0009_fleet_role_templates_sync.sql` (право `fleet.manage`) и `0010_requester_occupancy_role_templates_sync.sql` (`occupancy.view` для «Арендатор — заказчик», Q-77) — только данные: добор прав ролям по шаблонам (схема не менялась).
 
 | # | Где | Что | Почему |
 |---|---|---|---|

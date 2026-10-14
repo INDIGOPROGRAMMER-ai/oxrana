@@ -14,6 +14,7 @@ import {
   capacityOf,
   collectWaivers,
   type PassView as EnginePass,
+  findBlacklisted,
   formatDateTime,
   localDate,
   overageDays,
@@ -265,6 +266,34 @@ export function assertTenantAcceptsPasses(ctx: PassContext): void {
 }
 
 /**
+ * Номер или человек в чёрном списке на момент начала пропуска (решение Q-76): пропуск не оформляется.
+ * Запись, которая кончается раньше начала, не мешает. Арендатору — без причины и с телефоном
+ * дежурного администратора, если он задан; администратору — с причиной.
+ */
+export function blacklistProblem(
+  ctx: PassContext,
+  who: { plateNorm?: string | null | undefined; personName?: string | null | undefined },
+  startsAt: number | null,
+): { message: string; settingLink?: string } | null {
+  const at = Math.max(startsAt ?? ctx.now, ctx.now);
+  const hit = findBlacklisted(ctx.rules.blacklist, who, at);
+  if (!hit) return null;
+  if (!ctx.tenantUser) {
+    return {
+      message: `В чёрном списке: ${hit.reason}. Пропуск оформить нельзя — сначала уберите запись из списка.`,
+      settingLink: '/admin/blacklist',
+    };
+  }
+  const subject = who.plateNorm ? 'Номер' : 'Человек';
+  const phone = ctx.settings.dutyAdminPhone
+    ? ` (дежурный администратор: ${ctx.settings.dutyAdminPhone})`
+    : '';
+  return {
+    message: `${subject} в чёрном списке объекта — пропуск оформить нельзя. Обратитесь к администратору объекта${phone}.`,
+  };
+}
+
+/**
  * Проверка значений пропуска. `changed` — какие поля задаёт этот запрос: «не в прошлом» проверяется
  * только при создании и при изменении начала (ADR-009 п. 6).
  */
@@ -330,6 +359,23 @@ export async function validatePass(
       throw new AppError('validation_failed', {
         field: values.plateNorm ? 'plate' : values.categoryId ? 'categoryId' : 'dockId',
         message: 'У пропуска пешехода нет номера, типа транспорта и дока.',
+      });
+    }
+  }
+
+  if (touched('plateNorm') || touched('personName') || touched('validFrom')) {
+    const listed = blacklistProblem(
+      ctx,
+      values.participant === 'vehicle'
+        ? { plateNorm: values.plateNorm }
+        : { personName: values.personName },
+      values.validFrom?.getTime() ?? null,
+    );
+    if (listed) {
+      throw new AppError('blacklisted', {
+        field: values.participant === 'vehicle' ? 'plate' : 'personName',
+        message: listed.message,
+        ...(listed.settingLink ? { settingLink: listed.settingLink } : {}),
       });
     }
   }

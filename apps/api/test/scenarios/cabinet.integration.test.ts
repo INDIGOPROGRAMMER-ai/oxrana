@@ -113,11 +113,17 @@ describe('контекст кабинета и сводка «сегодня»',
 describe('подсказки формы до сохранения (POST /tenants/:id/pass-hints)', () => {
   const plate = nextPlate();
 
-  it('чёрный список: арендатору — предупреждение без причины, администратору — с причиной', async () => {
+  it('чёрный список (Q-76): пропуск не оформляется ни арендатору, ни администратору; арендатору — без причины', async () => {
     const clean = await hints(logist, { participant: 'vehicle', categoryId: car, plate });
     expect(clean.statusCode, clean.body).toBe(200);
     expect(clean.json().notices).toEqual([]);
 
+    const phone = await t.as(admin, {
+      method: 'PATCH',
+      url: `/sites/${KEYS.siteId}/settings`,
+      payload: { dutyAdminPhone: '+7 900 000-00-11' },
+    });
+    expect(phone.statusCode, phone.body).toBe(200);
     const listed = await t.as(admin, {
       method: 'POST',
       url: `/sites/${KEYS.siteId}/blacklist`,
@@ -127,8 +133,10 @@ describe('подсказки формы до сохранения (POST /tenants
 
     const tenantView = await hints(logist, { participant: 'vehicle', categoryId: car, plate });
     const notice = tenantView.json().notices[0];
-    expect(notice).toMatchObject({ code: 'blacklisted', severity: 'warning' });
-    expect(notice.text).toContain('в чёрном списке');
+    expect(notice).toMatchObject({ code: 'blacklisted', severity: 'error' });
+    expect(notice.text).toBe(
+      'Номер в чёрном списке объекта — пропуск оформить нельзя. Обратитесь к администратору объекта (дежурный администратор: +7 900 000-00-11).',
+    );
     expect(notice.text).not.toContain('Секретная причина');
 
     // номер вводят как придётся: пробелы, кириллица
@@ -142,28 +150,88 @@ describe('подсказки формы до сохранения (POST /tenants
     const adminView = await hints(admin, { participant: 'vehicle', categoryId: car, plate }, dns);
     expect(adminView.json().notices[0].text).toContain('Секретная причина');
 
-    // создание: пропуск оформляется, предупреждение приходит в ответе, причины в нём нет
-    const created = await t.as(logist, {
+    const payload = {
+      tenantId: dns,
+      passType: 'single',
+      participant: 'vehicle',
+      plate,
+      categoryId: car,
+      validFrom: at('12:00'),
+      validTo: at('20:00'),
+    };
+    const refused = await t.as(logist, { method: 'POST', url: '/passes', payload });
+    expect(refused.statusCode, refused.body).toBe(422);
+    expect(error(refused)).toMatchObject({ code: 'blacklisted', field: 'plate' });
+    expect(error(refused).message).not.toContain('Секретная причина');
+    // администратор видит причину, но тоже не оформит
+    const refusedAdmin = await t.as(admin, { method: 'POST', url: '/passes', payload });
+    expect(refusedAdmin.statusCode).toBe(422);
+    expect(error(refusedAdmin)).toMatchObject({
+      code: 'blacklisted',
+      settingLink: '/admin/blacklist',
+    });
+    expect(error(refusedAdmin).message).toContain('Секретная причина');
+    // в пакете строка красная и не создаётся, соседняя — создаётся
+    const other = nextPlate();
+    const batch = await t.as(logist, {
       method: 'POST',
-      url: '/passes',
+      url: '/passes/batch',
       payload: {
         tenantId: dns,
-        passType: 'single',
-        participant: 'vehicle',
-        plate,
-        categoryId: car,
-        validFrom: at('12:00'),
-        validTo: at('20:00'),
+        rows: [
+          { ...payload, tenantId: undefined },
+          { ...payload, tenantId: undefined, plate: other },
+        ],
       },
     });
-    expect(created.statusCode, created.body).toBe(201);
-    const warning = created.json().warnings.find((w: { code: string }) => w.code === 'blacklisted');
-    expect(warning).toBeTruthy();
-    expect(warning.message).not.toContain('Секретная причина');
+    expect(batch.json()).toMatchObject({ created: 1 });
+    expect(batch.json().errors).toEqual([expect.objectContaining({ row: 1, code: 'blacklisted' })]);
 
     await t.as(admin, { method: 'DELETE', url: `/blacklist/${listed.json().id}` });
     const after = await hints(logist, { participant: 'vehicle', categoryId: car, plate });
     expect(after.json().notices).toEqual([]);
+    await t.as(admin, {
+      method: 'PATCH',
+      url: `/sites/${KEYS.siteId}/settings`,
+      payload: { dutyAdminPhone: null },
+    });
+  });
+
+  it('запись, которая кончается раньше начала пропуска, оформлению не мешает', async () => {
+    const soon = nextPlate();
+    const listed = await t.as(admin, {
+      method: 'POST',
+      url: `/sites/${KEYS.siteId}/blacklist`,
+      payload: {
+        level: 'site',
+        plate: soon,
+        reason: 'до завтрашнего утра',
+        validTo: at('09:00', '2026-03-11'),
+      },
+    });
+    expect(listed.statusCode, listed.body).toBe(201);
+    const payload = (from: string) => ({
+      tenantId: dns,
+      passType: 'single',
+      participant: 'vehicle',
+      plate: soon,
+      categoryId: car,
+      validFrom: at(from, '2026-03-11'),
+      validTo: at('20:00', '2026-03-11'),
+    });
+    // подсказка с началом позже окончания записи — без предупреждений
+    const hint = await hints(logist, {
+      participant: 'vehicle',
+      categoryId: car,
+      plate: soon,
+      validFrom: at('12:00', '2026-03-11'),
+    });
+    expect(hint.json().notices).toEqual([]);
+    const early = await t.as(logist, { method: 'POST', url: '/passes', payload: payload('08:00') });
+    expect(error(early).code).toBe('blacklisted');
+    const later = await t.as(logist, { method: 'POST', url: '/passes', payload: payload('12:00') });
+    expect(later.statusCode, later.body).toBe(201);
+    await t.as(admin, { method: 'DELETE', url: `/blacklist/${listed.json().id}` });
   });
 
   it('пешеход из чёрного списка по имени', async () => {
@@ -174,7 +242,7 @@ describe('подсказки формы до сохранения (POST /tenants
     });
     expect(listed.statusCode, listed.body).toBe(201);
     const res = await hints(logist, { participant: 'pedestrian', personName: 'тестов нежеланный' });
-    expect(res.json().notices[0]).toMatchObject({ code: 'blacklisted' });
+    expect(res.json().notices[0]).toMatchObject({ code: 'blacklisted', severity: 'error' });
     await t.as(admin, { method: 'DELETE', url: `/blacklist/${listed.json().id}` });
   });
 
@@ -396,6 +464,45 @@ describe('«Повторить вчерашний день»', () => {
       'pass_duplicate',
       'pass_duplicate',
     ]);
+  });
+
+  it('Q-80: начало в прошлом — строка отклонена с причиной; с флагом «сдвинуть на сейчас» — создаётся', async () => {
+    const plate = nextPlate();
+    t.clock.set('2026-03-09T07:00:00.000Z');
+    const made = await t.as(logist, {
+      method: 'POST',
+      url: '/passes',
+      payload: {
+        tenantId: dns,
+        passType: 'single',
+        participant: 'vehicle',
+        plate,
+        categoryId: car,
+        validFrom: at('12:00', '2026-03-09'),
+        validTo: at('20:00', '2026-03-09'),
+      },
+    });
+    expect(made.statusCode, made.body).toBe(201);
+    t.clock.set('2026-03-10T10:00:00.000Z'); // 15:00 по объекту
+    const repeat = (body: Record<string, unknown>) =>
+      t.as(logist, {
+        method: 'POST',
+        url: `/tenants/${dns}/passes/repeat`,
+        payload: { sourceDate: '2026-03-09', targetDate: '2026-03-10', ...body },
+      });
+    const without = await repeat({ dryRun: true });
+    expect(without.json().errors.map((e: { code: string }) => e.code)).toContain('starts_in_past');
+    const shifted = await repeat({ shiftPastToNow: true });
+    expect(shifted.json().errors.filter((e: { row: number }) => e.row > 0)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'starts_in_past' })]),
+    );
+    const list = await t.as(logist, {
+      url: `/sites/${KEYS.siteId}/passes?tenantId=${dns}&dateFrom=2026-03-10&dateTo=2026-03-10&q=${plate.slice(1, 4)}`,
+    });
+    const copy = list.json().items.find((p: { plateRaw: string }) => p.plateRaw === plate);
+    expect(copy.validFrom).toBe('2026-03-10T10:00:00.000Z');
+    expect(copy.validTo).toBe(at('20:00'));
+    t.clock.set(NOON);
   });
 
   it('в день без пропусков — понятное сообщение, а не ошибка', async () => {
