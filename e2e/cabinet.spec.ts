@@ -69,6 +69,8 @@ interface ApiResult {
   id: string;
   link: string;
   items: { id: string; shortName: string; templateCode: string }[];
+  user?: { assignments: { tenantId: string }[] };
+  categories?: { id: string; name: string }[];
 }
 
 /** Запрос к API от имени вошедшего (с Origin кабинета — защита от подделки запросов). */
@@ -239,6 +241,11 @@ test('форма предупреждает о чёрном списке до с
   const notice = page.getByTestId('notice-blacklisted');
   await expect(notice).toBeVisible();
   await expect(notice).toContainText('чёрном списке');
+  await expect(notice).toContainText('пропуск оформить нельзя');
+  // оформить нельзя: кнопка неактивна и называет причину (Q-76)
+  await page.getByLabel('Тип транспорта').selectOption({ label: 'легковой' });
+  await expect(page.getByRole('button', { name: 'Оформить пропуск' })).toBeDisabled();
+  await expect(page.getByText('Оформить нельзя: Номер в чёрном списке')).toBeVisible();
   await expect(page.getByTestId('hints')).not.toContainText('Драка');
   await page.getByLabel('Номер машины').fill('К999ХМ174');
   await expect(notice).toBeHidden();
@@ -396,11 +403,63 @@ test('администратор отклоняет с причиной — ло
   await expect(own).toContainText('Причина: Машина в ремонте');
 });
 
-test('на телефоне: нижнее меню с крупными кнопками, страницы без горизонтальной прокрутки', async ({
+/** Элементы, торчащие за правый край экрана (кроме тех, что внутри прокручиваемого контейнера). */
+async function overflowing(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const width = document.documentElement.clientWidth;
+    const out: string[] = [];
+    for (const el of document.querySelectorAll('body *')) {
+      const box = el.getBoundingClientRect();
+      if (box.width === 0 || box.right <= width + 1) continue;
+      let parent = el.parentElement;
+      let clipped = false;
+      while (parent && parent !== document.body) {
+        const x = getComputedStyle(parent).overflowX;
+        if (x === 'auto' || x === 'scroll' || x === 'hidden') clipped = true;
+        if (getComputedStyle(parent).position === 'fixed') clipped = true;
+        parent = parent.parentElement;
+      }
+      if (!clipped && getComputedStyle(el).position !== 'fixed') {
+        out.push(
+          `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 50)} «${(el.textContent ?? '').slice(0, 30)}» right=${Math.round(box.right)}`,
+        );
+      }
+    }
+    return out.slice(0, 5);
+  });
+}
+
+async function expectNoHorizontalScroll(page: Page, where: string) {
+  const extra = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(
+    extra,
+    `горизонтальная прокрутка на ${where}: ${(await overflowing(page)).join(' | ')}`,
+  ).toBeLessThanOrEqual(1);
+  expect(await overflowing(page), `элементы за краем экрана на ${where}`).toEqual([]);
+}
+
+test('на телефоне (360 px): нижнее меню с крупными кнопками, ни одна страница кабинета и очередь согласований не прокручиваются вбок', async ({
   browser,
 }) => {
+  test.setTimeout(90_000);
+  // заявка в очереди и список пропусков с разными статусами: самое широкое содержимое
+  const pending = await api(logistSession.page, 'GET', '/auth/me');
+  const tenantId = pending.user?.assignments[0]?.tenantId ?? '';
+  const cabinet = await api(logistSession.page, 'GET', `/tenants/${tenantId}/cabinet`);
+  await api(logistSession.page, 'POST', '/passes', {
+    tenantId,
+    passType: 'permanent',
+    participant: 'vehicle',
+    plate: 'М321АА174',
+    categoryId: cabinet.categories?.find((c) => c.name === 'легковой')?.id,
+    comment: 'Длинный комментарий для проверки переносов строк на узком экране телефона',
+    validFrom: new Date().toISOString(),
+  });
+
   const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
+    viewport: { width: 360, height: 740 },
     hasTouch: true,
   });
   const page = await context.newPage();
@@ -422,12 +481,45 @@ test('на телефоне: нижнее меню с крупными кноп�
   ]) {
     await page.goto(`${WEB_URL}${path}`);
     await expect(page.getByTestId('company')).toBeVisible();
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    );
-    expect(overflow, `горизонтальная прокрутка на ${path}`).toBeLessThanOrEqual(1);
+    await expect(page.getByRole('main')).toBeVisible();
+    await expectNoHorizontalScroll(page, path);
   }
+  // длинные списки: пакет с ошибками и список с карточками
+  await page.goto(`${WEB_URL}/cabinet/passes/batch`);
+  await page
+    .getByLabel('Вставьте строки из Excel или письма')
+    .fill(
+      'Х001ХХ174\tсамокат\nХ002ХХ174\tлегковой\tОчень длинная марка автомобиля\tПетров Пётр Петрович',
+    );
+  await expect(page.getByTestId('batch-ok')).toBeVisible();
+  await expectNoHorizontalScroll(page, '/cabinet/passes/batch с таблицей предпросмотра');
+  await page.goto(`${WEB_URL}/cabinet/passes`);
+  await expect(page.getByTestId('pass-row').first()).toBeVisible();
+  await page.getByTestId('pass-row').first().getByRole('button').first().click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expectNoHorizontalScroll(page, 'карточка пропуска');
+  await page.keyboard.press('Escape');
   await context.close();
+
+  // очередь согласований в админке — тоже на 360 px
+  const adminContext = await browser.newContext({
+    viewport: { width: 360, height: 740 },
+    hasTouch: true,
+  });
+  const admin = await adminContext.newPage();
+  await admin.goto(`${WEB_URL}/login`);
+  await admin.getByLabel('E-mail или телефон').fill(ADMIN.email);
+  await admin.getByLabel('Пароль').fill(ADMIN.password);
+  await admin.getByRole('button', { name: 'Войти', exact: true }).click();
+  await expect(admin.getByRole('button', { name: 'Выйти' }).first()).toBeVisible();
+  await admin.goto(`${WEB_URL}/admin/approvals`);
+  const card = admin.getByTestId('approval-card').filter({ hasText: 'M321AA174' });
+  await expect(card).toBeVisible();
+  await expectNoHorizontalScroll(admin, '/admin/approvals');
+  await card.getByRole('button', { name: 'Одобрить с изменениями…' }).click();
+  await expect(admin.getByRole('dialog')).toBeVisible();
+  await expectNoHorizontalScroll(admin, 'диалог «Одобрить с изменениями»');
+  await adminContext.close();
 });
 
 test('наблюдатель компании видит пропуска и автопарк, но ничего изменить не может — кнопки неактивны с причиной', async ({
