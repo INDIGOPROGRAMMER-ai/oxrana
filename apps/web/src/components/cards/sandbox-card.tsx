@@ -370,7 +370,7 @@ function SandboxBody({ site, initial }: { site: SiteView; initial: SandboxCheck 
                 <option value="pedestrian">Пешеход</option>
               </Select>
             </Field>
-            <Field label="Тип пропуска">
+            <Field label="Вид пропуска">
               <Select
                 value={form.passType}
                 onChange={(e) => set('passType', e.target.value as Form['passType'])}

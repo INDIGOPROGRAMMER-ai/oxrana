@@ -63,8 +63,11 @@ export function FileDrop({
         className="sr-only"
         aria-label="Файл со списком"
         onChange={(e) => {
-          void take(e.target.files?.[0]);
-          e.target.value = '';
+          // значение сбрасывается только после чтения: тот же файл можно выбрать повторно
+          const input = e.target;
+          void take(input.files?.[0]).finally(() => {
+            input.value = '';
+          });
         }}
       />
     </label>

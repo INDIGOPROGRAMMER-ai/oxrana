@@ -7,15 +7,21 @@ import {
   EmptyState,
   Field,
   formatInZone,
+  formatLocalDate,
   Input,
   Select,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
 } from '@oxrana/ui';
 import { Link } from '@tanstack/react-router';
-import { Ban, Inbox, Pencil } from 'lucide-react';
+import { Ban, Inbox, Pencil, SlidersHorizontal, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useApi, useMe } from '../../lib/data';
 import { PASS_STATUS_LABEL, PASS_TYPE_LABEL, passTitle } from '../../lib/pass-text';
 import { useDebounced } from '../../lib/use-debounced';
+import { useWideScreen } from '../../lib/use-media';
 import { LoadError } from '../common';
 import { useCabinet } from './cabinet-context';
 import { CancelPassDialog } from './cancel-dialog';
@@ -97,57 +103,140 @@ export function PassList({
   const tz = ctx?.site.timezone ?? 'UTC';
   const categoryName = (id: string | null) => ctx?.categories.find((c) => c.id === id)?.name;
 
+  const wide = useWideScreen();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const resetAll = () => {
+    setStatus('');
+    setPassType('');
+    setDate('');
+    setQuery('');
+  };
+  const chips = [
+    ...(status
+      ? [{ key: 'status', label: PASS_STATUS_LABEL[status], clear: () => setStatus('') }]
+      : []),
+    ...(passType
+      ? [{ key: 'type', label: PASS_TYPE_LABEL[passType], clear: () => setPassType('') }]
+      : []),
+    ...(date
+      ? [{ key: 'date', label: `в день ${formatLocalDate(date)}`, clear: () => setDate('') }]
+      : []),
+  ];
+  const activeCount = chips.length;
+
+  const statusField = (
+    <Field label="Статус">
+      <Select value={status} onChange={(e) => setStatus(e.target.value as PassStatusCode | '')}>
+        <option value="">Любой</option>
+        {STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {PASS_STATUS_LABEL[s]}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+  const typeField = (
+    <Field label="Вид пропуска">
+      <Select value={passType} onChange={(e) => setPassType(e.target.value as PassType | '')}>
+        <option value="">Любой</option>
+        {(Object.keys(PASS_TYPE_LABEL) as PassType[]).map((t) => (
+          <option key={t} value={t}>
+            {PASS_TYPE_LABEL[t]}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+  const dateField = (
+    <Field
+      label="Действует в день"
+      hint={ctx ? `Время объекта: ${ctx.site.timezoneLabel}` : undefined}
+    >
+      <div className="flex items-start gap-1">
+        <DateInput value={date} todayIso={ctx?.today} onChange={setDate} />
+        {date ? (
+          <Button variant="ghost" size="sm" onClick={() => setDate('')}>
+            Сбросить
+          </Button>
+        ) : null}
+      </div>
+    </Field>
+  );
+  const searchField = (
+    <Field label="Поиск" hint={wide ? 'Цифры номера или фамилия.' : undefined}>
+      <Input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        inputMode="search"
+        autoComplete="off"
+        placeholder="цифры номера"
+      />
+    </Field>
+  );
+
   return (
     <div className="space-y-4">
-      <Card>
-        <CardContent className="grid gap-3 pt-5 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Статус">
-            <Select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as PassStatusCode | '')}
-            >
-              <option value="">Любой</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {PASS_STATUS_LABEL[s]}
-                </option>
+      {wide ? (
+        <Card>
+          <CardContent className="grid gap-3 pt-5 sm:grid-cols-2 lg:grid-cols-4">
+            {statusField}
+            {typeField}
+            {dateField}
+            {searchField}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2" data-testid="filters-mobile">
+          <div className="flex items-end gap-2">
+            <div className="min-w-0 flex-1">{searchField}</div>
+            <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+              <Button
+                variant="outline"
+                onClick={() => setFiltersOpen(true)}
+                data-testid="filters-button"
+                aria-haspopup="dialog"
+              >
+                <SlidersHorizontal aria-hidden /> Фильтры
+                {activeCount > 0 ? ` · ${activeCount}` : ''}
+              </Button>
+              <SheetContent>
+                <SheetTitle className="text-lg font-semibold">Фильтры</SheetTitle>
+                <SheetDescription className="sr-only">
+                  Статус, тип пропуска и день, в который он действует.
+                </SheetDescription>
+                {statusField}
+                {typeField}
+                {dateField}
+                <div className="mt-auto flex gap-2">
+                  <Button className="flex-1" onClick={() => setFiltersOpen(false)}>
+                    Показать
+                  </Button>
+                  <Button variant="outline" onClick={resetAll} disabled={!filtered}>
+                    Сбросить
+                  </Button>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+          {chips.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5" aria-label="Включённые фильтры">
+              {chips.map((chip) => (
+                <li key={chip.key}>
+                  <button
+                    type="button"
+                    onClick={chip.clear}
+                    aria-label={`Убрать фильтр: ${chip.label}`}
+                    className="inline-flex items-center gap-1 rounded-full border bg-accent px-2.5 py-1 text-xs"
+                  >
+                    {chip.label} <X aria-hidden className="size-3" />
+                  </button>
+                </li>
               ))}
-            </Select>
-          </Field>
-          <Field label="Тип пропуска">
-            <Select value={passType} onChange={(e) => setPassType(e.target.value as PassType | '')}>
-              <option value="">Любой</option>
-              {(Object.keys(PASS_TYPE_LABEL) as PassType[]).map((t) => (
-                <option key={t} value={t}>
-                  {PASS_TYPE_LABEL[t]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field
-            label="Действует в день"
-            hint={ctx ? `Время объекта: ${ctx.site.timezoneLabel}` : undefined}
-          >
-            <div className="flex items-start gap-1">
-              <DateInput value={date} todayIso={ctx?.today} onChange={setDate} />
-              {date ? (
-                <Button variant="ghost" size="sm" onClick={() => setDate('')}>
-                  Сбросить
-                </Button>
-              ) : null}
-            </div>
-          </Field>
-          <Field label="Поиск" hint="Цифры номера или фамилия.">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              inputMode="search"
-              autoComplete="off"
-              placeholder="например, 174"
-            />
-          </Field>
-        </CardContent>
-      </Card>
+            </ul>
+          ) : null}
+        </div>
+      )}
 
       {list.error ? <LoadError error={list.error} retry={() => void list.refetch()} /> : null}
       {list.isLoading ? (
@@ -165,15 +254,7 @@ export function PassList({
           }
           action={
             filtered ? (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setStatus('');
-                  setPassType('');
-                  setDate('');
-                  setQuery('');
-                }}
-              >
+              <Button variant="outline" onClick={resetAll}>
                 Сбросить фильтры
               </Button>
             ) : (

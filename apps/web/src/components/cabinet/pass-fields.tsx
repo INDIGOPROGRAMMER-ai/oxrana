@@ -12,7 +12,7 @@ const name = (list: readonly { id: string; name: string }[] | undefined, id: str
  */
 export function PassFields({ pass, ctx }: { pass: PassView; ctx: CabinetContext | undefined }) {
   const rows: [string, ReactNode][] = [
-    ['Тип пропуска', PASS_TYPE_LABEL[pass.passType]],
+    ['Вид пропуска', PASS_TYPE_LABEL[pass.passType]],
     ...(pass.participant === 'vehicle'
       ? ([
           ['Тип транспорта', name(ctx?.categories, pass.categoryId)],

@@ -49,6 +49,14 @@ export { EmptyState } from './components/empty-state';
 export { Field, type FieldErrorLike, useFieldState } from './components/field';
 export { Checkbox, Input, Select, Switch, Textarea } from './components/inputs';
 export { PageHeader, Section } from './components/page';
+export {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from './components/sheet';
 export { AppShell, type NavGroup, type NavItem } from './components/shell';
 export { Skeleton } from './components/skeleton';
 export { type SortableItem, SortableList } from './components/sortable-list';

@@ -170,7 +170,7 @@ function Shell() {
         }),
         ...item('pass_form.manage', {
           href: '/admin/pass-form',
-          label: 'Форма пропуска',
+          label: 'Настройка формы',
           icon: SlidersHorizontal,
           disabledReason: noSite,
         }),

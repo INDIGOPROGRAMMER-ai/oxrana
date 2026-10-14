@@ -86,7 +86,9 @@ export function registerCabinetRoutes(app: FastifyInstance): void {
             dockEligible: c.dockEligible,
             available: available.has(c.id),
           })),
-          zones: rules.zones.map((z) => ({ id: z.id, name: z.name })),
+          zones: rules.zones
+            .map((z) => ({ id: z.id, name: z.name }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
           purposes,
           docks: tenantDocks(rules, tenant.id).map((d) => ({ id: d.id, number: d.number })),
           today: localDate(now, tz),

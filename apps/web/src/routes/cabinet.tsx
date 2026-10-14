@@ -83,7 +83,7 @@ function Shell() {
     ...(canCreate ? [{ href: '/cabinet/passes/batch', label: 'Несколько', icon: Table2 }] : []),
     ...(can('pass.view') ? [{ href: '/cabinet/fleet', label: 'Автопарк', icon: Truck }] : []),
     ...(can('pass_form.manage_users') || can('pass_form.manage')
-      ? [{ href: '/cabinet/pass-form', label: 'Форма пропуска', icon: SlidersHorizontal }]
+      ? [{ href: '/cabinet/pass-form', label: 'Настройка формы', icon: SlidersHorizontal }]
       : []),
   ];
   // Активен самый длинный подходящий пункт: «/cabinet/passes/new» не подсвечивает «Пропуска».
@@ -156,7 +156,7 @@ function Shell() {
           </span>
           <NotificationBell />
           <ThemeToggle />
-          <Button variant="ghost" size="sm" onClick={() => void logout()}>
+          <Button variant="ghost" size="sm" aria-label="Выйти" onClick={() => void logout()}>
             <LogOut aria-hidden />
             <span className="hidden sm:inline">Выйти</span>
           </Button>

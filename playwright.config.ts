@@ -49,7 +49,7 @@ export default defineConfig({
     {
       name: 'chromium',
       // кабинет арендатора продолжает базу после чистого старта (ADR-022): отдельный проект ниже
-      testIgnore: /cabinet\.spec\.ts/,
+      testIgnore: /(cabinet|pass-form)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         ...(executablePath ? { launchOptions: { executablePath } } : {}),
@@ -62,6 +62,17 @@ export default defineConfig({
       name: 'cabinet',
       testMatch: /cabinet\.spec\.ts/,
       dependencies: ['chromium'],
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(executablePath ? { launchOptions: { executablePath } } : {}),
+      },
+    },
+    {
+      // Этап 7b: настройка формы, быстрый разовый, правка, пакет из .xlsx, колокольчик, 360 px — на той же
+      // базе после `cabinet.spec.ts` (логист, администратор и арендатор «Альфа» уже есть).
+      name: 'pass-form',
+      testMatch: /pass-form\.spec\.ts/,
+      dependencies: ['cabinet'],
       use: {
         ...devices['Desktop Chrome'],
         ...(executablePath ? { launchOptions: { executablePath } } : {}),
