@@ -34,6 +34,7 @@ import { Route as AdminSandboxRouteImport } from './routes/admin.sandbox'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as CabinetIndexRouteImport } from './routes/cabinet.index'
 import { Route as CabinetFleetRouteImport } from './routes/cabinet.fleet'
+import { Route as CabinetInsideRouteImport } from './routes/cabinet.inside'
 import { Route as CabinetPassFormRouteImport } from './routes/cabinet.pass-form'
 import { Route as AdminRulesApprovalPoliciesRouteImport } from './routes/admin.rules.approval-policies'
 import { Route as AdminSetupIndexRouteImport } from './routes/admin.setup.index'
@@ -172,6 +173,11 @@ const CabinetFleetRoute = CabinetFleetRouteImport.update({
   path: '/fleet',
   getParentRoute: () => CabinetRoute,
 } as any)
+const CabinetInsideRoute = CabinetInsideRouteImport.update({
+  id: '/inside',
+  path: '/inside',
+  getParentRoute: () => CabinetRoute,
+} as any)
 const CabinetPassFormRoute = CabinetPassFormRouteImport.update({
   id: '/pass-form',
   path: '/pass-form',
@@ -261,6 +267,7 @@ export interface FileRoutesByFullPath {
   '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
   '/cabinet/fleet': typeof CabinetFleetRoute
+  '/cabinet/inside': typeof CabinetInsideRoute
   '/cabinet/pass-form': typeof CabinetPassFormRoute
   '/admin/': typeof AdminIndexRoute
   '/cabinet/': typeof CabinetIndexRoute
@@ -298,6 +305,7 @@ export interface FileRoutesByTo {
   '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
   '/cabinet/fleet': typeof CabinetFleetRoute
+  '/cabinet/inside': typeof CabinetInsideRoute
   '/cabinet/pass-form': typeof CabinetPassFormRoute
   '/admin': typeof AdminIndexRoute
   '/cabinet': typeof CabinetIndexRoute
@@ -338,6 +346,7 @@ export interface FileRoutesById {
   '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
   '/cabinet/fleet': typeof CabinetFleetRoute
+  '/cabinet/inside': typeof CabinetInsideRoute
   '/cabinet/pass-form': typeof CabinetPassFormRoute
   '/admin/': typeof AdminIndexRoute
   '/cabinet/': typeof CabinetIndexRoute
@@ -379,6 +388,7 @@ export interface FileRouteTypes {
     | '/admin/sandbox'
     | '/admin/users'
     | '/cabinet/fleet'
+    | '/cabinet/inside'
     | '/cabinet/pass-form'
     | '/admin/'
     | '/cabinet/'
@@ -416,6 +426,7 @@ export interface FileRouteTypes {
     | '/admin/sandbox'
     | '/admin/users'
     | '/cabinet/fleet'
+    | '/cabinet/inside'
     | '/cabinet/pass-form'
     | '/admin'
     | '/cabinet'
@@ -455,6 +466,7 @@ export interface FileRouteTypes {
     | '/admin/sandbox'
     | '/admin/users'
     | '/cabinet/fleet'
+    | '/cabinet/inside'
     | '/cabinet/pass-form'
     | '/admin/'
     | '/cabinet/'
@@ -658,6 +670,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CabinetFleetRouteImport
       parentRoute: typeof CabinetRoute
     }
+    '/cabinet/inside': {
+      id: '/cabinet/inside'
+      path: '/inside'
+      fullPath: '/cabinet/inside'
+      preLoaderRoute: typeof CabinetInsideRouteImport
+      parentRoute: typeof CabinetRoute
+    }
     '/cabinet/pass-form': {
       id: '/cabinet/pass-form'
       path: '/pass-form'
@@ -803,6 +822,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface CabinetRouteChildren {
   CabinetFleetRoute: typeof CabinetFleetRoute
+  CabinetInsideRoute: typeof CabinetInsideRoute
   CabinetPassFormRoute: typeof CabinetPassFormRoute
   CabinetIndexRoute: typeof CabinetIndexRoute
   CabinetPassesBatchRoute: typeof CabinetPassesBatchRoute
@@ -812,6 +832,7 @@ interface CabinetRouteChildren {
 
 const CabinetRouteChildren: CabinetRouteChildren = {
   CabinetFleetRoute: CabinetFleetRoute,
+  CabinetInsideRoute: CabinetInsideRoute,
   CabinetPassFormRoute: CabinetPassFormRoute,
   CabinetIndexRoute: CabinetIndexRoute,
   CabinetPassesBatchRoute: CabinetPassesBatchRoute,

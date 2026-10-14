@@ -28,6 +28,7 @@ import {
   Input,
   Select,
   Skeleton,
+  Switch,
   useToast,
 } from '@oxrana/ui';
 import { Loader2, RotateCcw } from 'lucide-react';
@@ -37,6 +38,7 @@ import { useApi, useRefresh } from '../../lib/data';
 import type { PassFormValues } from '../../lib/pass-form';
 import { buildFormView } from '../../lib/pass-form-view';
 import { PASS_TYPE_LABEL } from '../../lib/pass-text';
+import { endAfter, timeOf } from '../../lib/pass-time';
 import { PassFormFields } from '../cabinet/pass-form-fields';
 
 const LEVEL_TITLE: Record<PassFormLevel, string> = {
@@ -77,6 +79,7 @@ export function patchOf(saved: PassFormSettings, draft: PassFormSettings): PassF
     'passTypes',
     'defaultPassType',
     'singleHours',
+    'startNow',
   ] as const) {
     const a = JSON.stringify(saved[key] ?? null);
     const b = JSON.stringify(draft[key] ?? null);
@@ -238,8 +241,16 @@ export function PassFormEditorView({
     personDocument: '',
     passType: view.defaultPassType ?? 'single',
     date: ctx.today,
-    startTime: '',
-    endTime: '',
+    startTime: resolved.startNow ? timeOf(Date.parse(ctx.now), ctx.site.timezone) : '',
+    endTime: resolved.startNow
+      ? endAfter(
+          timeOf(Date.parse(ctx.now), ctx.site.timezone),
+          resolved.singleHours,
+          saved.singlePassMaxHours,
+        ).time
+      : '',
+    startAuto: true,
+    endAuto: true,
     windowFromTime: '',
     windowToTime: '',
     from: ctx.today,
@@ -482,8 +493,10 @@ export function PassFormEditorView({
                   </Select>
                   {key === 'window' ? (
                     <p className="text-xs text-muted-foreground">
-                      «Необязательно» и «Скрыто» снимают требование политики окон прибытия для этой
-                      формы: если окно не указано, пропуск действует весь срок.
+                      По умолчанию окно скрыто: включайте его там, где есть расписание доков. Если
+                      политика окон прибытия требует окно, а в форме оно «Необязательно» или
+                      «Скрыто», пропуск действует весь срок. У постоянного пропуска окно, которое
+                      требует политика, остаётся обязательным.
                     </p>
                   ) : null}
                   {key === 'comment' ? (
@@ -528,9 +541,31 @@ export function PassFormEditorView({
               />
               <p className="text-xs text-muted-foreground">
                 Не больше максимума разового пропуска на объекте — {saved.singlePassMaxHours} ч.
-                Начало по умолчанию — «сейчас».
+                Окончание подставляется в поле само, как только появилось время начала.
               </p>
             </Setting>
+            <div className="pt-3">
+              <Setting
+                title="Время начала — «сейчас» по времени объекта"
+                source={
+                  layer.startNow !== undefined
+                    ? 'задано на этом уровне'
+                    : PASS_FORM_SOURCE_LABELS[resolved.sources.startNow]
+                }
+                overridden={layer.startNow !== undefined}
+                disabled={!canEdit}
+                onReset={() => update(without(layer, 'startNow'))}
+              >
+                <Switch
+                  aria-label="Подставлять время начала автоматически"
+                  disabled={!canEdit}
+                  checked={layer.startNow ?? inherited.startNow}
+                  onChange={(e) => update({ ...layer, startNow: e.target.checked })}
+                  label="Подставлять автоматически"
+                  hint="Включено: в поле «с» сразу видно текущее время объекта. Выключено: поле пустое, пропуск начинается «сейчас», если время не указать."
+                />
+              </Setting>
+            </div>
           </CardContent>
         </Card>
 

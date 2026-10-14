@@ -11,15 +11,18 @@ import {
   type FieldErrorLike,
   formatInZone,
   Input,
+  SegmentedChoice,
   Select,
   Textarea,
   TimeInput,
+  TimeRangeInput,
 } from '@oxrana/ui';
 import { ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { PassFormErrors, PassFormValues } from '../../lib/pass-form';
+import type { PassFormErrors, PassFormFix, PassFormValues } from '../../lib/pass-form';
 import type { FormView } from '../../lib/pass-form-view';
 import { PASS_TYPE_LABEL } from '../../lib/pass-text';
+import { endsNextDay } from '../../lib/pass-time';
 import type { PassHints } from './pass-hints-panel';
 
 const COUNTRY: Record<string, string> = {
@@ -67,6 +70,34 @@ export interface PassFormFieldsProps {
   readonly setMore: (more: boolean) => void;
   /** «Сейчас» по часам сервера: для строки «Действует до …». */
   readonly nowMs: number;
+  /** Исправления ошибки одним нажатием (окно раньше начала пропуска и т. п.). */
+  readonly fixes?: readonly PassFormFix[] | undefined;
+  readonly applyFix?: ((fix: PassFormFix) => void) | undefined;
+}
+
+/** Подсказка к окну прибытия: что это и что пропуск может действовать дольше. */
+export const WINDOW_HINT =
+  'Узкий интервал, когда машину ждут (например, на док). Пропуск может действовать дольше.';
+
+/** Кнопки-исправления под ошибкой: «Начать окно с 13:50». */
+function FixButtons({ props }: { props: PassFormFieldsProps }) {
+  const fixes = props.fixes ?? [];
+  if (fixes.length === 0 || !props.applyFix) return null;
+  return (
+    <div className="col-span-2 flex flex-wrap gap-2" data-testid="window-fixes">
+      {fixes.map((fix) => (
+        <Button
+          key={fix.id}
+          size="sm"
+          variant="outline"
+          onClick={() => props.applyFix?.(fix)}
+          data-testid={`fix-${fix.id}`}
+        >
+          {fix.label}
+        </Button>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -139,33 +170,65 @@ export function PassFormFields(props: PassFormFieldsProps) {
   }
 
   if (single) {
+    const nextDay = endsNextDay(values.startTime, values.endTime);
     put(
       false,
       <Field
         key="span"
         label="Время действия"
-        hint={spanHint(props)}
+        hint={spanHint(props, nextDay)}
         error={err('startTime') ?? err('endTime')}
         className="@md:col-span-2"
       >
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
-            <span className="text-xs text-muted-foreground">с (по умолчанию — сейчас)</span>
+            <span className="text-xs text-muted-foreground">
+              {values.startAuto && values.startTime
+                ? 'с (сейчас — подставлено)'
+                : view.startNow
+                  ? 'с'
+                  : 'с (по умолчанию — сейчас)'}
+            </span>
             <TimeInput
               aria-label="Действует с"
               value={values.startTime}
-              onChange={(v) => set('startTime', v)}
+              onChange={(v) => {
+                set('startTime', v);
+                set('startAuto', false);
+              }}
             />
+            {!values.startAuto && view.startNow && values.date === ctx.today ? (
+              <button
+                type="button"
+                className="block text-xs text-primary underline-offset-2 hover:underline"
+                onClick={() => {
+                  set('startAuto', true);
+                  set('endAuto', true);
+                }}
+              >
+                Поставить «сейчас»
+              </button>
+            ) : null}
           </div>
           <div className="space-y-1">
             <span className="text-xs text-muted-foreground">
-              до (по умолчанию — через {view.singleHours} ч)
+              {values.endAuto && values.endTime
+                ? `до (начало + ${view.singleHours} ч)`
+                : `до (по умолчанию — начало + ${view.singleHours} ч)`}
             </span>
             <TimeInput
               aria-label="Действует до"
               value={values.endTime}
-              onChange={(v) => set('endTime', v)}
+              onChange={(v) => {
+                set('endTime', v);
+                set('endAuto', false);
+              }}
             />
+            {nextDay ? (
+              <p className="text-xs font-medium text-warning" data-testid="end-next-day">
+                завтра
+              </p>
+            ) : null}
           </div>
         </div>
       </Field>,
@@ -179,16 +242,23 @@ export function PassFormFields(props: PassFormFieldsProps) {
       single ? (
         <div key="window" className="grid grid-cols-2 gap-3 @md:col-span-2">
           <Field
-            label="Окно прибытия, с"
+            label="Окно прибытия"
             required={required}
-            error={err('windowFromTime')}
-            hint={`Время объекта: ${ctx.site.timezoneLabel}`}
+            error={err('windowFromTime') ?? err('windowToTime')}
+            hint={`${WINDOW_HINT} Время объекта: ${ctx.site.timezoneLabel}.`}
+            className="col-span-2"
           >
-            <TimeInput value={values.windowFromTime} onChange={(v) => set('windowFromTime', v)} />
+            <TimeRangeInput
+              aria-label="Окно прибытия"
+              from={values.windowFromTime}
+              to={values.windowToTime}
+              onChange={(from, to) => {
+                set('windowFromTime', from);
+                set('windowToTime', to);
+              }}
+            />
           </Field>
-          <Field label="Окно прибытия, по" required={required} error={err('windowToTime')}>
-            <TimeInput value={values.windowToTime} onChange={(v) => set('windowToTime', v)} />
-          </Field>
+          <FixButtons props={props} />
           {hints?.window.autoFilled && !values.windowFromTime ? (
             <p className="col-span-2 text-xs text-muted-foreground" data-testid="window-auto">
               Окно можно не указывать — пропуск будет действовать весь срок.
@@ -197,6 +267,7 @@ export function PassFormFields(props: PassFormFieldsProps) {
         </div>
       ) : (
         <div key="window" className="grid gap-3 @md:col-span-2 @md:grid-cols-2">
+          <p className="text-xs text-muted-foreground @md:col-span-2">{WINDOW_HINT}</p>
           <Field label="Окно прибытия, с" required={required} error={err('windowFrom')}>
             <DateTimeInput
               value={values.windowFrom}
@@ -211,6 +282,7 @@ export function PassFormFields(props: PassFormFieldsProps) {
               onChange={(v) => set('windowTo', v)}
             />
           </Field>
+          <FixButtons props={props} />
         </div>
       ),
     );
@@ -224,7 +296,14 @@ export function PassFormFields(props: PassFormFieldsProps) {
         label="Док"
         required={view.dockRequired}
         error={err('dockId')}
-        hint={hints?.dock.text ?? undefined}
+        hint={
+          [
+            hints?.dock.text,
+            !single ? 'Необязательно: на много поездок док каждый раз может быть другой.' : null,
+          ]
+            .filter(Boolean)
+            .join(' ') || undefined
+        }
       >
         <Select value={values.dockId} onChange={(e) => set('dockId', e.target.value)}>
           <option value="">{view.dockRequired ? 'Выберите док' : 'Без дока'}</option>
@@ -395,19 +474,27 @@ export function PassFormFields(props: PassFormFieldsProps) {
               </span>
             </p>
           ) : (
-            <Field label="Вид пропуска" required className="@md:col-span-2">
-              <Select
-                value={typeSelectable ? values.passType : ''}
-                onChange={(e) => set('passType', e.target.value as PassType)}
-                aria-label="Вид пропуска"
-              >
-                {typeSelectable ? null : <option value="">Загрузка…</option>}
-                {(passTypes ?? []).map((t) => (
-                  <option key={t} value={t}>
-                    {passTypeLabel(t, hints)}
-                  </option>
-                ))}
-              </Select>
+            <Field label="Вид пропуска" required className="min-w-0 @md:col-span-2">
+              {typeSelectable ? (
+                <SegmentedChoice
+                  aria-label="Вид пропуска"
+                  value={values.passType}
+                  onChange={(t) => set('passType', t)}
+                  options={(passTypes ?? []).map((t) => ({
+                    value: t,
+                    label: PASS_TYPE_LABEL[t],
+                  }))}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">Загрузка…</p>
+              )}
+              {typeSelectable ? (
+                <p className="text-xs text-muted-foreground" data-testid="pass-type-mode">
+                  {PASS_TYPE_MODE[
+                    hints?.passTypes.find((p) => p.passType === values.passType)?.mode ?? ''
+                  ] ?? ''}
+                </p>
+              ) : null}
             </Field>
           )}
 
@@ -503,12 +590,16 @@ function passTypeLabel(type: PassType, hints: PassHints | undefined): string {
     : PASS_TYPE_LABEL[type];
 }
 
-/** «Действует с сейчас до 11.03.2026 11:40 (Челябинск, UTC+5)» — что получится, если ничего не вводить. */
-function spanHint(props: PassFormFieldsProps): string {
+/** Что получится: «С сейчас до 11.03.2026 11:40 (Челябинск, UTC+5)» или «Весь день до 23:59». */
+function spanHint(props: PassFormFieldsProps, nextDay: boolean): string {
   const { values, ctx, view, nowMs } = props;
-  if (!values.date || values.date !== ctx.today || values.startTime || values.endTime) {
-    return `Время объекта: ${ctx.site.timezoneLabel}`;
+  const label = ctx.site.timezoneLabel;
+  if (values.date && values.date > ctx.today && !values.startTime && !values.endTime) {
+    return `Время не указано — пропуск действует весь день, до 23:59 (${label}).`;
   }
-  const end = new Date(nowMs + view.singleHours * 3_600_000).toISOString();
-  return `Если не указывать: с «сейчас» до ${formatInZone(end, ctx.site.timezone)} (${ctx.site.timezoneLabel}).`;
+  if (values.date === ctx.today && values.startAuto && values.endAuto && values.startTime) {
+    const end = new Date(nowMs + view.singleHours * 3_600_000).toISOString();
+    return `С «сейчас» до ${formatInZone(end, ctx.site.timezone)} (${label}).`;
+  }
+  return nextDay ? `Окончание — завтра. Время объекта: ${label}` : `Время объекта: ${label}`;
 }

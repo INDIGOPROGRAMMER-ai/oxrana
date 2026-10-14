@@ -13,6 +13,7 @@ import {
   type ErrorView,
   errorView,
   Field,
+  formatInZone,
   Input,
   Select,
   Textarea,
@@ -25,6 +26,7 @@ import type { z } from 'zod';
 import { api } from '../../lib/api';
 import { useRefresh } from '../../lib/data';
 import { instantToLocal, localToIso } from '../../lib/dates';
+import { extensionLimitMs, extensionOutcome } from '../../lib/pass-extension';
 import { buildFormView } from '../../lib/pass-form-view';
 import { passTitle } from '../../lib/pass-text';
 import { useDebounced } from '../../lib/use-debounced';
@@ -150,6 +152,12 @@ export function PassEditDialog({ pass, onClose }: { pass: PassView | null; onClo
     ['plate', 'categoryId', 'validFrom', 'validTo'].includes(k),
   );
   const viaRequest = pass?.status === 'approved' && hints?.approval?.mode !== 'allow';
+  // После въезда «действует до»: сокращение и продление в пределах максимума — сразу, сверх — заявкой (Q-85)
+  const outcome =
+    inside && pass && ctx && body.validTo !== undefined
+      ? extensionOutcome(pass, ctx.site, body.validTo)
+      : 'same';
+  const limitMs = inside && pass && ctx ? extensionLimitMs(pass, ctx.site) : null;
 
   async function save() {
     if (!pass || !values) return;
@@ -262,7 +270,15 @@ export function PassEditDialog({ pass, onClose }: { pass: PassView | null; onClo
             {pass.passType !== 'permanent' ? (
               <Field
                 label="Действует до"
-                hint={inside ? `Время объекта: ${ctx.site.timezoneLabel}` : undefined}
+                hint={
+                  inside
+                    ? `Время объекта: ${ctx.site.timezoneLabel}.${
+                        limitMs !== null
+                          ? ` Продлить сразу можно до ${formatInZone(new Date(limitMs).toISOString(), ctx.site.timezone)} — дальше заявкой согласующему.`
+                          : ''
+                      }`
+                    : undefined
+                }
               >
                 <DateTimeInput
                   value={values.validTo}
@@ -351,7 +367,17 @@ export function PassEditDialog({ pass, onClose }: { pass: PassView | null; onClo
           </div>
         )}
         {!inside && ready ? <PassHintsPanel hints={hints} loading={hintsQuery.isFetching} /> : null}
-        {viaRequest && substantive ? (
+        {inside && outcome === 'beyond' ? (
+          <Alert tone="warning" data-testid="edit-beyond-max">
+            Срок выходит за максимум, который можно оформить без согласования, — уйдёт согласующему
+            заявкой. До решения действует прежний срок.
+          </Alert>
+        ) : inside && outcome === 'within' ? (
+          <Alert tone="info" data-testid="edit-within-max">
+            Продление в пределах максимума — применится сразу.
+          </Alert>
+        ) : null}
+        {!inside && viaRequest && substantive ? (
           <Alert tone="warning" data-testid="edit-via-request">
             Пропуск проходил согласование: изменение номера, типа и срока уйдёт согласующему
             заявкой. До решения действует прежний пропуск, комментарий изменится сразу.

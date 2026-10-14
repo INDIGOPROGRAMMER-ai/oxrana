@@ -1,4 +1,10 @@
-import type { CabinetContext, PassStatus, PassType, PassView } from '@oxrana/contracts';
+import {
+  type CabinetContext,
+  PASS_STATUS_LABELS,
+  type PassStatus,
+  type PassType,
+  type PassView,
+} from '@oxrana/contracts';
 import { formatInZone } from '@oxrana/ui';
 
 /** Подписи кабинета (термины — `docs/GLOSSARY.md`: «многоразовый», а не «временный»). */
@@ -8,15 +14,7 @@ export const PASS_TYPE_LABEL: Record<PassType, string> = {
   permanent: 'Постоянный',
 };
 
-export const PASS_STATUS_LABEL: Record<PassStatus, string> = {
-  draft: 'Черновик',
-  pending_approval: 'На согласовании',
-  approved: 'Действует',
-  rejected: 'Отклонён',
-  cancelled: 'Отменён',
-  expired: 'Закончился',
-  used: 'Использован',
-};
+export const PASS_STATUS_LABEL: Record<PassStatus, string> = PASS_STATUS_LABELS;
 
 export type StatusTone = 'success' | 'warning' | 'danger' | 'neutral' | 'info';
 

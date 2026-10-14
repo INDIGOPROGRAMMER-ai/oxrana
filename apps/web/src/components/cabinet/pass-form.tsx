@@ -19,9 +19,11 @@ import {
   buildPassBody,
   formField,
   type PassFormErrors,
+  type PassFormFix,
   type PassFormValues,
 } from '../../lib/pass-form';
 import { buildFormView } from '../../lib/pass-form-view';
+import { endAfter, timeOf } from '../../lib/pass-time';
 import { useDebounced } from '../../lib/use-debounced';
 import { useCabinet } from './cabinet-context';
 import { PassFormFields } from './pass-form-fields';
@@ -52,6 +54,9 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
   const [submitting, setSubmitting] = useState(false);
   const [more, setMore] = useState(false);
 
+  const startNow = passForm?.form.startNow ?? true;
+  const singleHours = passForm?.form.singleHours ?? 23;
+  const singleMax = ctx?.site.singlePassMaxHours ?? 24;
   const initial: PassFormValues = {
     participant: 'vehicle',
     plate: fleetVehicle?.plateRaw ?? '',
@@ -63,8 +68,13 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
     personDocument: '',
     passType: 'single',
     date: ctx?.today ?? '',
-    startTime: '',
-    endTime: '',
+    startTime: startNow && ctx ? timeOf(serverNow(), ctx.site.timezone) : '',
+    endTime:
+      startNow && ctx
+        ? endAfter(timeOf(serverNow(), ctx.site.timezone), singleHours, singleMax).time
+        : '',
+    startAuto: true,
+    endAuto: true,
     windowFromTime: '',
     windowToTime: '',
     from: ctx?.today ?? '',
@@ -77,10 +87,51 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
     comment: '',
   };
   const [values, setValues] = useState<PassFormValues>(initial);
+  const [fixes, setFixes] = useState<PassFormFix[]>([]);
   const set = <K extends keyof PassFormValues>(key: K, value: PassFormValues[K]) => {
     setValues((v) => ({ ...v, [key]: value }));
     setErrors((e) => ({ ...e, [key]: undefined }));
+    setFixes([]);
   };
+  const applyFix = (fix: PassFormFix) => {
+    setValues((v) => ({ ...v, ...fix.apply }));
+    setErrors({});
+    setFixes([]);
+  };
+
+  // Время начала «сейчас» подставляется само и идёт вместе с часами сервера, пока его не правили;
+  // окончание — начало + N часов, пока не правили его. Будущая дата без времени — весь день (Q-87).
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((n) => n + 1), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    if (!ctx) return;
+    setValues((v) => {
+      const startTime = v.startAuto
+        ? startNow && v.date === ctx.today
+          ? timeOf(serverNow(), ctx.site.timezone)
+          : ''
+        : v.startTime;
+      const endTime = v.endAuto
+        ? startTime
+          ? endAfter(startTime, singleHours, singleMax).time
+          : ''
+        : v.endTime;
+      return startTime === v.startTime && endTime === v.endTime ? v : { ...v, startTime, endTime };
+    });
+  }, [
+    tick,
+    ctx,
+    startNow,
+    singleHours,
+    singleMax,
+    values.date,
+    values.startAuto,
+    values.endAuto,
+    values.startTime,
+  ]);
 
   // Подсказки: тем же движком, что на посту; запрос — после паузы в наборе. Типы транспорта и виды
   // пропусков в подсказках уже отфильтрованы настройкой формы (сервер применяет её сам).
@@ -129,15 +180,18 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
             allowedPassTypes: hints?.passTypes.map((p) => p.passType),
             windowRequiredByPolicy: Boolean(hints?.window.required),
             commentRequiredByPolicy: Boolean(hints?.commentRequired),
-            dockRequired: Boolean(
-              hints?.dock.required ||
-                (values.participant === 'vehicle' &&
-                  ctx.tenant.trucksDockRequired &&
-                  ctx.categories.find((c) => c.id === values.categoryId)?.dockEligible),
-            ),
+            // док обязателен только разовому пропуску (7b.1)
+            dockRequired:
+              values.passType === 'single' &&
+              Boolean(
+                hints?.dock.required ||
+                  (values.participant === 'vehicle' &&
+                    ctx.tenant.trucksDockRequired &&
+                    ctx.categories.find((c) => c.id === values.categoryId)?.dockEligible),
+              ),
           })
         : null,
-    [ctx, passForm, hints, values.participant, values.categoryId],
+    [ctx, passForm, hints, values.participant, values.categoryId, values.passType],
   );
 
   // Умные значения: единственный тип, единственная зона, единственный нужный док — подставлены;
@@ -234,11 +288,15 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
       windowRequired: view.fields.window === 'required',
       dockRequired: vehicle && view.dockRequired,
       fields: view.fields,
+      pastToleranceMin: ctx.site.pastStartToleranceMin,
+      singleMaxHours: ctx.site.singlePassMaxHours,
     });
     if (!built.ok) {
       setErrors(built.errors);
+      setFixes(built.fixes);
       return;
     }
+    setFixes([]);
     setErrors({});
     setSubmitting(true);
     try {
@@ -299,6 +357,8 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
         more={more}
         setMore={setMore}
         nowMs={serverNow()}
+        fixes={fixes}
+        applyFix={applyFix}
       />
 
       <PassHintsPanel hints={hints} loading={hintsQuery.isFetching} />

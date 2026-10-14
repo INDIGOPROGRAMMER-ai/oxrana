@@ -18,6 +18,8 @@ const ctx: BuildContext = {
   commentRequired: false,
   windowRequired: false,
   dockRequired: false,
+  pastToleranceMin: 10,
+  singleMaxHours: 24,
 };
 const base: PassFormValues = {
   participant: 'vehicle',
@@ -32,6 +34,8 @@ const base: PassFormValues = {
   date: '2026-03-10',
   startTime: '',
   endTime: '',
+  startAuto: false,
+  endAuto: false,
   windowFromTime: '',
   windowToTime: '',
   from: '',
@@ -68,10 +72,155 @@ describe('форма пропуска → тело POST /passes', () => {
     expect(built.ok && new Date(String(built.body.validTo)).toISOString()).toBe(
       '2026-03-10T13:30:00.000Z',
     );
-    expect(buildPassBody({ ...base, startTime: '15:00', endTime: '14:00' }, ctx)).toMatchObject({
+  });
+
+  it('окончание не позже начала — это следующие сутки (ночная смена): в теле дата +1', () => {
+    const built = buildPassBody({ ...base, startTime: '20:00', endTime: '09:00' }, ctx);
+    expect(built.ok && new Date(String(built.body.validFrom)).toISOString()).toBe(
+      '2026-03-10T15:00:00.000Z',
+    );
+    expect(built.ok && new Date(String(built.body.validTo)).toISOString()).toBe(
+      '2026-03-11T04:00:00.000Z',
+    );
+  });
+
+  it('начало подставлено само («сейчас») и не менялось: в запрос не уходит, начало и конец ставит сервер', () => {
+    const built = buildPassBody(
+      { ...base, startTime: '12:05', startAuto: true, endTime: '11:05', endAuto: true },
+      ctx,
+    );
+    expect(built.ok && Object.keys(built.body)).not.toContain('validFrom');
+    expect(built.ok && Object.keys(built.body)).not.toContain('validTo');
+    // окончание поправили вручную — оно уходит, начало по-прежнему «сейчас»
+    const edited = buildPassBody(
+      { ...base, startTime: '12:05', startAuto: true, endTime: '18:00', endAuto: false },
+      ctx,
+    );
+    expect(edited.ok && Object.keys(edited.body)).not.toContain('validFrom');
+    expect(edited.ok && new Date(String(edited.body.validTo)).toISOString()).toBe(
+      '2026-03-10T13:00:00.000Z',
+    );
+  });
+
+  it('Q-87: будущая дата без времени — весь день, с 00:00 до 23:59; «начало + N ч» только для «с сейчас»', () => {
+    const iso = (v: unknown) => new Date(String(v)).toISOString();
+    const built = buildPassBody({ ...base, date: '2026-03-12' }, ctx);
+    expect(built.ok && iso(built.body.validFrom)).toBe('2026-03-11T19:00:00.000Z');
+    expect(built.ok && iso(built.body.validTo)).toBe('2026-03-12T18:59:00.000Z');
+    // время начала указали — окончание остаётся за формой (начало + N ч) и сервером
+    const withStart = buildPassBody({ ...base, date: '2026-03-12', startTime: '08:00' }, ctx);
+    expect(withStart.ok && iso(withStart.body.validFrom)).toBe('2026-03-12T03:00:00.000Z');
+    expect(withStart.ok && Object.keys(withStart.body)).not.toContain('validTo');
+    // окно на будущий день не сдвигает начало пропуска: пропуск на весь день, окно внутри
+    const withWindow = buildPassBody(
+      { ...base, date: '2026-03-12', windowFromTime: '12:00', windowToTime: '14:00' },
+      ctx,
+    );
+    expect(withWindow.ok && iso(withWindow.body.validFrom)).toBe('2026-03-11T19:00:00.000Z');
+    expect(withWindow.ok && iso(withWindow.body.validTo)).toBe('2026-03-12T18:59:00.000Z');
+  });
+
+  it('окно раньше начала пропуска: ошибка с временем и кнопка «Начать окно с …»', () => {
+    const built = buildPassBody(
+      {
+        ...base,
+        startTime: '13:50',
+        endTime: '20:00',
+        windowFromTime: '11:00',
+        windowToTime: '14:00',
+      },
+      ctx,
+    );
+    expect(built).toMatchObject({
       ok: false,
-      errors: { endTime: expect.stringContaining('позже') },
+      errors: { windowFromTime: 'Окно 11:00–14:00 начинается раньше начала пропуска (13:50).' },
     });
+    if (built.ok) throw new Error('ожидалась ошибка');
+    expect(built.fixes.map((f) => f.label)).toEqual(['Начать окно с 13:50']);
+    expect(built.fixes[0]?.apply).toEqual({ windowFromTime: '13:50' });
+  });
+
+  it('«Начать пропуск с 12:00» предлагается, только если это в допуске «начало в прошлом»', () => {
+    // сейчас 12:00, окно с 12:00, пропуск начат с 12:08: начало окна — в допуске (10 мин)
+    const built = buildPassBody(
+      { ...base, startTime: '12:08', windowFromTime: '12:00', windowToTime: '14:00' },
+      ctx,
+    );
+    if (built.ok) throw new Error('ожидалась ошибка');
+    expect(built.fixes.map((f) => f.label)).toEqual([
+      'Начать окно с 12:08',
+      'Начать пропуск с 12:00',
+    ]);
+    expect(built.fixes[1]?.apply).toEqual({ startTime: '12:00', startAuto: false });
+    // окно началось два часа назад — начать пропуск «в прошлом» нельзя, остаётся только сдвиг окна
+    const late = buildPassBody(
+      { ...base, startTime: '14:00', windowFromTime: '10:00', windowToTime: '16:00' },
+      ctx,
+    );
+    if (late.ok) throw new Error('ожидалась ошибка');
+    expect(late.fixes.map((f) => f.id)).toEqual(['window_start']);
+  });
+
+  it('окно позже конца пропуска: «Закончить окно в …» и «Продлить пропуск до …»', () => {
+    const built = buildPassBody(
+      {
+        ...base,
+        startTime: '12:30',
+        endTime: '15:00',
+        windowFromTime: '14:00',
+        windowToTime: '16:00',
+      },
+      ctx,
+    );
+    expect(built).toMatchObject({
+      ok: false,
+      errors: { windowToTime: 'Окно 14:00–16:00 заканчивается позже конца пропуска (15:00).' },
+    });
+    if (built.ok) throw new Error('ожидалась ошибка');
+    expect(built.fixes.map((f) => f.label)).toEqual([
+      'Закончить окно в 15:00',
+      'Продлить пропуск до 16:00',
+    ]);
+    expect(built.fixes[1]?.apply).toEqual({ endTime: '16:00', endAuto: false });
+  });
+
+  it('многоразовый: окно раньше «сейчас» — ошибка и «Начать окно с …»', () => {
+    const built = buildPassBody(
+      {
+        ...base,
+        passType: 'multi',
+        from: '2026-03-10',
+        to: '2026-03-14',
+        comment: 'Ревизия',
+        windowFrom: '2026-03-10T10:00',
+        windowTo: '2026-03-10T14:00',
+      },
+      ctx,
+    );
+    expect(built).toMatchObject({
+      ok: false,
+      errors: { windowFrom: expect.stringContaining('начинается раньше начала пропуска') },
+    });
+    if (built.ok) throw new Error('ожидалась ошибка');
+    expect(built.fixes[0]?.apply).toEqual({ windowFrom: '2026-03-10T12:00' });
+  });
+
+  it('док обязателен только разовому пропуску: многоразовый и постоянный без дока создаются', () => {
+    const rule = { ...ctx, dockRequired: true };
+    expect(buildPassBody(base, rule)).toMatchObject({
+      ok: false,
+      errors: { dockId: 'Укажите док.' },
+    });
+    const multi = buildPassBody(
+      { ...base, passType: 'multi', from: '2026-03-10', to: '2026-03-14', comment: 'Ревизия' },
+      rule,
+    );
+    expect(multi.ok).toBe(true);
+    const permanent = buildPassBody(
+      { ...base, passType: 'permanent', from: '2026-03-10', comment: 'Служебная' },
+      rule,
+    );
+    expect(permanent.ok).toBe(true);
   });
 
   it('разовый с окном позже «сейчас»: пропуск начинает действовать с начала окна; окно по времени объекта', () => {
@@ -83,13 +232,6 @@ describe('форма пропуска → тело POST /passes', () => {
     // окно уже идёт — начало не указываем: сервер поставит «сейчас»
     const now = buildPassBody({ ...base, windowFromTime: '11:00', windowToTime: '16:00' }, ctx);
     expect(now.ok && Object.keys(now.body)).not.toContain('validFrom');
-  });
-
-  it('будущий день без окна — с 00:00 объекта', () => {
-    const built = buildPassBody({ ...base, date: '2026-03-12' }, ctx);
-    expect(built.ok && new Date(String(built.body.validFrom)).toISOString()).toBe(
-      '2026-03-11T19:00:00.000Z',
-    );
   });
 
   it('настройка формы: скрытые поля в тело не попадают, обязательные проверяются до запроса', () => {
@@ -266,6 +408,9 @@ describe('даты и статусы кабинета', () => {
       name: 'Объект',
       timezone: 'Asia/Yekaterinburg',
       timezoneLabel: 'Челябинск, UTC+5',
+      pastStartToleranceMin: 10,
+      singlePassMaxHours: 24,
+      multiPassMaxDays: 31,
     },
     categories: [{ id: 'semi', name: 'фура', dockEligible: true, available: true }],
     zones: [],
