@@ -291,6 +291,77 @@ describe('ограничения на сервере: сотрудник А и �
   });
 });
 
+describe('правка и пакет применяют ту же форму', () => {
+  it('правка: чужой тип и скрытое поле отклоняются, поле, ставшее обязательным позже, не мешает поправить комментарий', async () => {
+    await resetForm();
+    const created = await create(logist, carPass());
+    expect(created.statusCode, created.body).toBe(201);
+    const passId = created.json().id;
+    t.clock.advance(2 * HOUR);
+    try {
+      await setUser(logist.id, { categoryIds: [car], fields: { brand: 'hidden' } });
+      const foreign = await t.as(logist, {
+        method: 'PATCH',
+        url: `/passes/${passId}`,
+        payload: { categoryId: semi, dockId: dock12, reason: 'Приедет фура' },
+      });
+      expect(error(foreign)).toMatchObject({ code: 'category_unavailable', field: 'categoryId' });
+      const hidden = await t.as(logist, {
+        method: 'PATCH',
+        url: `/passes/${passId}`,
+        payload: { brand: 'Kia', reason: 'Уточнение марки' },
+      });
+      expect(error(hidden)).toMatchObject({ code: 'field_hidden', field: 'brand' });
+      // обязательное поле, которого у пропуска нет, правку комментария не блокирует
+      await setUser(logist.id, { fields: { brand: null, purpose: 'required' } });
+      const ok = await t.as(logist, {
+        method: 'PATCH',
+        url: `/passes/${passId}`,
+        payload: { comment: 'Уточнение для охраны', reason: 'Уточнение для охраны' },
+      });
+      expect(ok.statusCode, ok.body).toBe(200);
+      expect(ok.json().applied).toEqual(['comment']);
+    } finally {
+      t.clock.set(NOON);
+    }
+  });
+
+  it('пакет: скрытое поле и чужой тип — ошибка своей строки, остальные строки создаются', async () => {
+    await resetForm();
+    await setTenant({ categoryIds: [car, light] });
+    const res = await t.as(logist, {
+      method: 'POST',
+      url: '/passes/batch',
+      payload: {
+        tenantId: dns,
+        dryRun: true,
+        rows: [
+          { passType: 'single', participant: 'vehicle', plate: nextPlate(), categoryId: car },
+          {
+            passType: 'single',
+            participant: 'vehicle',
+            plate: nextPlate(),
+            categoryId: car,
+            driverName: 'Иванов И. И.',
+          },
+          {
+            passType: 'single',
+            participant: 'vehicle',
+            plate: nextPlate(),
+            categoryId: semi,
+            dockId: dock12,
+          },
+        ],
+      },
+    });
+    expect(res.json().created).toBe(1);
+    expect(res.json().errors).toEqual([
+      expect.objectContaining({ row: 2, code: 'field_hidden', field: 'driverName' }),
+      expect.objectContaining({ row: 3, code: 'category_unavailable' }),
+    ]);
+  });
+});
+
 describe('быстрый разовый пропуск и окно прибытия', () => {
   it('номер + тип: начало «сейчас», окончание +23 ч, действует сразу', async () => {
     await resetForm();

@@ -40,9 +40,15 @@ import { PASS_TYPE_LABEL } from '../../lib/pass-text';
 import { PassFormFields } from '../cabinet/pass-form-fields';
 
 const LEVEL_TITLE: Record<PassFormLevel, string> = {
-  site: 'Объект — для всех',
+  site: 'Объект',
   tenant: 'Арендатор',
   user: 'Сотрудник',
+};
+
+const LEVEL_HINT: Record<PassFormLevel, string> = {
+  site: 'Объект: значения для всех арендаторов и сотрудников.',
+  tenant: 'Арендатор: значения для всех сотрудников компании, переопределяют объект.',
+  user: 'Сотрудник: значения для одного человека, переопределяют арендатора и объект.',
 };
 
 const PERMISSION_NEEDED: Record<PassFormLevel, string> = {
@@ -268,7 +274,10 @@ export function PassFormEditorView({
               ))}
             </Select>
           </Field>
-          <fieldset aria-label="Какой уровень правите" className="m-0 min-w-0 border-0 p-0">
+          <fieldset
+            aria-label="Какой уровень правите"
+            className="m-0 min-w-0 border-0 p-0 sm:col-span-2"
+          >
             <legend className="mb-1.5 text-sm font-medium">Какой уровень правите</legend>
             <div className="grid grid-cols-3 gap-1">
               {(['site', 'tenant', 'user'] as const).map((l) => {
@@ -293,6 +302,7 @@ export function PassFormEditorView({
                 );
               })}
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">{LEVEL_HINT[activeLevel]}</p>
           </fieldset>
         </div>
 

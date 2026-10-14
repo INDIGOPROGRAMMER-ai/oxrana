@@ -146,7 +146,7 @@ export function PassFormFields(props: PassFormFieldsProps) {
         label="Время действия"
         hint={spanHint(props)}
         error={err('startTime') ?? err('endTime')}
-        className="sm:col-span-2"
+        className="@md:col-span-2"
       >
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
@@ -177,7 +177,7 @@ export function PassFormFields(props: PassFormFieldsProps) {
     put(
       required,
       single ? (
-        <div key="window" className="grid grid-cols-2 gap-3 sm:col-span-2">
+        <div key="window" className="grid grid-cols-2 gap-3 @md:col-span-2">
           <Field
             label="Окно прибытия, с"
             required={required}
@@ -196,7 +196,7 @@ export function PassFormFields(props: PassFormFieldsProps) {
           ) : null}
         </div>
       ) : (
-        <div key="window" className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+        <div key="window" className="grid gap-3 @md:col-span-2 @md:grid-cols-2">
           <Field label="Окно прибытия, с" required={required} error={err('windowFrom')}>
             <DateTimeInput
               value={values.windowFrom}
@@ -289,7 +289,7 @@ export function PassFormFields(props: PassFormFieldsProps) {
         required={required}
         error={err('comment')}
         hint={required && hints?.commentRequired ? 'Для чего и зачем нужен пропуск.' : undefined}
-        className="sm:col-span-2"
+        className="@md:col-span-2"
       >
         <Textarea
           value={values.comment}
@@ -311,12 +311,12 @@ export function PassFormFields(props: PassFormFieldsProps) {
   const open = more || secondaryHasError;
 
   return (
-    <>
+    <div className="@container space-y-4">
       <Card>
-        <CardContent className="grid gap-3 pt-4 sm:grid-cols-2 sm:gap-4 sm:pt-5">
+        <CardContent className="grid gap-3 pt-4 @md:grid-cols-2 sm:gap-4 sm:pt-5">
           {vehicle ? (
             <>
-              <Field label="Номер машины" required error={err('plate')} className="sm:col-span-2">
+              <Field label="Номер машины" required error={err('plate')} className="@md:col-span-2">
                 <Input
                   value={values.plate}
                   onChange={(e) => set('plate', e.target.value)}
@@ -380,7 +380,7 @@ export function PassFormFields(props: PassFormFieldsProps) {
           {noTypes ? (
             <Field
               label="Вид пропуска"
-              className="sm:col-span-2"
+              className="@md:col-span-2"
               disabledReason="Оформлять пропуска вам не разрешено. Обратитесь к ответственному вашей компании."
             >
               <Select disabled value="">
@@ -388,14 +388,14 @@ export function PassFormFields(props: PassFormFieldsProps) {
               </Select>
             </Field>
           ) : passTypes && passTypes.length === 1 ? (
-            <p className="self-end text-sm text-muted-foreground sm:col-span-2">
+            <p className="self-end text-sm text-muted-foreground @md:col-span-2">
               Пропуск:{' '}
               <span className="font-medium text-foreground">
                 {passTypeLabel(passTypes[0] as PassType, hints)}
               </span>
             </p>
           ) : (
-            <Field label="Вид пропуска" required className="sm:col-span-2">
+            <Field label="Вид пропуска" required className="@md:col-span-2">
               <Select
                 value={typeSelectable ? values.passType : ''}
                 onChange={(e) => set('passType', e.target.value as PassType)}
@@ -470,13 +470,13 @@ export function PassFormFields(props: PassFormFieldsProps) {
             <ChevronDown aria-hidden className={cn('transition-transform', open && 'rotate-180')} />
           </Button>
           <Card className={cn(!open && 'hidden sm:block')} data-testid="form-more">
-            <CardContent className="grid gap-3 pt-4 sm:grid-cols-2 sm:gap-4 sm:pt-5">
+            <CardContent className="grid gap-3 pt-4 @md:grid-cols-2 sm:gap-4 sm:pt-5">
               {secondary}
             </CardContent>
           </Card>
         </>
       ) : null}
-    </>
+    </div>
   );
 }
 
