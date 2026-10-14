@@ -1,11 +1,12 @@
-import { type ParsedRow, parsePastedTable } from '@oxrana/contracts';
+import { type ParsedRow, parseTableText } from '@oxrana/contracts';
 import { normalizePlate } from '@oxrana/plates';
-import { buildPassBody, type PassFormValues } from './pass-form';
+import { buildPassBody, type EffectiveFields, type PassFormValues } from './pass-form';
 
-/** Что кабинет знает о справочниках для разбора вставленных строк. */
+/** Что кабинет знает о справочниках для разбора таблицы. */
 export interface BatchCatalog {
-  readonly categories: readonly { id: string; name: string }[];
+  readonly categories: readonly { id: string; name: string; dockEligible?: boolean }[];
   readonly docks: readonly { id: string; number: string }[];
+  readonly zones?: readonly { id: string; name: string }[];
   readonly defaultCategoryId: string | null;
 }
 
@@ -21,87 +22,196 @@ export interface BatchSettings {
   readonly comment: string;
 }
 
-/** Строка пачки после разбора: то, что было в таблице, уже сопоставленное со справочниками. */
-export interface BatchLine {
+/**
+ * Строка пачки: то, что было в таблице, уже сопоставленное со справочниками. Строка живёт в
+ * состоянии экрана и правится прямо в предпросмотре — тип, док, место, время (этап 7b).
+ */
+export interface BatchRow {
+  /** Номер строки в таблице (с 1, считая и заголовок). */
+  readonly line: number;
   readonly plate: string;
+  /** Тип как написан в таблице (для сообщений). */
+  readonly categoryText: string;
+  /** `''` — тип не выбран: пусто, не найден или неоднозначен. */
   readonly categoryId: string;
-  readonly categoryName: string;
+  /** Подходящие типы, когда написанное неоднозначно («грузовой» при двух грузовых типах). */
+  readonly candidates: readonly string[];
   readonly brand: string;
   readonly driverName: string;
+  readonly driverPhone: string;
   readonly comment: string;
   readonly dockId: string;
-  readonly dockNumber: string;
-  /** Окно из таблицы: время «с» и «по», дата — если указана явно. */
-  readonly window: { readonly date: string; readonly from: string; readonly to: string } | null;
+  readonly zoneId: string;
+  /** Окно как текст: «12:00-14:00»; правится в предпросмотре. */
   readonly windowText: string;
+  /** Что подставлено из других ячеек или справочников («тип по умолчанию»). */
+  readonly note: string;
+  /** Что не удалось понять в таблице (док, место) — показывается, пока строку не поправят. */
+  readonly problems: Readonly<Partial<Record<'category' | 'dock' | 'zone', string>>>;
 }
 
-const HEADER = /номер|тип|марка|водител|окно|коммент|док/i;
+/** Результат разбора таблицы: строки и колонки, которые форма не принимает. */
+export interface BatchImport {
+  readonly rows: ParsedRow<BatchRow>[];
+  /** Колонки таблицы, значения которых не попадут в пропуска (поле отключено настройкой формы). */
+  readonly ignoredColumns: string[];
+  readonly headerFound: boolean;
+}
+
+/** Колонки пакета. */
+export type BatchColumn =
+  | 'plate'
+  | 'type'
+  | 'brand'
+  | 'driver'
+  | 'phone'
+  | 'window'
+  | 'comment'
+  | 'dock'
+  | 'zone';
+
+/** Порядок колонок без строки заголовков. */
+const DEFAULT_ORDER: BatchColumn[] = [
+  'plate',
+  'type',
+  'brand',
+  'driver',
+  'window',
+  'comment',
+  'dock',
+];
+
+/** Названия колонок в заголовке: по началу слова, без регистра. */
+const HEADER_WORDS: Record<BatchColumn, RegExp> = {
+  plate: /^(номер|гос|гос\.?\s*номер|госномер|регистр|рег\.?\s*номер|№|plate)/,
+  type: /^(тип|вид|категор|транспорт|тс\b|машин)/,
+  brand: /^(марка|модел|brand)/,
+  driver: /^(водител|фио|ф\.?\s?и\.?\s?о|имя)/,
+  phone: /^(телефон|тел\b|тел\.|моб)/,
+  window: /^(окно|врем|прибыт|приезд)/,
+  comment: /^(коммент|примеч|цель|заметк)/,
+  dock: /^(док|ворот|рампа)/,
+  zone: /^(мест|назнач|зона|куда|площадк)/,
+};
+
+const COLUMN_TITLE: Record<BatchColumn, string> = {
+  plate: 'Номер',
+  type: 'Тип',
+  brand: 'Марка',
+  driver: 'Водитель',
+  phone: 'Телефон',
+  window: 'Окно',
+  comment: 'Комментарий',
+  dock: 'Док',
+  zone: 'Место назначения',
+};
+
 const clean = (value: string) =>
   value.trim().toLocaleLowerCase('ru-RU').replaceAll('ё', 'е').replace(/\s+/g, ' ');
 
-/** Первый ряд — заголовок («Номер · Тип · Марка…»), если в нём нет цифр номера и есть слова колонок. */
-function looksLikeHeader(first: readonly string[]): boolean {
-  const cells = first.filter((c) => c !== '');
-  return cells.length > 0 && HEADER.test(first.join(' ')) && !/\d/.test(first[0] ?? '');
-}
-
-/** Таблица из буфера: Excel (Tab), `;`, а если разделителей нет — запятые. */
-function tableOf(text: string): string[][] {
-  const table = parsePastedTable(text);
-  if (
-    table.length > 0 &&
-    table.every((row) => row.length === 1) &&
-    table.some((r) => r[0]?.includes(','))
-  ) {
-    return text
-      .replace(/\r\n?/g, '\n')
-      .split('\n')
-      .filter((l) => l.trim() !== '')
-      .map((l) => l.split(',').map((c) => c.trim()));
-  }
-  return table;
-}
-
-function resolveCategory(
-  name: string,
-  catalog: BatchCatalog,
-): { id: string; name: string; note?: string } | { error: string } {
-  const names = catalog.categories.map((c) => c.name).join(', ');
-  if (name === '') {
-    const byDefault = catalog.categories.find((c) => c.id === catalog.defaultCategoryId);
-    if (byDefault) {
-      return {
-        id: byDefault.id,
-        name: byDefault.name,
-        note: `тип по умолчанию: ${byDefault.name}`,
-      };
-    }
-    return {
-      error: `Не указан тип транспорта. Доступные: ${names || 'для вашей компании типов нет'}.`,
-    };
-  }
-  const wanted = clean(name);
-  const exact = catalog.categories.filter((c) => clean(c.name) === wanted);
-  const loose = catalog.categories.filter(
-    (c) => clean(c.name).startsWith(wanted) || wanted.startsWith(clean(c.name)),
+function headerColumn(cell: string): BatchColumn | null {
+  const text = clean(cell);
+  if (text === '') return null;
+  return (
+    (Object.keys(HEADER_WORDS) as BatchColumn[]).find((c) => HEADER_WORDS[c].test(text)) ?? null
   );
-  const found = exact.length === 1 ? exact : loose.length === 1 ? loose : [];
-  const hit = found[0];
-  if (hit) return { id: hit.id, name: hit.name };
-  return { error: `Тип «${name}» не найден среди доступных вашей компании: ${names || '—'}.` };
+}
+
+/** Первая строка — заголовок, если в ней узнаются названия колонок и нет ничего похожего на номер. */
+function headerMap(first: readonly string[]): (BatchColumn | null)[] | null {
+  const mapped = first.map(headerColumn);
+  const found = mapped.filter((c) => c !== null).length;
+  if (found === 0) return null;
+  // «А123ВС174» в первой ячейке — это уже данные, даже если рядом слово «тип»
+  if (normalizePlate(first[0] ?? '').recognized) return null;
+  return found >= 2 || mapped[0] === 'plate' ? mapped : null;
+}
+
+/** Таблица из буфера или файла: Tab (Excel), `;`, запятая. */
+export const tableOf = (text: string): string[][] => parseTableText(text);
+
+// ---------- тип транспорта: формы слова, неоднозначность ----------
+
+/** Основа слова: окончания падежей и родов отброшены («легковые» и «легковой» → «легков»). */
+export function stem(word: string): string {
+  const w = clean(word).replace(/[^\p{L}\p{N}]/gu, '');
+  if (w.length <= 3) return w;
+  const stripped = w.replace(
+    /(ыми|ими|ого|его|ому|ему|ых|их|ым|им|ом|ем|ый|ий|ой|ая|яя|ое|ее|ые|ие|ую|юю|а|я|ы|и|у|ю|е|о|ь|й)$/u,
+    '',
+  );
+  return stripped.length >= 3 ? stripped : w;
+}
+
+const tokens = (text: string): string[] =>
+  clean(text)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((t) => t !== '')
+    .map(stem);
+
+export type CategoryMatch =
+  | { kind: 'ok'; id: string; name: string }
+  | { kind: 'ambiguous'; candidates: { id: string; name: string }[] }
+  | { kind: 'none' };
+
+/**
+ * Тип транспорта из ячейки: без учёта регистра и с формами слова («легковые» → «легковой»,
+ * «малотоннажные» → «малотоннажный»). Если написанное подходит к нескольким типам («грузовой» при
+ * двух грузовых), выбирать за человека нельзя — `ambiguous`.
+ */
+export function matchCategory(
+  text: string,
+  categories: readonly { id: string; name: string }[],
+): CategoryMatch {
+  const wanted = tokens(text);
+  if (wanted.length === 0) return { kind: 'none' };
+  const exact = categories.filter((c) => {
+    const have = tokens(c.name);
+    return have.length === wanted.length && wanted.every((t) => have.includes(t));
+  });
+  if (exact.length === 1 && exact[0]) return { kind: 'ok', id: exact[0].id, name: exact[0].name };
+  if (exact.length > 1) return { kind: 'ambiguous', candidates: exact };
+  const partial = categories.filter((c) => {
+    const have = tokens(c.name);
+    return wanted.every((t) => have.includes(t));
+  });
+  if (partial.length === 1 && partial[0]) {
+    return { kind: 'ok', id: partial[0].id, name: partial[0].name };
+  }
+  if (partial.length > 1) return { kind: 'ambiguous', candidates: partial };
+  return { kind: 'none' };
 }
 
 function resolveDock(
   text: string,
   catalog: BatchCatalog,
-): { id: string; number: string } | { error: string } | null {
-  if (text === '') return null;
+): { id: string; error?: undefined } | { id: ''; error: string } | null {
+  if (text.trim() === '') return null;
   const number = text.replace(/^(док|№|n)\s*/i, '').trim();
   const found = catalog.docks.find((d) => d.number.toLowerCase() === number.toLowerCase());
-  if (found) return found;
+  if (found) return { id: found.id };
   const list = catalog.docks.map((d) => d.number).join(', ');
-  return { error: `Док «${text}» не закреплён за вашей компанией. Ваши доки: ${list || 'нет'}.` };
+  return {
+    id: '',
+    error: `Док «${text}» не закреплён за вашей компанией. Ваши доки: ${list || 'нет'}. Выберите док ниже.`,
+  };
+}
+
+function resolveZone(
+  text: string,
+  catalog: BatchCatalog,
+): { id: string; error?: undefined } | { id: ''; error: string } | null {
+  if (text.trim() === '') return null;
+  const wanted = clean(text);
+  const zones = catalog.zones ?? [];
+  const found = zones.filter((z) => clean(z.name) === wanted);
+  const loose = zones.filter((z) => clean(z.name).includes(wanted));
+  const hit = found.length === 1 ? found[0] : loose.length === 1 ? loose[0] : undefined;
+  if (hit) return { id: hit.id };
+  return {
+    id: '',
+    error: `Место назначения «${text}» не найдено. Выберите место ниже: ${zones.map((z) => z.name).join(', ') || '—'}.`,
+  };
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -141,107 +251,173 @@ export function parseWindow(
   return { date, from, to };
 }
 
+// ---------- разбор таблицы ----------
+
+/** Что считается «отключённым» для колонки: поле выключено настройкой формы. */
+function hiddenColumns(fields: EffectiveFields | undefined): Set<BatchColumn> {
+  const out = new Set<BatchColumn>();
+  if (!fields) return out;
+  if (fields.brand === 'hidden') out.add('brand');
+  if (fields.driverName === 'hidden') out.add('driver');
+  if (fields.driverPhone === 'hidden') out.add('phone');
+  if (fields.window === 'hidden') out.add('window');
+  if (fields.comment === 'hidden') out.add('comment');
+  if (fields.destination === 'hidden') out.add('zone');
+  return out;
+}
+
 /**
- * Разбор вставленных строк (08_ «Пакетный ввод»): Номер · Тип · Марка · Водитель · Окно ·
- * Комментарий · Док. Строки независимы; в одной пачке могут быть разные типы транспорта. Названия
- * типов и доков сопоставляются со справочниками арендатора; ошибка строки называет причину.
+ * Разбор таблицы пропусков (08_ «Пакетный ввод»): колонки по заголовку (если он есть) или по
+ * порядку Номер · Тип · Марка · Водитель · Окно · Комментарий · Док. Строки независимы; в одной
+ * пачке могут быть разные типы транспорта. Пробелы и разделители в номерах не мешают. Колонки,
+ * отключённые настройкой формы, не попадают в пропуска — список таких колонок возвращается.
  */
-export function parseBatchRows(text: string, catalog: BatchCatalog): ParsedRow<BatchLine>[] {
-  const table = tableOf(text);
-  const header = table[0] !== undefined && looksLikeHeader(table[0]);
-  const rows: ParsedRow<BatchLine>[] = [];
+export function importPassTable(
+  table: readonly (readonly string[])[],
+  catalog: BatchCatalog,
+  fields?: EffectiveFields,
+): BatchImport {
+  const first = table[0];
+  const header = first ? headerMap(first) : null;
+  const order: (BatchColumn | null)[] = header ?? DEFAULT_ORDER;
+  const hidden = hiddenColumns(fields);
+  const ignored = new Set<BatchColumn>();
+  const rows: ParsedRow<BatchRow>[] = [];
+
   table.forEach((cells, index) => {
     if (header && index === 0) return;
     const line = index + 1;
-    const [
-      plateCell = '',
-      typeCell = '',
-      brand = '',
-      driver = '',
-      windowCell = '',
-      comment = '',
-      dockCell = '',
-    ] = cells;
+    const at = (column: BatchColumn): string => {
+      const i = order.indexOf(column);
+      const value = i >= 0 ? (cells[i] ?? '').trim() : '';
+      if (value !== '' && hidden.has(column)) ignored.add(column);
+      return hidden.has(column) ? '' : value;
+    };
+    const plateCell = (cells[Math.max(order.indexOf('plate'), 0)] ?? '').trim();
     if (normalizePlate(plateCell).norm === '') {
-      rows.push({ line, error: 'Нет номера — первая ячейка пуста.' });
+      rows.push({ line, error: 'Нет номера — ячейка с номером пуста.' });
       return;
     }
-    const category = resolveCategory(typeCell, catalog);
-    if ('error' in category) {
-      rows.push({ line, error: category.error });
-      return;
+    const typeCell = at('type');
+    const problems: { category?: string; dock?: string; zone?: string } = {};
+    let categoryId = '';
+    let candidates: string[] = [];
+    let note = '';
+    if (typeCell === '') {
+      const byDefault = catalog.categories.find((c) => c.id === catalog.defaultCategoryId);
+      if (byDefault) {
+        categoryId = byDefault.id;
+        note = `тип по умолчанию: ${byDefault.name}`;
+      } else if (catalog.categories.length === 1 && catalog.categories[0]) {
+        categoryId = catalog.categories[0].id;
+        note = `единственный доступный тип: ${catalog.categories[0].name}`;
+      } else {
+        problems.category = 'Не указан тип транспорта — выберите ниже.';
+      }
+    } else {
+      const match = matchCategory(typeCell, catalog.categories);
+      if (match.kind === 'ok') categoryId = match.id;
+      else if (match.kind === 'ambiguous') {
+        candidates = match.candidates.map((c) => c.id);
+        problems.category = `«${typeCell}» подходит к нескольким типам: ${match.candidates.map((c) => c.name).join(', ')}. Выберите нужный ниже.`;
+      } else {
+        problems.category = `Тип «${typeCell}» не найден среди доступных вашей компании: ${catalog.categories.map((c) => c.name).join(', ') || '—'}. Выберите ниже.`;
+      }
     }
-    const dock = resolveDock(dockCell, catalog);
-    if (dock && 'error' in dock) {
-      rows.push({ line, error: dock.error });
-      return;
-    }
-    const window = parseWindow(windowCell);
-    if (window && 'error' in window) {
-      rows.push({ line, error: window.error });
-      return;
-    }
+    const dock = resolveDock(at('dock'), catalog);
+    if (dock?.error) problems.dock = dock.error;
+    const zone = resolveZone(at('zone'), catalog);
+    if (zone?.error) problems.zone = zone.error;
+    const windowText = at('window');
     rows.push({
       line,
       value: {
-        plate: plateCell.trim(),
-        categoryId: category.id,
-        categoryName: category.name,
-        brand,
-        driverName: driver,
-        comment,
+        line,
+        plate: plateCell,
+        categoryText: typeCell,
+        categoryId,
+        candidates,
+        brand: at('brand'),
+        driverName: at('driver'),
+        driverPhone: at('phone'),
+        comment: at('comment'),
         dockId: dock?.id ?? '',
-        dockNumber: dock?.number ?? '',
-        window,
-        windowText: windowCell,
+        zoneId: zone?.id ?? '',
+        windowText,
+        note,
+        problems,
       },
-      ...(category.note ? { note: category.note } : {}),
     });
   });
-  return rows;
+  return {
+    rows,
+    ignoredColumns: [...ignored].map((c) => COLUMN_TITLE[c]),
+    headerFound: header !== null,
+  };
 }
+
+/** Вставленный текст → строки (см. `importPassTable`). */
+export function parseBatchRows(
+  text: string,
+  catalog: BatchCatalog,
+  fields?: EffectiveFields,
+): BatchImport {
+  return importPassTable(tableOf(text), catalog, fields);
+}
+
+// ---------- строка → тело запроса ----------
 
 export interface BatchBuildContext {
   readonly timezone: string;
   readonly today: string;
   readonly nowMs: number;
+  /** Режимы полей формы (скрытое в тело не попадает, обязательное проверяется). */
+  readonly fields?: EffectiveFields | undefined;
+  /** Тип транспорта «к доку» и док обязателен арендатору. */
+  readonly dockRequiredFor?: (categoryId: string) => boolean;
+  /** Единственное место назначения подставляется в строки без места. */
+  readonly defaultZoneId?: string | undefined;
 }
 
 /**
  * Строка пачки → тело строки `POST /passes/batch`. Время считается так же, как в форме пропуска
- * (`buildPassBody`), поэтому «сегодня без окна» = «сейчас», а окно — в пределах даты приезда.
+ * (`buildPassBody`), поэтому «сегодня без окна» = «сейчас» (сервер), а окно — в пределах даты приезда.
  */
 export function batchDraft(
-  line: BatchLine,
+  line: BatchRow,
   settings: BatchSettings,
   c: BatchBuildContext,
 ): { ok: true; draft: Record<string, unknown> } | { ok: false; error: string } {
-  const date = line.window?.date || settings.date;
+  const window = parseWindow(line.windowText);
+  if (window && 'error' in window) return { ok: false, error: window.error };
+  if (line.problems.category && !line.categoryId)
+    return { ok: false, error: line.problems.category };
+  if (line.problems.dock && !line.dockId) return { ok: false, error: line.problems.dock };
+  if (line.problems.zone && !line.zoneId) return { ok: false, error: line.problems.zone };
+  const date = window?.date || settings.date;
   const values: PassFormValues = {
     participant: 'vehicle',
     plate: line.plate,
     categoryId: line.categoryId,
     brand: line.brand,
     driverName: line.driverName,
-    driverPhone: '',
+    driverPhone: line.driverPhone,
     personName: '',
     personDocument: '',
     passType: settings.passType,
     date,
-    windowFromTime: settings.passType === 'single' ? (line.window?.from ?? '') : '',
-    windowToTime: settings.passType === 'single' ? (line.window?.to ?? '') : '',
+    startTime: '',
+    endTime: '',
+    windowFromTime: settings.passType === 'single' ? (window?.from ?? '') : '',
+    windowToTime: settings.passType === 'single' ? (window?.to ?? '') : '',
     from: settings.from,
     to: settings.to,
     windowFrom:
-      settings.passType !== 'single' && line.window
-        ? `${date || settings.from}T${line.window.from}`
-        : '',
+      settings.passType !== 'single' && window ? `${date || settings.from}T${window.from}` : '',
     windowTo:
-      settings.passType !== 'single' && line.window
-        ? `${date || settings.from}T${line.window.to}`
-        : '',
+      settings.passType !== 'single' && window ? `${date || settings.from}T${window.to}` : '',
     dockId: line.dockId,
-    destinationZoneId: '',
+    destinationZoneId: line.zoneId || c.defaultZoneId || '',
     purposeId: '',
     comment: line.comment || settings.comment,
   };
@@ -252,12 +428,15 @@ export function batchDraft(
     nowMs: c.nowMs,
     commentRequired: false,
     windowRequired: false,
-    dockRequired: false,
+    dockRequired: Boolean(line.categoryId && c.dockRequiredFor?.(line.categoryId)),
+    fields: c.fields,
   });
   if (!built.ok) return { ok: false, error: Object.values(built.errors)[0] ?? 'Проверьте срок.' };
   const { tenantId: _tenant, ...draft } = built.body;
   return { ok: true, draft };
 }
+
+// ---------- автопарк ----------
 
 /** Строка пакета автопарка. */
 export interface FleetLine {
@@ -272,9 +451,11 @@ export interface FleetLine {
 /** Вставка автопарка: Номер · Тип · Марка · Водитель · Телефон. Повтор номера внутри списка — ошибка строки. */
 export function parseFleetRows(text: string, catalog: BatchCatalog): ParsedRow<FleetLine>[] {
   const table = tableOf(text);
-  const header = table[0] !== undefined && looksLikeHeader(table[0]);
+  const first = table[0];
+  const header = first ? headerMap(first) : null;
   const seen = new Set<string>();
   const rows: ParsedRow<FleetLine>[] = [];
+  const names = catalog.categories.map((c) => c.name).join(', ');
   table.forEach((cells, index) => {
     if (header && index === 0) return;
     const line = index + 1;
@@ -288,10 +469,38 @@ export function parseFleetRows(text: string, catalog: BatchCatalog): ParsedRow<F
       rows.push({ line, error: `Номер ${norm} уже встречается выше в этом списке.` });
       return;
     }
-    const category = resolveCategory(typeCell, catalog);
-    if ('error' in category) {
-      rows.push({ line, error: category.error });
-      return;
+    let category: { id: string; name: string; note?: string } | null = null;
+    if (typeCell.trim() === '') {
+      const byDefault = catalog.categories.find((c) => c.id === catalog.defaultCategoryId);
+      if (byDefault) {
+        category = {
+          id: byDefault.id,
+          name: byDefault.name,
+          note: `тип по умолчанию: ${byDefault.name}`,
+        };
+      } else {
+        rows.push({
+          line,
+          error: `Не указан тип транспорта. Доступные: ${names || 'для вашей компании типов нет'}.`,
+        });
+        return;
+      }
+    } else {
+      const match = matchCategory(typeCell, catalog.categories);
+      if (match.kind === 'ok') category = match;
+      else if (match.kind === 'ambiguous') {
+        rows.push({
+          line,
+          error: `«${typeCell}» подходит к нескольким типам: ${match.candidates.map((c) => c.name).join(', ')}. Напишите название полностью.`,
+        });
+        return;
+      } else {
+        rows.push({
+          line,
+          error: `Тип «${typeCell}» не найден среди доступных вашей компании: ${names || '—'}.`,
+        });
+        return;
+      }
     }
     seen.add(norm);
     rows.push({

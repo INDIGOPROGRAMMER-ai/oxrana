@@ -4,7 +4,15 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { actorFromGrants } from '../../src/actor';
 import { visibleTo } from '../../src/realtime/routes';
-import { KEYS, NOON, ownerDb, roleActor, seedDemo, startTestApp, type TestApp } from '../support/harness';
+import {
+  KEYS,
+  NOON,
+  ownerDb,
+  roleActor,
+  seedDemo,
+  startTestApp,
+  type TestApp,
+} from '../support/harness';
 import { at, categoryKey, tenantKey } from './gate-helpers';
 
 /**
@@ -97,7 +105,10 @@ describe('колокольчик', () => {
       payload: { note: 'Хватит до 13-го', changes: { validTo: '2026-03-13T15:00:00.000Z' } },
     });
     const [item] = (await bell(logist)).items;
-    expect(item).toMatchObject({ kind: 'pass_approved_changed', title: 'Пропуск одобрен с изменениями' });
+    expect(item).toMatchObject({
+      kind: 'pass_approved_changed',
+      title: 'Пропуск одобрен с изменениями',
+    });
     expect(item.changes.validTo).toMatchObject({
       from: '2026-03-15T15:00:00.000Z',
       to: '2026-03-13T15:00:00.000Z',
@@ -117,7 +128,11 @@ describe('колокольчик', () => {
     expect(bellNow.items[0]).toMatchObject({ kind: 'pass_rejected', title: 'Пропуск отклонён' });
     expect(bellNow.items[0].text).toContain('Нет места на стоянке');
     expect(bellNow.unreadCount).toBeGreaterThan(0);
-    const all = await t.as(logist, { method: 'POST', url: '/notifications/read', payload: { all: true } });
+    const all = await t.as(logist, {
+      method: 'POST',
+      url: '/notifications/read',
+      payload: { all: true },
+    });
     expect(all.json()).toEqual({ unreadCount: 0 });
     const empty = await t.as(logist, { method: 'POST', url: '/notifications/read', payload: {} });
     expect(empty.statusCode).toBe(400);
@@ -166,17 +181,35 @@ describe('колокольчик', () => {
     const grants = (permissions: string[]) => [
       { permissions: new Set(permissions), siteId: KEYS.siteId, tenantId: dns },
     ];
-    const recipient = actorFromGrants({ id: logist.id, kind: 'user', organizationId: KEYS.organizationId, grants: grants(['pass.view']) });
-    const colleague = actorFromGrants({ id: requester.id, kind: 'user', organizationId: KEYS.organizationId, grants: grants(['pass.view']) });
+    const recipient = actorFromGrants({
+      id: logist.id,
+      kind: 'user',
+      organizationId: KEYS.organizationId,
+      grants: grants(['pass.view']),
+    });
+    const colleague = actorFromGrants({
+      id: requester.id,
+      kind: 'user',
+      organizationId: KEYS.organizationId,
+      grants: grants(['pass.view']),
+    });
     const staff = actorFromGrants({
       id: approver.id,
       kind: 'user',
       organizationId: KEYS.organizationId,
-      grants: [{ permissions: new Set(['pass.view_all_tenants']), siteId: KEYS.siteId, tenantId: null }],
+      grants: [
+        { permissions: new Set(['pass.view_all_tenants']), siteId: KEYS.siteId, tenantId: null },
+      ],
     });
     const event = { type: 'notification.created', payload: { ...payload, tenantId: dns } };
-    expect(visibleTo(recipient, { type: event.type, payload: { ...payload, userId: logist.id } })).toBe(true);
-    expect(visibleTo(colleague, { type: event.type, payload: { ...payload, userId: logist.id } })).toBe(false);
-    expect(visibleTo(staff, { type: event.type, payload: { ...payload, userId: logist.id } })).toBe(false);
+    expect(
+      visibleTo(recipient, { type: event.type, payload: { ...payload, userId: logist.id } }),
+    ).toBe(true);
+    expect(
+      visibleTo(colleague, { type: event.type, payload: { ...payload, userId: logist.id } }),
+    ).toBe(false);
+    expect(visibleTo(staff, { type: event.type, payload: { ...payload, userId: logist.id } })).toBe(
+      false,
+    );
   });
 });

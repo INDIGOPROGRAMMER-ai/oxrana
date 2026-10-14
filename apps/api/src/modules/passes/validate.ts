@@ -469,7 +469,11 @@ export function windowRequiredByPolicy(ctx: PassContext, values: PassValues): bo
   const policy = windowPolicyFor(ctx.rules, ctx.tenant.id, values.categoryId);
   if (!policy?.windowRequired) return false;
   const at = values.validFrom?.getTime() ?? ctx.now;
-  const waived = collectWaivers(asEnginePass(values, ctx.tenant.id), ctx.rules.exceptions, at).waived;
+  const waived = collectWaivers(
+    asEnginePass(values, ctx.tenant.id),
+    ctx.rules.exceptions,
+    at,
+  ).waived;
   return !waived.has('time_window');
 }
 

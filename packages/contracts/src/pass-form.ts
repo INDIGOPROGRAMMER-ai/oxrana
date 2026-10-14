@@ -36,7 +36,7 @@ export type PassFormFieldKey = keyof typeof PASS_FORM_FIELD_LABELS;
 export type PassFormFieldModes = {
   [K in PassFormFieldKey]: K extends 'window' ? WindowMode : FieldMode;
 };
-export const PASS_FORM_FIELD_KEYS = Object.keys(PASS_FORM_FIELD_LABELS) as PassFormFieldKey[];
+export const passFormFieldKeys = Object.keys(PASS_FORM_FIELD_LABELS) as PassFormFieldKey[];
 
 /** Подписи значений для редактора и подписей «откуда значение». */
 export const FIELD_MODE_LABELS: Record<WindowMode, string> = {
@@ -101,9 +101,13 @@ export const PassFormSettingsSchema = z.strictObject({
   defaultCategoryId: z.uuid().optional(),
   passTypes: z.array(PassTypeSchema).min(1, 'Оставьте хотя бы один вид пропуска').optional(),
   defaultPassType: PassTypeSchema.optional(),
-  fields: z.strictObject(Object.fromEntries(Object.entries(fieldsShape).map(([k, v]) => [k, v.optional()])) as {
-    [K in PassFormFieldKey]: z.ZodOptional<(typeof fieldsShape)[K]>;
-  }).optional(),
+  fields: z
+    .strictObject(
+      Object.fromEntries(Object.entries(fieldsShape).map(([k, v]) => [k, v.optional()])) as {
+        [K in PassFormFieldKey]: z.ZodOptional<(typeof fieldsShape)[K]>;
+      },
+    )
+    .optional(),
   /** Окончание разового пропуска, если не указано: начало + столько часов (не больше максимума объекта). */
   singleHours: z.int().min(1).max(168).optional(),
 });
@@ -117,7 +121,11 @@ export const PassFormSettingsPatchSchema = z.strictObject({
     .nullable()
     .optional(),
   defaultCategoryId: z.uuid().nullable().optional(),
-  passTypes: z.array(PassTypeSchema).min(1, 'Оставьте хотя бы один вид пропуска').nullable().optional(),
+  passTypes: z
+    .array(PassTypeSchema)
+    .min(1, 'Оставьте хотя бы один вид пропуска')
+    .nullable()
+    .optional(),
   defaultPassType: PassTypeSchema.nullable().optional(),
   fields: z
     .strictObject(
@@ -138,7 +146,13 @@ export function applyPassFormPatch(
   patch: Omit<PassFormSettingsPatch, 'reason'>,
 ): PassFormSettings {
   const next: Record<string, unknown> = { ...stored };
-  for (const key of ['categoryIds', 'defaultCategoryId', 'passTypes', 'defaultPassType', 'singleHours'] as const) {
+  for (const key of [
+    'categoryIds',
+    'defaultCategoryId',
+    'passTypes',
+    'defaultPassType',
+    'singleHours',
+  ] as const) {
     const value = patch[key];
     if (value === undefined) continue;
     if (value === null) delete next[key];
@@ -199,7 +213,7 @@ export const ResolvedPassFormSchema = z.object({
     defaultCategoryId: PassFormSourceSchema,
     singleHours: PassFormSourceSchema,
     fields: z.object(
-      Object.fromEntries(PASS_FORM_FIELD_KEYS.map((k) => [k, PassFormSourceSchema])) as {
+      Object.fromEntries(passFormFieldKeys.map((k) => [k, PassFormSourceSchema])) as {
         [K in PassFormFieldKey]: typeof PassFormSourceSchema;
       },
     ),
@@ -227,7 +241,7 @@ export function resolvePassForm(layers: PassFormLayers): ResolvedPassForm {
     categoryIds: 'default' as PassFormSource,
     defaultCategoryId: 'default' as PassFormSource,
     singleHours: 'default' as PassFormSource,
-    fields: Object.fromEntries(PASS_FORM_FIELD_KEYS.map((k) => [k, 'default'])) as Record<
+    fields: Object.fromEntries(passFormFieldKeys.map((k) => [k, 'default'])) as Record<
       PassFormFieldKey,
       PassFormSource
     >,
@@ -255,7 +269,7 @@ export function resolvePassForm(layers: PassFormLayers): ResolvedPassForm {
       singleHours = layer.singleHours;
       sources.singleHours = level;
     }
-    for (const key of PASS_FORM_FIELD_KEYS) {
+    for (const key of passFormFieldKeys) {
       const mode = layer.fields?.[key];
       if (mode) {
         fields[key] = mode;

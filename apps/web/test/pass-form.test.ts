@@ -30,6 +30,8 @@ const base: PassFormValues = {
   personDocument: '',
   passType: 'single',
   date: '2026-03-10',
+  startTime: '',
+  endTime: '',
   windowFromTime: '',
   windowToTime: '',
   from: '',
@@ -43,7 +45,7 @@ const base: PassFormValues = {
 };
 
 describe('форма пропуска → тело POST /passes', () => {
-  it('разовый на сегодня без окна: начало — «сейчас» по часам сервера, конец — 23:59 объекта; номер без пробела', () => {
+  it('разовый на сегодня без окна: ни начала, ни конца в теле — «сейчас» и +N ч считает сервер; номер без пробела', () => {
     const built = buildPassBody(base, ctx);
     expect(built.ok && built.body).toMatchObject({
       tenantId: 't1',
@@ -51,32 +53,96 @@ describe('форма пропуска → тело POST /passes', () => {
       participant: 'vehicle',
       plate: 'А123ВС174',
       categoryId: 'car',
-      validFrom: '2026-03-10T07:00:00.000Z',
     });
-    expect(built.ok && new Date(String(built.body.validTo)).toISOString()).toBe(
-      '2026-03-10T18:59:00.000Z',
-    );
+    expect(built.ok && Object.keys(built.body)).not.toContain('validFrom');
+    expect(built.ok && Object.keys(built.body)).not.toContain('validTo');
     // пустые необязательные поля в тело не попадают
     expect(built.ok && Object.keys(built.body)).not.toContain('brand');
   });
 
-  it('разовый с окном: начало пропуска — начало окна, окно по времени объекта, а не браузера', () => {
-    const built = buildPassBody({ ...base, windowFromTime: '14:00', windowToTime: '16:00' }, ctx);
+  it('явное время: «с» и «до» по времени объекта, а не браузера; «до» не раньше «с»', () => {
+    const built = buildPassBody({ ...base, startTime: '13:00', endTime: '18:30' }, ctx);
     expect(built.ok && new Date(String(built.body.validFrom)).toISOString()).toBe(
-      '2026-03-10T09:00:00.000Z',
+      '2026-03-10T08:00:00.000Z',
     );
-    expect(built.ok && new Date(String(built.body.windowFrom)).toISOString()).toBe(
-      '2026-03-10T09:00:00.000Z',
+    expect(built.ok && new Date(String(built.body.validTo)).toISOString()).toBe(
+      '2026-03-10T13:30:00.000Z',
     );
-    expect(built.ok && new Date(String(built.body.windowTo)).toISOString()).toBe(
-      '2026-03-10T11:00:00.000Z',
-    );
+    expect(buildPassBody({ ...base, startTime: '15:00', endTime: '14:00' }, ctx)).toMatchObject({
+      ok: false,
+      errors: { endTime: expect.stringContaining('позже') },
+    });
+  });
+
+  it('разовый с окном позже «сейчас»: пропуск начинает действовать с начала окна; окно по времени объекта', () => {
+    const built = buildPassBody({ ...base, windowFromTime: '14:00', windowToTime: '16:00' }, ctx);
+    const iso = (v: unknown) => new Date(String(v)).toISOString();
+    expect(built.ok && iso(built.body.validFrom)).toBe('2026-03-10T09:00:00.000Z');
+    expect(built.ok && iso(built.body.windowFrom)).toBe('2026-03-10T09:00:00.000Z');
+    expect(built.ok && iso(built.body.windowTo)).toBe('2026-03-10T11:00:00.000Z');
+    // окно уже идёт — начало не указываем: сервер поставит «сейчас»
+    const now = buildPassBody({ ...base, windowFromTime: '11:00', windowToTime: '16:00' }, ctx);
+    expect(now.ok && Object.keys(now.body)).not.toContain('validFrom');
   });
 
   it('будущий день без окна — с 00:00 объекта', () => {
     const built = buildPassBody({ ...base, date: '2026-03-12' }, ctx);
     expect(built.ok && new Date(String(built.body.validFrom)).toISOString()).toBe(
       '2026-03-11T19:00:00.000Z',
+    );
+  });
+
+  it('настройка формы: скрытые поля в тело не попадают, обязательные проверяются до запроса', () => {
+    const fields = {
+      brand: 'hidden',
+      driverName: 'required',
+      driverPhone: 'hidden',
+      window: 'hidden',
+      destination: 'required',
+      purpose: 'optional',
+      comment: 'hidden',
+    } as const;
+    const filled = buildPassBody(
+      {
+        ...base,
+        brand: 'Kia',
+        driverPhone: '+7900',
+        comment: 'не нужно',
+        windowFromTime: '14:00',
+        windowToTime: '16:00',
+      },
+      { ...ctx, fields },
+    );
+    expect(filled).toMatchObject({
+      ok: false,
+      errors: {
+        driverName: 'Укажите ФИО водителя.',
+        destinationZoneId: 'Укажите место назначения.',
+      },
+    });
+    const ok = buildPassBody(
+      {
+        ...base,
+        brand: 'Kia',
+        driverName: 'Иванов И. И.',
+        destinationZoneId: 'z1',
+        driverPhone: '+7900',
+        comment: 'не нужно',
+        windowFromTime: '14:00',
+        windowToTime: '16:00',
+      },
+      { ...ctx, fields },
+    );
+    expect(ok.ok && Object.keys(ok.body).sort()).toEqual(
+      [
+        'categoryId',
+        'destinationZoneId',
+        'driverName',
+        'participant',
+        'passType',
+        'plate',
+        'tenantId',
+      ].sort(),
     );
   });
 
@@ -162,7 +228,8 @@ describe('форма пропуска → тело POST /passes', () => {
   });
 
   it('поле сервера → поле формы зависит от типа пропуска', () => {
-    expect(formField('validFrom', 'single')).toBe('date');
+    expect(formField('validFrom', 'single')).toBe('startTime');
+    expect(formField('validTo', 'single')).toBe('endTime');
     expect(formField('validFrom', 'multi')).toBe('from');
     expect(formField('windowFrom', 'single')).toBe('windowFromTime');
     expect(formField('windowTo', 'permanent')).toBe('windowTo');

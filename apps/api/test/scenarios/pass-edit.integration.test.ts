@@ -2,7 +2,15 @@ import { ErrorBodySchema } from '@oxrana/contracts';
 import { schema } from '@oxrana/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { KEYS, NOON, ownerDb, roleActor, seedDemo, startTestApp, type TestApp } from '../support/harness';
+import {
+  KEYS,
+  NOON,
+  ownerDb,
+  roleActor,
+  seedDemo,
+  startTestApp,
+  type TestApp,
+} from '../support/harness';
 import { at, categoryKey, dockKey, gateKey, tenantKey } from './gate-helpers';
 
 /**
@@ -208,11 +216,16 @@ describe('после выезда или использования', () => {
     const plate = nextPlate();
     const passId = await create(logist, single({ plate }));
     await enter(passId, plate.toUpperCase(), true);
-    await ownerDb().update(schema.passes).set({ status: 'used' }).where(eq(schema.passes.id, passId));
+    await ownerDb()
+      .update(schema.passes)
+      .set({ status: 'used' })
+      .where(eq(schema.passes.id, passId));
     expect((await view(passId)).phase).toBe('locked');
     const res = await patch(logist, passId, { comment: 'поздно', reason: 'Уже выехал' });
     expect(error(res).code).toBe('pass_not_editable');
-    const list = await t.as(logist, { url: `/sites/${KEYS.siteId}/passes?tenantId=${dns}&status=used` });
+    const list = await t.as(logist, {
+      url: `/sites/${KEYS.siteId}/passes?tenantId=${dns}&status=used`,
+    });
     expect(list.json().items.find((p: { id: string }) => p.id === passId).phase).toBe('locked');
   });
 

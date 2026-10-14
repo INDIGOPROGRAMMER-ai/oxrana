@@ -208,7 +208,15 @@ describe('ограничения на сервере: сотрудник А и �
     // разрешённое — проходит у каждого
     const aOk = await create(staffA, carPass({ categoryId: light, dockId: dock12 }));
     expect(aOk.statusCode, aOk.body).toBe(201);
-    const bOk = await create(staffB, carPass({ categoryId: semi, dockId: dock12, windowFrom: NOON, windowTo: new Date(Date.parse(NOON) + HOUR).toISOString() }));
+    const bOk = await create(
+      staffB,
+      carPass({
+        categoryId: semi,
+        dockId: dock12,
+        windowFrom: NOON,
+        windowTo: new Date(Date.parse(NOON) + HOUR).toISOString(),
+      }),
+    );
     expect(bOk.statusCode, bOk.body).toBe(201);
 
     // пакет проходит те же проверки: строка с чужим типом — ошибка строки, остальные создаются
@@ -219,7 +227,13 @@ describe('ограничения на сервере: сотрудник А и �
         tenantId: dns,
         dryRun: true,
         rows: [
-          { passType: 'single', participant: 'vehicle', plate: nextPlate(), categoryId: light, dockId: dock12 },
+          {
+            passType: 'single',
+            participant: 'vehicle',
+            plate: nextPlate(),
+            categoryId: light,
+            dockId: dock12,
+          },
           { passType: 'single', participant: 'vehicle', plate: nextPlate(), categoryId: car },
         ],
       },
@@ -234,7 +248,11 @@ describe('ограничения на сервере: сотрудник А и �
     await resetForm();
     await setUser(requester.id, { passTypes: ['permanent'] });
     const hints = (
-      await t.as(requester, { method: 'POST', url: `/tenants/${dns}/pass-hints`, payload: { participant: 'vehicle' } })
+      await t.as(requester, {
+        method: 'POST',
+        url: `/tenants/${dns}/pass-hints`,
+        payload: { participant: 'vehicle' },
+      })
     ).json();
     // у «Арендатор — заказчик» право на постоянный есть, а политика согласования уводит на согласование
     expect(hints.passTypes.map((p: { passType: string }) => p.passType)).toEqual(['permanent']);
@@ -249,7 +267,13 @@ describe('ограничения на сервере: сотрудник А и �
     await setTenant({ categoryIds: [car], passTypes: ['single'] });
     const res = await create(
       admin,
-      carPass({ categoryId: semi, dockId: dock12, windowFrom: NOON, windowTo: new Date(Date.parse(NOON) + HOUR).toISOString(), driverName: 'Иванов И. И.' }),
+      carPass({
+        categoryId: semi,
+        dockId: dock12,
+        windowFrom: NOON,
+        windowTo: new Date(Date.parse(NOON) + HOUR).toISOString(),
+        driverName: 'Иванов И. И.',
+      }),
     );
     expect(res.statusCode, res.body).toBe(201);
     expect((await t.as(admin, { url: `/tenants/${dns}/pass-form` })).json().enforced).toBe(false);
@@ -285,12 +309,20 @@ describe('быстрый разовый пропуск и окно прибыт�
     const six = await create(logist, carPass());
     expect(six.json().validTo).toBe(new Date(Date.parse(NOON) + 6 * HOUR).toISOString());
     // максимум объекта уменьшили позже — окончание обрезается по максимуму
-    await t.as(admin, { method: 'PATCH', url: `/sites/${KEYS.siteId}/settings`, payload: { singlePassMaxHours: 4 } });
+    await t.as(admin, {
+      method: 'PATCH',
+      url: `/sites/${KEYS.siteId}/settings`,
+      payload: { singlePassMaxHours: 4 },
+    });
     try {
       const capped = await create(logist, carPass());
       expect(capped.json().validTo).toBe(new Date(Date.parse(NOON) + 4 * HOUR).toISOString());
     } finally {
-      await t.as(admin, { method: 'PATCH', url: `/sites/${KEYS.siteId}/settings`, payload: { singlePassMaxHours: 24 } });
+      await t.as(admin, {
+        method: 'PATCH',
+        url: `/sites/${KEYS.siteId}/settings`,
+        payload: { singlePassMaxHours: 24 },
+      });
     }
     const explicit = await create(
       logist,
@@ -308,19 +340,29 @@ describe('быстрый разовый пропуск и окно прибыт�
 
     await setTenant({ fields: { window: 'optional' } });
     const hints = (
-      await t.as(logist, { method: 'POST', url: `/tenants/${dns}/pass-hints`, payload: { participant: 'vehicle', categoryId: semi } })
+      await t.as(logist, {
+        method: 'POST',
+        url: `/tenants/${dns}/pass-hints`,
+        payload: { participant: 'vehicle', categoryId: semi },
+      })
     ).json();
     expect(hints.window).toMatchObject({ required: false, autoFilled: true });
     const fast = await create(logist, truck());
     expect(fast.statusCode, fast.body).toBe(201);
-    expect(fast.json()).toMatchObject({ windowFrom: fast.json().validFrom, windowTo: fast.json().validTo });
+    expect(fast.json()).toMatchObject({
+      windowFrom: fast.json().validFrom,
+      windowTo: fast.json().validTo,
+    });
 
     await setTenant({ fields: { window: 'required' } });
     const required = await create(logist, carPass({ categoryId: car }));
     expect(error(required)).toMatchObject({ code: 'field_required', field: 'windowFrom' });
 
     await setTenant({ fields: { window: 'hidden' } });
-    const hiddenWithValue = await create(logist, truck({ windowFrom: NOON, windowTo: new Date(Date.parse(NOON) + HOUR).toISOString() }));
+    const hiddenWithValue = await create(
+      logist,
+      truck({ windowFrom: NOON, windowTo: new Date(Date.parse(NOON) + HOUR).toISOString() }),
+    );
     expect(error(hiddenWithValue).code).toBe('field_hidden');
     const hiddenOk = await create(logist, truck());
     expect(hiddenOk.statusCode, hiddenOk.body).toBe(201);
@@ -348,7 +390,9 @@ describe('права на настройку', () => {
     const own = await setUser(staffA.id, { fields: { brand: 'hidden' } }, logist);
     expect(own.statusCode, own.body).toBe(200);
     // заказчик (без права) — нет
-    expect((await setUser(staffA.id, { fields: { brand: 'optional' } }, requester)).statusCode).toBe(403);
+    expect(
+      (await setUser(staffA.id, { fields: { brand: 'optional' } }, requester)).statusCode,
+    ).toBe(403);
     // сотрудник другой компании — 403 у чужого ответственного
     const otherLogist = roleActor('tenant_manager', { tenantIds: [x5] });
     const foreign = await t.as(otherLogist, {

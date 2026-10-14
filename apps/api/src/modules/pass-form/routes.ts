@@ -5,10 +5,10 @@ import {
   PassFormEditorSchema,
   type PassFormLevel,
   PassFormMineSchema,
+  PassFormSavedSchema,
   type PassFormSettings,
   PassFormSettingsPatchSchema,
   PassFormSettingsSchema,
-  PassFormSavedSchema,
   type PassType,
   SiteParamsSchema,
   TenantParamsSchema,
@@ -146,7 +146,9 @@ async function assertSettingsValid(
       message: 'Вид пропуска по умолчанию должен входить в список разрешённых видов этого уровня.',
     });
   }
-  const max = t.site.settings ? ((t.site.settings as { singlePassMaxHours?: number }).singlePassMaxHours ?? 24) : 24;
+  const max = t.site.settings
+    ? ((t.site.settings as { singlePassMaxHours?: number }).singlePassMaxHours ?? 24)
+    : 24;
   if (settings.singleHours !== undefined && settings.singleHours > max) {
     throw new AppError('invalid_period', {
       field: 'singleHours',
@@ -227,7 +229,8 @@ export function registerPassFormRoutes(app: FastifyInstance): void {
       config: { permission: VIEW },
       schema: {
         tags,
-        summary: 'Форма пропуска для текущего пользователя: итог уровней объект → арендатор → сотрудник',
+        summary:
+          'Форма пропуска для текущего пользователя: итог уровней объект → арендатор → сотрудник',
         params: TenantParamsSchema,
         response: { 200: PassFormMineSchema },
       },
@@ -406,4 +409,3 @@ export function registerPassFormRoutes(app: FastifyInstance): void {
     },
   );
 }
-

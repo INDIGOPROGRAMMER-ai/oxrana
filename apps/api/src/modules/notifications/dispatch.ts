@@ -3,8 +3,8 @@ import { schema } from '@oxrana/db';
 import { and, eq } from 'drizzle-orm';
 import type { Scope } from '../../core/context';
 import type { AuditDiff } from '../../core/diff';
-import { labelDiff } from '../../core/labels';
 import { type EmittedEvent, onEmit } from '../../core/event-hooks';
+import { labelDiff } from '../../core/labels';
 
 /**
  * Диспетчер уведомлений (ADR-023). События outbox → «намерения» уведомить пользователя (`planners`)
@@ -91,7 +91,8 @@ const planners: Partial<Record<string, Planner>> = {
       ];
     }
     const raw = (pass.approvalChanges as AuditDiff | null) ?? null;
-    const changes = raw && Object.keys(raw).length > 0 ? await labelDiff(s, raw, PASS_LABELS) : null;
+    const changes =
+      raw && Object.keys(raw).length > 0 ? await labelDiff(s, raw, PASS_LABELS) : null;
     if (changes) {
       const lines = Object.entries(changes).map(([f, c]) => changeLine(f, c));
       return [

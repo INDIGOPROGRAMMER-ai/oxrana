@@ -282,7 +282,9 @@ export async function passHints(
     categories:
       query.participant === 'vehicle'
         ? availableCategories(rules, tenant.id, now, tz)
-            .filter((c) => !enforced || form.categoryIds === null || form.categoryIds.includes(c.id))
+            .filter(
+              (c) => !enforced || form.categoryIds === null || form.categoryIds.includes(c.id),
+            )
             .map((c) => ({ id: c.id, name: c.name }))
         : [],
     passTypes,

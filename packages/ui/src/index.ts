@@ -1,5 +1,14 @@
 export { ApiError, api, type ErrorView, errorView } from './api';
 export { type BatchColumn, BatchInput } from './batch/batch-input';
+export { FileDrop } from './batch/file-drop';
+export {
+  BATCH_FILE_ACCEPT,
+  buildXlsx,
+  decodeCsv,
+  fileToText,
+  tableToText,
+  xlsxToTable,
+} from './batch/spreadsheet';
 export { Alert, ErrorAlert } from './components/alert';
 export { Badge } from './components/badge';
 export { Button, buttonVariants } from './components/button';

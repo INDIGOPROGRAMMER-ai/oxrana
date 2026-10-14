@@ -9,7 +9,10 @@ const iso = (d: Date | null): string | null => (d === null ? null : d.toISOStrin
 const ms = (d: Date | null): number | null => (d === null ? null : d.getTime());
 
 /** Этап пропуска для правки (ADR-023): закрытые статусы — только просмотр, открытый визит — «внутри». */
-export function passPhaseOf(status: PassRow['status'], hasOpenVisit: boolean): PassApiView['phase'] {
+export function passPhaseOf(
+  status: PassRow['status'],
+  hasOpenVisit: boolean,
+): PassApiView['phase'] {
   if (status === 'used' || status === 'cancelled' || status === 'rejected' || status === 'expired')
     return 'locked';
   return hasOpenVisit ? 'inside' : 'before';

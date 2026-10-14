@@ -1,4 +1,5 @@
-import type { PassBatchResultSchema, PassType } from '@oxrana/contracts';
+import type { ParsedRow, PassBatchResultSchema, PassType } from '@oxrana/contracts';
+import { normalizePlate } from '@oxrana/plates';
 import {
   Alert,
   Badge,
@@ -10,14 +11,10 @@ import {
   type ErrorView,
   errorView,
   Field,
+  FileDrop,
+  Input,
   Select,
-  Table,
-  TBody,
-  TD,
   Textarea,
-  TH,
-  THead,
-  TR,
 } from '@oxrana/ui';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Loader2, TriangleAlert } from 'lucide-react';
@@ -26,31 +23,41 @@ import type { z } from 'zod';
 import { api } from '../../lib/api';
 import { useRefresh } from '../../lib/data';
 import {
-  type BatchLine,
+  type BatchRow,
   type BatchSettings,
   batchDraft,
   parseBatchRows,
+  parseWindow,
 } from '../../lib/pass-batch';
+import { buildFormView } from '../../lib/pass-form-view';
 import { PASS_TYPE_LABEL } from '../../lib/pass-text';
 import { useAutoPreview } from '../../lib/use-auto-preview';
 import { useCabinet } from './cabinet-context';
 import type { PassHints } from './pass-hints-panel';
 
 type BatchResult = z.infer<typeof PassBatchResultSchema>;
+type Line = ParsedRow<BatchRow>;
 
 const PLACEHOLDER = `А123ВС174\tфура\tVolvo\tИванов И. И.\t12:00-14:00\tразгрузка\t12
-В456НР174\tлегковой\tKia\t\t\t`;
+В456НР174\tлегковые\tKia\t\t\t`;
+
+const SHOWN_ROWS = 200;
 
 /**
- * Пакетный ввод пропусков (08_ «Пакетный ввод»): вставка строк из Excel или письма, разные типы
- * транспорта в одной пачке, проверка **сама при вводе** (зелёные строки и красные с причиной), итог
- * «создано N из M» со списком ошибок. Ничего не сохраняется, пока человек не нажмёт одну кнопку.
+ * Пакетный ввод пропусков (08_ «Пакетный ввод»): файл .xlsx/.csv (перетащить или выбрать — на
+ * компьютере и на телефоне) или вставка из Excel и письма. Номера приводятся к общему виду сами;
+ * тип транспорта понимается без учёта регистра и с формами слова, неоднозначное не угадывается.
+ * Проверка идёт **сама при вводе**, а ошибки правятся прямо в предпросмотре — тип, док, место,
+ * время — и «применить ко всем без …». Ничего не сохраняется, пока человек не нажмёт одну кнопку.
  */
 export function PassBatch() {
-  const { tenant, ctx, serverNow } = useCabinet();
+  const { tenant, ctx, passForm, serverNow } = useCabinet();
   const refresh = useRefresh();
   const textId = useId();
   const [text, setText] = useState('');
+  const [lines, setLines] = useState<Line[]>([]);
+  const [ignored, setIgnored] = useState<string[]>([]);
+  const [fileError, setFileError] = useState('');
   const [settings, setSettings] = useState<BatchSettings>({
     passType: 'single',
     date: ctx?.today ?? '',
@@ -74,39 +81,119 @@ export function PassBatch() {
       }),
     enabled: Boolean(tenant),
   });
-  const passTypes = hints.data?.passTypes ?? [];
+
+  const view = useMemo(
+    () =>
+      ctx && passForm
+        ? buildFormView({
+            form: passForm.form,
+            ctx,
+            enforced: passForm.enforced,
+            allowedPassTypes: hints.data?.passTypes.map((p) => p.passType),
+            commentRequiredByPolicy: Boolean(hints.data?.commentRequired),
+            dockRequired: false,
+          })
+        : null,
+    [ctx, passForm, hints.data],
+  );
+  const passTypes = view?.passTypes ?? [];
+  // вид пропуска, которого нет в форме, не выбирается: пачка идёт первым из доступных
+  const passType: PassType = passTypes.includes(settings.passType)
+    ? settings.passType
+    : (view?.defaultPassType ?? settings.passType);
+  const effective: BatchSettings = { ...settings, passType };
 
   const catalog = useMemo(
     () => ({
-      categories: (ctx?.categories ?? []).filter((c) => c.available),
+      categories: (view?.categories ?? []).map((c) => ({
+        ...c,
+        dockEligible: ctx?.categories.find((x) => x.id === c.id)?.dockEligible ?? false,
+      })),
       docks: ctx?.docks ?? [],
-      defaultCategoryId: ctx?.tenant.defaultCategoryId ?? null,
+      zones: ctx?.zones ?? [],
+      defaultCategoryId: view?.defaultCategoryId || null,
     }),
-    [ctx],
+    [ctx, view],
   );
-  const parsed = useMemo(
-    () => (text.trim() === '' ? [] : parseBatchRows(text, catalog)),
-    [text, catalog],
-  );
+  const needsDock = (categoryId: string) =>
+    Boolean(
+      ctx?.tenant.trucksDockRequired &&
+        categoryId &&
+        catalog.categories.find((c) => c.id === categoryId)?.dockEligible,
+    );
+
+  /** Подстановки «если вариант один»: единственное место, единственный док для грузового. */
+  function withDefaults(row: BatchRow): BatchRow {
+    let next = row;
+    if (!next.zoneId && view?.defaultZoneId) next = { ...next, zoneId: view.defaultZoneId };
+    if (!next.dockId && needsDock(next.categoryId) && catalog.docks.length === 1) {
+      next = { ...next, dockId: catalog.docks[0]?.id ?? '' };
+    }
+    return next;
+  }
+
+  function load(source: string) {
+    setText(source);
+    setDone(null);
+    if (source.trim() === '' || !view) {
+      setLines([]);
+      setIgnored([]);
+      return;
+    }
+    const imported = parseBatchRows(source, catalog, view.fields);
+    setLines(imported.rows.map((r) => (r.value ? { ...r, value: withDefaults(r.value) } : r)));
+    setIgnored(imported.ignoredColumns);
+  }
+
+  function update(line: number, patch: Partial<BatchRow>) {
+    setLines((all) =>
+      all.map((l) => {
+        if (l.line !== line || !l.value) return l;
+        let next: BatchRow = { ...l.value, ...patch };
+        // выбор типа/дока/места снимает замечание разбора таблицы по этому полю
+        const problems = { ...next.problems };
+        if ('categoryId' in patch && patch.categoryId) delete problems.category;
+        if ('dockId' in patch && patch.dockId) delete problems.dock;
+        if ('zoneId' in patch && patch.zoneId) delete problems.zone;
+        next = withDefaults({ ...next, problems });
+        return { ...l, value: next };
+      }),
+    );
+    setDone(null);
+  }
+
+  /** «Применить ко всем строкам без …»: только пустое, остальное не трогаем. */
+  function applyToAll(field: 'categoryId' | 'dockId' | 'zoneId', value: string) {
+    setLines((all) =>
+      all.map((l) => {
+        if (!l.value) return l;
+        const empty =
+          field === 'dockId' ? !l.value.dockId && needsDock(l.value.categoryId) : !l.value[field];
+        if (!empty) return l;
+        const problems = { ...l.value.problems };
+        delete problems[field === 'categoryId' ? 'category' : field === 'dockId' ? 'dock' : 'zone'];
+        return { ...l, value: withDefaults({ ...l.value, [field]: value, problems }) };
+      }),
+    );
+    setDone(null);
+  }
 
   // Строки для сервера: «сейчас» фиксируется при смене ввода, чтобы проверка не перезапускалась сама.
   const prepared = useMemo(() => {
-    if (!ctx)
-      return {
-        rows: [],
-        drafts: [] as Record<string, unknown>[],
-        errors: new Map<number, string>(),
-      };
-    const nowMs = serverNow();
     const drafts: Record<string, unknown>[] = [];
-    const rows: { line: number; value: BatchLine }[] = [];
+    const rows: { line: number; value: BatchRow }[] = [];
     const errors = new Map<number, string>();
-    for (const row of parsed) {
+    if (!ctx || !view) return { rows, drafts, errors };
+    const nowMs = serverNow();
+    for (const row of lines) {
       if (!row.value) continue;
-      const built = batchDraft(row.value, settings, {
+      const built = batchDraft(row.value, effective, {
         timezone: ctx.site.timezone,
         today: ctx.today,
         nowMs,
+        fields: view.fields,
+        dockRequiredFor: needsDock,
+        defaultZoneId: view.defaultZoneId,
       });
       if (built.ok) {
         rows.push({ line: row.line, value: row.value });
@@ -116,7 +203,18 @@ export function PassBatch() {
       }
     }
     return { rows, drafts, errors };
-  }, [parsed, settings, ctx]);
+    // eslint-disable-next-line
+  }, [
+    lines,
+    settings.passType,
+    settings.date,
+    settings.from,
+    settings.to,
+    settings.comment,
+    passType,
+    ctx,
+    view,
+  ]);
 
   const preview = useAutoPreview<BatchResult>({
     path: '/passes/batch',
@@ -125,7 +223,7 @@ export function PassBatch() {
     delayMs: 450,
   });
 
-  if (!ctx || !tenant) return null;
+  if (!ctx || !tenant || !view) return null;
 
   const serverErrors = new Map<number, string>();
   const rowInfo = new Map<number, { warnings: string[]; waits: boolean }>();
@@ -144,56 +242,71 @@ export function PassBatch() {
       }
     }
   }
-  const errorOf = (line: number, local?: string) =>
-    local ?? prepared.errors.get(line) ?? serverErrors.get(line);
+  const errorOf = (row: Line): string | undefined =>
+    row.error ?? prepared.errors.get(row.line) ?? serverErrors.get(row.line);
   const checking =
     preview.status === 'checking' || (prepared.drafts.length > 0 && preview.status === 'idle');
-  const okLines = parsed.filter((r) => r.value && !errorOf(r.line, r.error)).length;
-  const badLines = parsed.length - okLines;
+  const okLines = lines.filter((r) => r.value && !errorOf(r)).length;
+  const badLines = lines.length - okLines;
   const ready = okLines > 0 && !checking && preview.status === 'ready' && !committing;
 
+  const noType = lines.filter((l) => l.value && !l.value.categoryId).length;
+  const noDock = lines.filter(
+    (l) => l.value && !l.value.dockId && needsDock(l.value.categoryId) && catalog.docks.length > 0,
+  ).length;
+  const noZone =
+    view.fields.destination === 'hidden' || view.zones.length < 2
+      ? 0
+      : lines.filter((l) => l.value && !l.value.zoneId).length;
+
   async function commit() {
-    if (!ctx || !tenant) return;
+    if (!ctx || !tenant || !view) return;
     setCommitting(true);
     setCommitError(null);
     try {
       // время «сейчас» берётся заново: между проверкой и нажатием могло пройти время
       const nowMs = serverNow();
-      const rows: { line: number; draft: Record<string, unknown> }[] = [];
+      const sent: { line: number; draft: Record<string, unknown> }[] = [];
       for (const row of prepared.rows) {
         if (serverErrors.has(row.line)) continue;
-        const built = batchDraft(row.value, settings, {
+        const built = batchDraft(row.value, effective, {
           timezone: ctx.site.timezone,
           today: ctx.today,
           nowMs,
+          fields: view.fields,
+          dockRequiredFor: needsDock,
+          defaultZoneId: view.defaultZoneId,
         });
-        if (built.ok) rows.push({ line: row.line, draft: built.draft });
+        if (built.ok) sent.push({ line: row.line, draft: built.draft });
       }
       const result = await api<BatchResult>('/passes/batch', {
         method: 'POST',
-        body: { tenantId: tenant.id, rows: rows.map((r) => r.draft) },
+        body: { tenantId: tenant.id, rows: sent.map((r) => r.draft) },
       });
-      // Итог по всем вставленным строкам: что не прошло ещё до отправки и что отклонил сервер.
-      const plateOf = (line: number) =>
-        prepared.rows.find((r) => r.line === line)?.value.plate ?? '';
+      // Итог по всем строкам: что не прошло ещё до отправки и что отклонил сервер.
+      const plateOf = (line: number) => lines.find((l) => l.line === line)?.value?.plate ?? '';
       const errors: { line: number; plate: string; message: string }[] = [];
-      for (const row of parsed) {
-        const early = row.error ?? prepared.errors.get(row.line) ?? serverErrors.get(row.line);
+      for (const row of lines) {
+        const early = errorOf(row);
         if (early) errors.push({ line: row.line, plate: plateOf(row.line), message: early });
       }
       for (const e of result.errors) {
-        const line = rows[e.row - 1]?.line;
+        const line = sent[e.row - 1]?.line;
         if (line !== undefined) errors.push({ line, plate: plateOf(line), message: e.message });
       }
       errors.sort((x, y) => x.line - y.line);
-      // строки с ошибками остаются в поле — их можно исправить и отправить ещё раз
+      // строки с ошибками остаются (с правками) — их можно исправить и отправить ещё раз
       const failed = new Set(errors.map((e) => e.line));
-      const sourceLines = text
-        .replace(/\r\n?/g, '\n')
-        .split('\n')
-        .filter((l) => l.trim() !== '');
-      setDone({ summary: `Создано ${result.created} из ${parsed.length}`, errors });
-      setText(sourceLines.filter((_, index) => failed.has(index + 1)).join('\n'));
+      setDone({ summary: `Создано ${result.created} из ${lines.length}`, errors });
+      setLines((all) => all.filter((l) => failed.has(l.line)));
+      setText((current) =>
+        current
+          .replace(/\r\n?/g, '\n')
+          .split('\n')
+          .filter((l) => l.trim() !== '')
+          .filter((_, index) => failed.has(index + 1))
+          .join('\n'),
+      );
       await refresh();
     } catch (raw) {
       setCommitError(errorView(raw));
@@ -203,27 +316,43 @@ export function PassBatch() {
   }
 
   const typeLabel = (t: PassType) =>
-    `${PASS_TYPE_LABEL[t]} — ${passTypes.find((p) => p.passType === t)?.mode === 'on_request' ? 'уйдёт на согласование' : 'без согласования'}`;
+    `${PASS_TYPE_LABEL[t]} — ${hints.data?.passTypes.find((p) => p.passType === t)?.mode === 'on_request' ? 'уйдёт на согласование' : 'без согласования'}`;
+  const single = effective.passType === 'single';
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <Card>
-        <CardContent className="grid gap-4 pt-5 sm:grid-cols-2">
-          <Field label="Тип пропуска" required>
-            <Select
-              value={settings.passType}
-              onChange={(e) => setSettings({ ...settings, passType: e.target.value as PassType })}
+        <CardContent className="grid gap-3 pt-4 sm:grid-cols-2 sm:gap-4 sm:pt-5">
+          {passTypes.length === 1 ? (
+            <p className="self-end text-sm text-muted-foreground">
+              Пропуска:{' '}
+              <span className="font-medium text-foreground">
+                {typeLabel(passTypes[0] as PassType)}
+              </span>
+            </p>
+          ) : (
+            <Field label="Вид пропуска" required>
+              <Select
+                value={effective.passType}
+                onChange={(e) => setSettings({ ...settings, passType: e.target.value as PassType })}
+              >
+                {passTypes.length === 0 ? (
+                  <option value={effective.passType}>Загрузка…</option>
+                ) : null}
+                {passTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {typeLabel(t)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+          {single ? (
+            <Field
+              label="Дата приезда"
+              required
+              hint={`Время объекта: ${ctx.site.timezoneLabel}. Без окна пропуск действует с «сейчас» ${view.singleHours} ч.`}
             >
-              {passTypes.length === 0 ? <option value={settings.passType}>Загрузка…</option> : null}
-              {passTypes.map((t) => (
-                <option key={t.passType} value={t.passType}>
-                  {typeLabel(t.passType)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          {settings.passType === 'single' ? (
-            <Field label="Дата приезда" required hint={`Время объекта: ${ctx.site.timezoneLabel}`}>
               <DateInput
                 value={settings.date}
                 todayIso={ctx.today}
@@ -239,7 +368,7 @@ export function PassBatch() {
                   onChange={(from) => setSettings({ ...settings, from })}
                 />
               </Field>
-              {settings.passType === 'multi' ? (
+              {effective.passType === 'multi' ? (
                 <Field label="Действует по" required hint="Последний день включительно.">
                   <DateInput
                     value={settings.to}
@@ -250,7 +379,7 @@ export function PassBatch() {
               ) : null}
             </>
           )}
-          {settings.passType !== 'single' ? (
+          {!single && view.fields.comment !== 'hidden' ? (
             <Field
               label="Общий комментарий"
               hint="Для строк без своего комментария. У многоразовых и постоянных пропусков он обязателен."
@@ -266,31 +395,45 @@ export function PassBatch() {
         </CardContent>
       </Card>
 
-      <div className="space-y-1.5">
-        <label htmlFor={textId} className="text-sm font-medium">
-          Вставьте строки из Excel или письма
+      <div className="space-y-2">
+        <FileDrop
+          onText={(loaded) => load(loaded)}
+          onError={setFileError}
+          label="Перетащите сюда файл .xlsx или .csv или нажмите, чтобы выбрать"
+        />
+        {fileError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {fileError}
+          </p>
+        ) : null}
+        <label htmlFor={textId} className="block text-sm font-medium">
+          …или вставьте строки из Excel или письма
         </label>
         <Textarea
           id={textId}
-          rows={7}
+          rows={5}
           value={text}
           placeholder={PLACEHOLDER}
           spellCheck={false}
           className="font-mono"
-          onChange={(e) => {
-            setText(e.target.value);
-            setDone(null);
-          }}
+          onChange={(e) => load(e.target.value)}
         />
         <p className="text-xs text-muted-foreground">
-          Колонки: Номер · Тип · Марка · Водитель · Окно · Комментарий · Док. Разделитель — Tab (из
-          Excel) или «;». Типы транспорта могут быть разными в одной пачке; пробелы в номерах не
-          мешают. Доступные типы: {catalog.categories.map((c) => c.name).join(', ') || '—'}.
+          Колонки: Номер · Тип · Марка · Водитель · Окно · Комментарий · Док — по порядку, а если в
+          первой строке заголовки («Номер», «Тип», «Док»…), то по ним. Пробелы в номерах не мешают.
+          Типы можно писать как удобно: «легковые», «Фура». Доступные типы:{' '}
+          {view.categories.map((c) => c.name).join(', ') || '—'}.
         </p>
+        {ignored.length > 0 ? (
+          <Alert tone="warning" data-testid="batch-ignored">
+            Колонки «{ignored.join('», «')}» отключены настройкой формы пропуска — значения из них
+            не сохранятся.
+          </Alert>
+        ) : null}
       </div>
 
-      {parsed.length > 0 ? (
-        <div className="space-y-2" aria-live="polite">
+      {lines.length > 0 ? (
+        <div className="space-y-3" aria-live="polite">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={okLines > 0 ? 'success' : 'neutral'} data-testid="batch-ok">
               Будет создано {okLines}
@@ -305,61 +448,36 @@ export function PassBatch() {
             ) : null}
           </div>
           <ErrorAlert error={preview.error} />
-          <Table>
-            <THead>
-              <TR>
-                <TH className="w-10">№</TH>
-                <TH className="w-8" />
-                <TH>Номер</TH>
-                <TH>Тип</TH>
-                <TH>Марка · водитель</TH>
-                <TH>Окно</TH>
-                <TH>Замечание</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {parsed.slice(0, 200).map((row) => {
-                const error = errorOf(row.line, row.error);
-                const info = rowInfo.get(row.line);
-                const remark = error
-                  ? error
-                  : [
-                      ...(info?.waits ? ['уйдёт на согласование'] : []),
-                      ...(row.note ? [row.note] : []),
-                      ...(info?.warnings ?? []),
-                    ].join(' · ');
-                const warn = !error && (info?.warnings.length ?? 0) > 0;
-                return (
-                  <TR key={row.line} data-status={error ? 'error' : 'ok'}>
-                    <TD className="text-muted-foreground">{row.line}</TD>
-                    <TD>
-                      {error ? (
-                        <TriangleAlert aria-label="ошибка" className="size-4 text-destructive" />
-                      ) : (
-                        <CheckCircle2
-                          aria-label={warn ? 'есть предупреждение' : 'готово'}
-                          className={warn ? 'size-4 text-warning' : 'size-4 text-success'}
-                        />
-                      )}
-                    </TD>
-                    <TD className="font-mono">{row.value?.plate ?? '—'}</TD>
-                    <TD>{row.value?.categoryName ?? '—'}</TD>
-                    <TD>
-                      {[row.value?.brand, row.value?.driverName].filter(Boolean).join(' · ') || '—'}
-                    </TD>
-                    <TD>{row.value?.windowText || '—'}</TD>
-                    <TD
-                      className={
-                        error ? 'text-destructive' : warn ? 'text-warning' : 'text-muted-foreground'
-                      }
-                    >
-                      {remark}
-                    </TD>
-                  </TR>
-                );
-              })}
-            </TBody>
-          </Table>
+
+          <BulkApply
+            noType={noType}
+            noDock={noDock}
+            noZone={noZone}
+            categories={view.categories}
+            docks={view.docks}
+            zones={view.zones}
+            onApply={applyToAll}
+          />
+
+          <ul className="space-y-2" data-testid="batch-rows">
+            {lines.slice(0, SHOWN_ROWS).map((row) => (
+              <BatchRowCard
+                key={row.line}
+                row={row}
+                error={errorOf(row)}
+                info={rowInfo.get(row.line)}
+                view={view}
+                needsDock={needsDock}
+                showWindow={view.fields.window !== 'hidden'}
+                onChange={(patch) => update(row.line, patch)}
+              />
+            ))}
+          </ul>
+          {lines.length > SHOWN_ROWS ? (
+            <p className="text-xs text-muted-foreground">
+              …и ещё {lines.length - SHOWN_ROWS} строк (ошибки учтены в итоге выше)
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -376,29 +494,276 @@ export function PassBatch() {
                 {done.errors.map((e) => (
                   <li key={`${e.line}-${e.message}`}>
                     строка {e.line}
-                    {e.plate ? ` (${e.plate})` : ''}: {e.message}
+                    {e.plate ? ` (${normalizePlate(e.plate).norm || e.plate})` : ''}: {e.message}
                   </li>
                 ))}
               </ul>
               <p className="mt-1 text-xs text-muted-foreground">
-                Строки с ошибками оставлены в поле выше — исправьте и отправьте ещё раз.
+                Строки с ошибками оставлены выше — исправьте их там же и отправьте ещё раз.
               </p>
             </>
           ) : null}
         </Alert>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div
+        data-testid="submit-bar"
+        className="sticky bottom-16 z-20 -mx-4 flex flex-wrap items-center gap-3 border-t bg-background/95 px-4 py-2 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0"
+      >
         <Button size="lg" disabled={!ready} onClick={() => void commit()}>
           {committing ? <Loader2 aria-hidden className="animate-spin" /> : null}
           Создать пропуска: {okLines}
         </Button>
-        {parsed.length > 0 && okLines === 0 && !checking ? (
+        {lines.length > 0 && okLines === 0 && !checking ? (
           <span className="text-xs text-muted-foreground">
             Нечего создавать — исправьте ошибки.
           </span>
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** «Применить ко всем строкам без типа / без дока / без места». */
+function BulkApply({
+  noType,
+  noDock,
+  noZone,
+  categories,
+  docks,
+  zones,
+  onApply,
+}: {
+  noType: number;
+  noDock: number;
+  noZone: number;
+  categories: readonly { id: string; name: string }[];
+  docks: readonly { id: string; number: string }[];
+  zones: readonly { id: string; name: string }[];
+  onApply: (field: 'categoryId' | 'dockId' | 'zoneId', value: string) => void;
+}) {
+  const [type, setType] = useState('');
+  const [dock, setDock] = useState('');
+  const [zone, setZone] = useState('');
+  if (noType + noDock + noZone === 0) return null;
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/40 p-3" data-testid="batch-bulk">
+      <p className="text-sm font-medium">Применить ко всем строкам сразу</p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {noType > 0 ? (
+          <div className="flex flex-col gap-1.5">
+            <Select
+              aria-label="Тип для строк без типа"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+            >
+              <option value="">Выберите тип</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!type}
+              onClick={() => onApply('categoryId', type)}
+            >
+              Всем без типа ({noType})
+            </Button>
+          </div>
+        ) : null}
+        {noDock > 0 ? (
+          <div className="flex flex-col gap-1.5">
+            <Select
+              aria-label="Док для строк без дока"
+              value={dock}
+              onChange={(e) => setDock(e.target.value)}
+            >
+              <option value="">Выберите док</option>
+              {docks.map((d) => (
+                <option key={d.id} value={d.id}>
+                  Док {d.number}
+                </option>
+              ))}
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!dock}
+              onClick={() => onApply('dockId', dock)}
+            >
+              Всем без дока ({noDock})
+            </Button>
+          </div>
+        ) : null}
+        {noZone > 0 ? (
+          <div className="flex flex-col gap-1.5">
+            <Select
+              aria-label="Место для строк без места"
+              value={zone}
+              onChange={(e) => setZone(e.target.value)}
+            >
+              <option value="">Выберите место</option>
+              {zones.map((z) => (
+                <option key={z.id} value={z.id}>
+                  {z.name}
+                </option>
+              ))}
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!zone}
+              onClick={() => onApply('zoneId', zone)}
+            >
+              Всем без места ({noZone})
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Одна строка предпросмотра: нормализованный номер, правка типа, дока, места и окна на месте. */
+function BatchRowCard({
+  row,
+  error,
+  info,
+  view,
+  needsDock,
+  showWindow,
+  onChange,
+}: {
+  row: Line;
+  error: string | undefined;
+  info: { warnings: string[]; waits: boolean } | undefined;
+  view: NonNullable<ReturnType<typeof buildFormView>>;
+  needsDock: (categoryId: string) => boolean;
+  showWindow: boolean;
+  onChange: (patch: Partial<BatchRow>) => void;
+}) {
+  const value = row.value;
+  const norm = value ? normalizePlate(value.plate).norm : '';
+  const warn = !error && (info?.warnings.length ?? 0) > 0;
+  const remark = error
+    ? error
+    : [
+        ...(info?.waits ? ['уйдёт на согласование'] : []),
+        ...(value?.note ? [value.note] : []),
+        ...(info?.warnings ?? []),
+      ].join(' · ');
+  const windowParsed = value ? parseWindow(value.windowText) : null;
+  const windowBad = windowParsed !== null && 'error' in windowParsed;
+  const typeOptions =
+    value && value.candidates.length > 0
+      ? view.categories.filter((c) => value.candidates.includes(c.id))
+      : view.categories;
+  const dockShown = Boolean(
+    value && view.docks.length > 0 && (needsDock(value.categoryId) || value.dockId),
+  );
+  const zoneShown = view.fields.destination !== 'hidden' && view.zones.length > 1;
+  return (
+    <li
+      data-status={error ? 'error' : 'ok'}
+      className={`rounded-md border p-3 ${error ? 'border-destructive/50' : ''}`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        {error ? (
+          <TriangleAlert aria-label="ошибка" className="size-4 shrink-0 text-destructive" />
+        ) : (
+          <CheckCircle2
+            aria-label={warn ? 'есть предупреждение' : 'готово'}
+            className={`size-4 shrink-0 ${warn ? 'text-warning' : 'text-success'}`}
+          />
+        )}
+        <span className="text-xs text-muted-foreground">{row.line}</span>
+        <span className="font-mono text-base font-semibold" data-testid="batch-plate">
+          {norm || '—'}
+        </span>
+        {value && norm && value.plate.trim() !== norm ? (
+          <span className="text-xs text-muted-foreground">в таблице: «{value.plate}»</span>
+        ) : null}
+      </div>
+      {value ? (
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Field label="Тип">
+            <Select
+              aria-label={`Тип, строка ${row.line}`}
+              value={value.categoryId}
+              onChange={(e) => onChange({ categoryId: e.target.value })}
+              className={`h-9 ${value.categoryId ? '' : 'border-destructive'}`}
+            >
+              <option value="">Выберите тип</option>
+              {typeOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {dockShown ? (
+            <Field label="Док">
+              <Select
+                aria-label={`Док, строка ${row.line}`}
+                value={value.dockId}
+                onChange={(e) => onChange({ dockId: e.target.value })}
+                className="h-9"
+              >
+                <option value="">Выберите док</option>
+                {view.docks.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    Док {d.number}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
+          {zoneShown ? (
+            <Field label="Место">
+              <Select
+                aria-label={`Место, строка ${row.line}`}
+                value={value.zoneId}
+                onChange={(e) => onChange({ zoneId: e.target.value })}
+                className="h-9"
+              >
+                <option value="">Не указано</option>
+                {view.zones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
+          {showWindow ? (
+            <Field label="Окно прибытия">
+              <Input
+                aria-label={`Окно, строка ${row.line}`}
+                value={value.windowText}
+                placeholder="12:00-14:00"
+                inputMode="numeric"
+                onChange={(e) => onChange({ windowText: e.target.value })}
+                className={`h-9 ${windowBad ? 'border-destructive' : ''}`}
+              />
+            </Field>
+          ) : null}
+        </div>
+      ) : null}
+      {value && (value.brand || value.driverName) ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {[value.brand, value.driverName].filter(Boolean).join(' · ')}
+        </p>
+      ) : null}
+      {remark ? (
+        <p
+          className={`mt-1 text-xs ${error ? 'text-destructive' : warn ? 'text-warning' : 'text-muted-foreground'}`}
+        >
+          {remark}
+        </p>
+      ) : null}
+    </li>
   );
 }

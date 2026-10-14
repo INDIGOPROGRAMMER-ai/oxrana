@@ -12,13 +12,13 @@ export const Route = createFileRoute('/cabinet/passes/new')({
 
 function NewPass() {
   const { fleet } = Route.useSearch();
-  const { ctx, tenant } = useCabinet();
+  const { ctx, tenant, passForm } = useCabinet();
   const list = useApi<{ items: FleetVehicle[] }>(
     fleet && tenant ? `/tenants/${tenant.id}/fleet` : null,
   );
   const vehicle = fleet ? list.data?.items.find((v) => v.id === fleet) : undefined;
   // форма открывается, когда загружено всё, что подставляется в неё (CLAUDE.md п. 5)
-  const ready = ctx !== undefined && (!fleet || list.data !== undefined);
+  const ready = ctx !== undefined && passForm !== undefined && (!fleet || list.data !== undefined);
   return (
     <div className="max-w-2xl">
       <PageHeader

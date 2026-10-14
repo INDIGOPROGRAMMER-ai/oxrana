@@ -40,11 +40,7 @@ export async function userGrants(db: Db, organizationId: string, userId: string)
 }
 
 /** То же внутри уже открытой транзакции организации: второе соединение из пула не нужно. */
-export async function grantsOf(
-  tx: DbTx,
-  organizationId: string,
-  userId: string,
-): Promise<Grant[]> {
+export async function grantsOf(tx: DbTx, organizationId: string, userId: string): Promise<Grant[]> {
   const rows = await tx
     .select({
       permissions: schema.roles.permissions,
