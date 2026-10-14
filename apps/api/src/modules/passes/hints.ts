@@ -200,8 +200,10 @@ export async function passHints(
   }
 
   const docks = tenantDocks(rules, tenant.id);
+  // Док обязателен только разовому пропуску (7b.1): на много поездок док каждый раз свой.
   const dockRequired =
     query.participant === 'vehicle' &&
+    (query.passType ?? 'single') === 'single' &&
     tenant.trucksDockRequired &&
     (category?.dockEligible ?? false);
   const whose = isTenantUser(s.ctx.actor) ? 'Ваши доки' : 'Доки арендатора';
@@ -243,9 +245,12 @@ export async function passHints(
     if (!enforced || windowMode === 'policy') {
       return { required: policyRequires, autoFilled: false, ...base };
     }
+    // Окно постоянного пропуска, которое требует политика, форма скрыть не может: на весь срок
+    // его не поставить (срока нет).
+    const forced = query.passType === 'permanent' && policyRequires;
     return {
-      required: windowMode === 'required',
-      autoFilled: windowMode !== 'required' && policyRequires,
+      required: windowMode === 'required' || forced,
+      autoFilled: windowMode !== 'required' && policyRequires && !forced,
       ...base,
     };
   }

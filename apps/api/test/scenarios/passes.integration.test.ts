@@ -11,6 +11,7 @@ import {
   seedDemo,
   startTestApp,
   type TestApp,
+  windowFollowsPolicy,
 } from '../support/harness';
 
 /**
@@ -58,6 +59,7 @@ const create = (actor: typeof dnsLogist, payload: Record<string, unknown>) =>
 beforeAll(async () => {
   await seedDemo();
   t = await startTestApp();
+  await windowFollowsPolicy(t);
 });
 afterAll(() => t.close());
 

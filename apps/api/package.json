@@ -17,6 +17,7 @@
     "@oxrana/engine": "workspace:*",
     "@oxrana/plates": "workspace:*",
     "drizzle-orm": "catalog:",
+    "fflate": "catalog:",
     "fastify": "catalog:",
     "fastify-type-provider-zod": "catalog:",
     "openapi-types": "catalog:",

@@ -370,3 +370,16 @@ export async function startTestApp(
     },
   };
 }
+
+/**
+ * Окно прибытия — «по политике окон»: так было по умолчанию до 7b.1. Теперь на уровне объекта оно
+ * скрыто; тесты, где пользователь арендатора сам присылает окно, включают его один раз в `beforeAll`.
+ */
+export async function windowFollowsPolicy(t: TestApp): Promise<void> {
+  const res = await t.as(roleActor('site_admin'), {
+    method: 'PATCH',
+    url: `/sites/${KEYS.siteId}/pass-form`,
+    payload: { fields: { window: 'policy' } },
+  });
+  if (res.statusCode !== 200) throw new Error(`форма объекта: ${res.statusCode} ${res.body}`);
+}

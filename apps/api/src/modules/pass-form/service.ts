@@ -93,6 +93,31 @@ export async function loadActorForm(s: Scope, tenant: TenantRow): Promise<ActorF
   return { form: resolvePassForm(layers), enforced: tenantUser };
 }
 
+/**
+ * Форма с поправками, которые форма скрыть не может: окно у постоянного пропуска, когда политика
+ * окон его требует (у постоянного нет срока, на весь срок окно не поставить), и комментарий, который
+ * требует политика согласования (`commentRequired`).
+ */
+export function adjustedForm(
+  ctx: PassContext,
+  form: ResolvedPassForm,
+  values: PassValues,
+  commentRequired = false,
+): ResolvedPassForm {
+  const fields = { ...form.fields };
+  if (commentRequired && fields.comment === 'hidden') fields.comment = 'optional';
+  // Скрытое окно открывается (необязательным): обязательным его делает политика окон — ошибкой
+  // «window_required» с её текстом, а не «обязательно по настройке формы».
+  if (
+    values.passType === 'permanent' &&
+    fields.window === 'hidden' &&
+    windowRequiredByPolicy(ctx, values)
+  ) {
+    fields.window = 'optional';
+  }
+  return { ...form, fields };
+}
+
 const hiddenError = (key: PassFormFieldKey, field: string) =>
   new AppError('field_hidden', {
     field,

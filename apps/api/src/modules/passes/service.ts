@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { PassDraft, PassPatch, PassSource } from '@oxrana/contracts';
 import { schema } from '@oxrana/db';
-import { formatDateTime } from '@oxrana/engine';
+import { addLocalDays, formatDateTime, localDate, localInstant } from '@oxrana/engine';
 import { and, eq, gt, inArray, isNull, lt, ne, or } from 'drizzle-orm';
 import { coversTenant, isTenantUser } from '../../actor';
 import { assertTenantAccess, can, requirePermission, type Scope } from '../../core/context';
@@ -12,6 +12,7 @@ import { EXCLUSION_VIOLATION, pgErrorCode } from '../../core/refs';
 import { AppError } from '../../errors';
 import {
   type ActorForm,
+  adjustedForm,
   assertFormAllows,
   fillDefaults,
   loadActorForm,
@@ -23,6 +24,7 @@ import {
   creatorKindOf,
   loadPassContext,
   PASS_TYPE_LABEL,
+  type PassContext,
   type PassField,
   type PassValues,
   validatePass,
@@ -174,11 +176,9 @@ export async function createPass(
   const creator = creatorKindOf(s);
   const policy = await approvalPolicy(s, tenant.siteId, tenant.id, creator, asked.passType);
   // Настройка формы (ADR-023): сначала проверка того, что прислали, потом значения по умолчанию.
-  // Комментарий, который требует политика согласования, форма скрыть не может.
-  const form =
-    policy?.commentRequired && actorForm.form.fields.comment === 'hidden'
-      ? { ...actorForm.form, fields: { ...actorForm.form.fields, comment: 'optional' as const } }
-      : actorForm.form;
+  // Комментарий, который требует политика согласования, и окно постоянного пропуска, которое
+  // требует политика окон, форма скрыть не может.
+  const form = adjustedForm(ctx, actorForm.form, asked, policy?.commentRequired ?? false);
   if (actorForm.enforced) assertFormAllows(ctx, form, asked, 'all');
   const values = fillDefaults(ctx, form, asked);
   await validatePass(s, ctx, values, 'all');
@@ -392,21 +392,26 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
   // Настройка формы (ADR-023): тип, скрытые и обязательные поля — по уровням арендатора.
   const actorForm = await loadActorForm(s, tenant);
   const merged: PassValues = { ...current, ...requested };
-  if (actorForm.enforced) assertFormAllows(ctx, actorForm.form, merged, new Set(fields));
+  if (actorForm.enforced) {
+    assertFormAllows(ctx, adjustedForm(ctx, actorForm.form, merged), merged, new Set(fields));
+  }
 
   let viaRequest: PassField[] = [];
+  let beyondMax = false;
   if (isTenantUser(s.ctx.actor) && pass.status === 'approved') {
     const policy = await approvalPolicy(s, tenant.siteId, tenant.id, 'tenant', pass.passType);
     // Заявка нужна, если пропуск проходил согласование (или политика не задана — Q-55).
     if (policy === null || policy.mode === 'on_request') {
       viaRequest = fields.filter((f) => CHANGE_REQUEST_FIELDS.includes(f));
-      // Сокращение срока после въезда согласования не требует — только продление.
-      if (phase === 'inside') {
-        const shortened =
-          requested.validTo != null &&
-          current.validTo != null &&
-          requested.validTo.getTime() < current.validTo.getTime();
-        if (shortened) viaRequest = viaRequest.filter((f) => f !== 'validTo');
+    }
+    // После въезда «действует до»: сокращение и продление в пределах того, что можно было оформить
+    // без согласования, — сразу; продление сверх — заявкой, решает согласующий (Q-85).
+    if (phase === 'inside' && fields.includes('validTo')) {
+      viaRequest = viaRequest.filter((f) => f !== 'validTo');
+      const verdict = extensionVerdict(ctx, pass.passType, current.validFrom, current, requested);
+      if (verdict === 'beyond') {
+        viaRequest.push('validTo');
+        beyondMax = true;
       }
     }
   }
@@ -415,7 +420,7 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
   if (viaRequest.length > 0) requirePermission(s.ctx, 'pass.change_request.create');
 
   // Проверяется пропуск таким, каким он станет (и с прямой правкой, и с запрошенной).
-  await validatePass(s, ctx, merged, new Set(fields));
+  await validatePass(s, ctx, merged, new Set(fields), { skipMaxDuration: beyondMax });
 
   let row = pass;
   if (direct.length > 0) {
@@ -488,6 +493,38 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
   return { row, applied: apiFields(direct), changeRequest };
 }
 
+/**
+ * Продление «действует до» после въезда: `shorten` — срок сокращён, `within` — не дальше предела
+ * (разовый — максимум разового пропуска объекта от начала; многоразовый — максимум дней), `beyond` —
+ * сверх предела: заявка на изменение (Q-85).
+ */
+export function extensionVerdict(
+  ctx: PassContext,
+  passType: PassValues['passType'],
+  validFrom: Date | null,
+  current: PassValues,
+  requested: Partial<PassValues>,
+): 'shorten' | 'within' | 'beyond' {
+  const to = requested.validTo;
+  if (!to || !validFrom || !current.validTo) return 'within';
+  if (to.getTime() <= current.validTo.getTime()) return 'shorten';
+  const { settings, site } = ctx;
+  if (passType === 'single') {
+    return to.getTime() - validFrom.getTime() <= settings.singlePassMaxHours * 3_600_000
+      ? 'within'
+      : 'beyond';
+  }
+  if (passType === 'multi') {
+    const lastDayEnd = localInstant(
+      addLocalDays(localDate(validFrom.getTime(), site.timezone), settings.multiPassMaxDays),
+      0,
+      site.timezone,
+    );
+    return to.getTime() < lastDayEnd ? 'within' : 'beyond';
+  }
+  return 'within';
+}
+
 function apiFields(fields: readonly PassField[]): string[] {
   return [...new Set(fields.map((f) => API_FIELD[f] ?? f))];
 }
@@ -533,7 +570,8 @@ export async function decideChangeRequest(
     // Начало, утверждённое согласующим, в прошлом может быть: проверка «не в прошлом» — при заявке.
     const changed = new Set(Object.keys(set) as PassField[]);
     changed.delete('validFrom');
-    await validatePass(s, ctx, merged, changed);
+    // Срок сверх предела (продление после въезда, Q-85) согласующий вправе утвердить.
+    await validatePass(s, ctx, merged, changed, { skipMaxDuration: true });
     [row = pass] = await writeGuarded(
       s,
       (sp) =>

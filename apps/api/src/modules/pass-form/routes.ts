@@ -42,6 +42,7 @@ function flatten(settings: PassFormSettings): Record<string, unknown> {
     passTypes: settings.passTypes ?? null,
     defaultPassType: settings.defaultPassType ?? null,
     singleHours: settings.singleHours ?? null,
+    startNow: settings.startNow ?? null,
   };
   for (const [key, value] of Object.entries(settings.fields ?? {})) out[`fields.${key}`] = value;
   return out;

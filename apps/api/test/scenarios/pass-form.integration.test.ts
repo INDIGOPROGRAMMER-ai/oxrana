@@ -73,7 +73,7 @@ beforeAll(async () => {
 afterAll(() => t.close());
 
 describe('слои настройки и «откуда значение»', () => {
-  it('по умолчанию ФИО и телефон водителя скрыты, окно — по политике, разовый — 23 часа', async () => {
+  it('по умолчанию ФИО и телефон водителя скрыты, окно скрыто, начало — «сейчас», разовый — 23 часа', async () => {
     await resetForm();
     const { form, enforced } = await mine(logist);
     expect(enforced).toBe(true);
@@ -81,9 +81,11 @@ describe('слои настройки и «откуда значение»', () 
       driverName: 'hidden',
       driverPhone: 'hidden',
       brand: 'optional',
-      window: 'policy',
+      window: 'hidden',
     });
     expect(form.singleHours).toBe(23);
+    expect(form.startNow).toBe(true);
+    expect(form.sources.startNow).toBe('default');
     expect(form.sources.fields.driverName).toBe('default');
     expect(form.passTypes).toEqual(['single', 'multi', 'permanent']);
   });
@@ -165,7 +167,10 @@ describe('ограничения на сервере: сотрудник А и �
         })
       ).statusCode,
     ).toBe(200);
-    expect((await setUser(staffB.id, { categoryIds: [semi] })).statusCode).toBe(200);
+    expect(
+      (await setUser(staffB.id, { categoryIds: [semi], fields: { window: 'optional' } }))
+        .statusCode,
+    ).toBe(200);
 
     const hintsA = (
       await t.as(staffA, {
@@ -402,10 +407,19 @@ describe('быстрый разовый пропуск и окно прибыт�
     expect(explicit.json().validTo).toBe(new Date(Date.parse(NOON) + 2 * HOUR).toISOString());
   });
 
-  it('окно по политике: фура без окна — ошибка; «необязательно» на уровне — окно на весь срок; «обязательно» — всегда', async () => {
+  it('окно скрыто по умолчанию: фура без окна создаётся, окно — на весь срок; «по политике» требует окно', async () => {
     await resetForm();
     const truck = (extra: Record<string, unknown> = {}) =>
       carPass({ categoryId: semi, dockId: dock12, ...extra });
+    const byDefault = await create(logist, truck());
+    expect(byDefault.statusCode, byDefault.body).toBe(201);
+    expect(byDefault.json()).toMatchObject({
+      windowFrom: byDefault.json().validFrom,
+      windowTo: byDefault.json().validTo,
+    });
+
+    // режим «по политике окон»: политика требует окно у фур — без него ошибка
+    await setTenant({ fields: { window: 'policy' } });
     const byPolicy = await create(logist, truck());
     expect(error(byPolicy).code).toBe('window_required');
 
@@ -437,6 +451,128 @@ describe('быстрый разовый пропуск и окно прибыт�
     expect(error(hiddenWithValue).code).toBe('field_hidden');
     const hiddenOk = await create(logist, truck());
     expect(hiddenOk.statusCode, hiddenOk.body).toBe(201);
+  });
+
+  it('постоянный пропуск: окно, которое требует политика, форма скрыть не может (на весь срок окно не поставить)', async () => {
+    await resetForm();
+    const permanent = (extra: Record<string, unknown> = {}) =>
+      carPass({
+        categoryId: semi,
+        passType: 'permanent',
+        validFrom: NOON,
+        comment: 'тест',
+        ...extra,
+      });
+    const hints = (
+      await t.as(logist, {
+        method: 'POST',
+        url: `/tenants/${dns}/pass-hints`,
+        payload: { participant: 'vehicle', categoryId: semi, passType: 'permanent' },
+      })
+    ).json();
+    // окно скрыто по форме, но для постоянного его требует политика окон — форма показывает «обязательно»
+    expect(hints.window).toMatchObject({ required: true, autoFilled: false });
+    const without = await create(logist, permanent());
+    expect(error(without)).toMatchObject({ code: 'window_required', field: 'windowFrom' });
+    const withWindow = await create(
+      logist,
+      permanent({
+        windowFrom: NOON,
+        windowTo: new Date(Date.parse(NOON) + HOUR).toISOString(),
+      }),
+    );
+    expect(withWindow.statusCode, withWindow.body).toBe(201);
+  });
+
+  it('окно раньше начала пропуска: конкретная ошибка с временем (7b.1)', async () => {
+    await resetForm();
+    await setTenant({ fields: { window: 'optional' } });
+    const res = await create(
+      logist,
+      carPass({
+        validFrom: new Date(Date.parse(NOON) + 2 * HOUR).toISOString(),
+        validTo: new Date(Date.parse(NOON) + 6 * HOUR).toISOString(),
+        windowFrom: NOON,
+        windowTo: new Date(Date.parse(NOON) + 3 * HOUR).toISOString(),
+      }),
+    );
+    expect(error(res)).toMatchObject({ code: 'window_outside_validity', field: 'windowFrom' });
+    expect(error(res).message).toContain(
+      'Окно 12:00–15:00 начинается раньше начала пропуска (14:00)',
+    );
+    const late = await create(
+      logist,
+      carPass({
+        validFrom: NOON,
+        validTo: new Date(Date.parse(NOON) + 2 * HOUR).toISOString(),
+        windowFrom: NOON,
+        windowTo: new Date(Date.parse(NOON) + 3 * HOUR).toISOString(),
+      }),
+    );
+    expect(error(late)).toMatchObject({ code: 'window_outside_validity', field: 'windowTo' });
+    expect(error(late).message).toContain('заканчивается позже конца пропуска (14:00)');
+  });
+});
+
+describe('док только для разового пропуска (7b.1)', () => {
+  it('«грузовые только к докам»: разовая фура без дока — ошибка; многоразовая и постоянная — создаются', async () => {
+    await resetForm();
+    const truck = (extra: Record<string, unknown>) => carPass({ categoryId: semi, ...extra });
+    const single = await create(logist, truck({}));
+    expect(error(single)).toMatchObject({ code: 'dock_required', field: 'dockId' });
+
+    const multi = await create(
+      logist,
+      truck({
+        passType: 'multi',
+        validFrom: new Date(Date.parse(NOON) + HOUR).toISOString(),
+        validTo: new Date(Date.parse(NOON) + 3 * 24 * HOUR).toISOString(),
+        comment: 'тест',
+      }),
+    );
+    expect(multi.statusCode, multi.body).toBe(201);
+    const permanent = await create(
+      logist,
+      truck({
+        passType: 'permanent',
+        validFrom: new Date(Date.parse(NOON) + HOUR).toISOString(),
+        comment: 'тест',
+        windowFrom: new Date(Date.parse(NOON) + HOUR).toISOString(),
+        windowTo: new Date(Date.parse(NOON) + 2 * HOUR).toISOString(),
+      }),
+    );
+    expect(permanent.statusCode, permanent.body).toBe(201);
+
+    const hint = async (passType: string) =>
+      (
+        await t.as(logist, {
+          method: 'POST',
+          url: `/tenants/${dns}/pass-hints`,
+          payload: { participant: 'vehicle', categoryId: semi, passType },
+        })
+      ).json().dock;
+    expect((await hint('single')).required).toBe(true);
+    expect((await hint('multi')).required).toBe(false);
+    expect((await hint('permanent')).required).toBe(false);
+  });
+});
+
+describe('время начала «сейчас» — настройка уровня (7b.1)', () => {
+  it('startNow: по умолчанию включено; уровни переопределяют, «сбросить» возвращает значение выше', async () => {
+    await resetForm();
+    expect((await mine(logist)).form.startNow).toBe(true);
+    expect((await setSite({ startNow: false })).statusCode).toBe(200);
+    const off = await mine(logist);
+    expect(off.form.startNow).toBe(false);
+    expect(off.form.sources.startNow).toBe('site');
+    await setTenant({ startNow: true });
+    const on = await mine(logist);
+    expect(on.form.startNow).toBe(true);
+    expect(on.form.sources.startNow).toBe('tenant');
+    await setTenant({ startNow: null });
+    expect((await mine(logist)).form.startNow).toBe(false);
+    await setSite({ startNow: null });
+    expect((await mine(logist)).form.sources.startNow).toBe('default');
   });
 });
 
