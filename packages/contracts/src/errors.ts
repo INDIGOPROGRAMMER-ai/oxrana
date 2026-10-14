@@ -46,6 +46,7 @@ export const ERROR_CODES = [
   'field_hidden',
   'field_required',
   'pass_phase_locked',
+  'export_too_large',
   // пост
   'idempotency_conflict',
   'undo_window_passed',
@@ -113,6 +114,7 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   change_request_closed: 'Заявка на изменение уже рассмотрена.',
   field_hidden: 'Это поле для вас отключено в настройке формы пропуска.',
   field_required: 'Заполните обязательное поле.',
+  export_too_large: 'В выгрузке слишком много строк — сузьте фильтр и выгрузите по частям.',
   pass_phase_locked:
     'Это поле нельзя менять на этом этапе пропуска: после въезда правятся только комментарий и срок действия.',
   idempotency_conflict: 'Действие с этим идентификатором уже выполнено с другими данными.',
@@ -174,6 +176,7 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   field_hidden: 422,
   field_required: 422,
   pass_phase_locked: 409,
+  export_too_large: 422,
   idempotency_conflict: 409,
   undo_window_passed: 409,
   nothing_to_undo: 409,

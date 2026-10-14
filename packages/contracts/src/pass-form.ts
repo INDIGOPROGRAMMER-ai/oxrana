@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PASS_TYPES, type PassType, PassTypeSchema } from './enums';
+import { PASS_TYPES, type PassStatus, type PassType, PassTypeSchema } from './enums';
 
 /**
  * Настройка формы пропуска по уровням «объект → арендатор → сотрудник» (этап 7b, ADR-023).
@@ -66,6 +66,9 @@ export const PASS_FORM_SOURCE_LABELS: Record<PassFormSource, string> = {
 /** Сколько часов действует разовый пропуск, если окончание не указано (по умолчанию). */
 export const DEFAULT_SINGLE_HOURS = 23;
 
+/** Время начала в форме подставляется само: «сейчас» по поясу объекта (по умолчанию включено). */
+export const DEFAULT_START_NOW = true;
+
 const fieldsShape = {
   brand: FieldModeSchema,
   driverName: FieldModeSchema,
@@ -76,13 +79,17 @@ const fieldsShape = {
   comment: FieldModeSchema,
 } as const;
 
-/** Значения по умолчанию (уровень «по умолчанию» — в коде). ФИО и телефон водителя скрыты. */
+/**
+ * Значения по умолчанию (уровень «по умолчанию» — в коде). ФИО и телефон водителя скрыты. Окно
+ * прибытия скрыто (7b.1): оно нужно там, где есть расписание доков, и включается в настройке формы;
+ * если политика окон его требует, сервер ставит окно на весь срок пропуска.
+ */
 export const PASS_FORM_DEFAULTS = {
   fields: {
     brand: 'optional',
     driverName: 'hidden',
     driverPhone: 'hidden',
-    window: 'policy',
+    window: 'hidden',
     destination: 'optional',
     purpose: 'optional',
     comment: 'optional',
@@ -90,6 +97,7 @@ export const PASS_FORM_DEFAULTS = {
   passTypes: [...PASS_TYPES] as PassType[],
   defaultPassType: 'single' as PassType,
   singleHours: DEFAULT_SINGLE_HOURS,
+  startNow: DEFAULT_START_NOW,
 } as const;
 
 /**
@@ -110,6 +118,8 @@ export const PassFormSettingsSchema = z.strictObject({
     .optional(),
   /** Окончание разового пропуска, если не указано: начало + столько часов (не больше максимума объекта). */
   singleHours: z.int().min(1).max(168).optional(),
+  /** Время начала в форме — «сейчас» по поясу объекта, подставлено само (иначе поле пустое). */
+  startNow: z.boolean().optional(),
 });
 export type PassFormSettings = z.infer<typeof PassFormSettingsSchema>;
 
@@ -135,6 +145,7 @@ export const PassFormSettingsPatchSchema = z.strictObject({
     )
     .optional(),
   singleHours: z.int().min(1).max(168).nullable().optional(),
+  startNow: z.boolean().nullable().optional(),
   /** Причина изменения — в журнал. */
   reason: z.string().trim().min(3).max(500).optional(),
 });
@@ -152,6 +163,7 @@ export function applyPassFormPatch(
     'passTypes',
     'defaultPassType',
     'singleHours',
+    'startNow',
   ] as const) {
     const value = patch[key];
     if (value === undefined) continue;
@@ -187,12 +199,15 @@ export interface ResolvedPassForm {
   readonly defaultCategoryId: string | null;
   readonly fields: PassFormFieldModes;
   readonly singleHours: number;
+  /** Время начала подставляется само («сейчас» по поясу объекта). */
+  readonly startNow: boolean;
   readonly sources: {
     readonly passTypes: PassFormSource;
     readonly defaultPassType: PassFormSource;
     readonly categoryIds: PassFormSource;
     readonly defaultCategoryId: PassFormSource;
     readonly singleHours: PassFormSource;
+    readonly startNow: PassFormSource;
     readonly fields: Record<PassFormFieldKey, PassFormSource>;
   };
   /** Что пришлось поправить, чтобы настройки не противоречили друг другу (показывает редактор). */
@@ -206,12 +221,14 @@ export const ResolvedPassFormSchema = z.object({
   defaultCategoryId: z.uuid().nullable(),
   fields: z.object(fieldsShape),
   singleHours: z.int(),
+  startNow: z.boolean(),
   sources: z.object({
     passTypes: PassFormSourceSchema,
     defaultPassType: PassFormSourceSchema,
     categoryIds: PassFormSourceSchema,
     defaultCategoryId: PassFormSourceSchema,
     singleHours: PassFormSourceSchema,
+    startNow: PassFormSourceSchema,
     fields: z.object(
       Object.fromEntries(passFormFieldKeys.map((k) => [k, PassFormSourceSchema])) as {
         [K in PassFormFieldKey]: typeof PassFormSourceSchema;
@@ -234,6 +251,7 @@ export function resolvePassForm(layers: PassFormLayers): ResolvedPassForm {
   let categoryIds: string[] | null = null;
   let defaultCategoryId: string | null = null;
   let singleHours: number = PASS_FORM_DEFAULTS.singleHours;
+  let startNow: boolean = PASS_FORM_DEFAULTS.startNow;
   const fields: Record<PassFormFieldKey, WindowMode> = { ...PASS_FORM_DEFAULTS.fields };
   const sources = {
     passTypes: 'default' as PassFormSource,
@@ -241,6 +259,7 @@ export function resolvePassForm(layers: PassFormLayers): ResolvedPassForm {
     categoryIds: 'default' as PassFormSource,
     defaultCategoryId: 'default' as PassFormSource,
     singleHours: 'default' as PassFormSource,
+    startNow: 'default' as PassFormSource,
     fields: Object.fromEntries(passFormFieldKeys.map((k) => [k, 'default'])) as Record<
       PassFormFieldKey,
       PassFormSource
@@ -269,6 +288,10 @@ export function resolvePassForm(layers: PassFormLayers): ResolvedPassForm {
       singleHours = layer.singleHours;
       sources.singleHours = level;
     }
+    if (layer.startNow !== undefined) {
+      startNow = layer.startNow;
+      sources.startNow = level;
+    }
     for (const key of passFormFieldKeys) {
       const mode = layer.fields?.[key];
       if (mode) {
@@ -295,6 +318,7 @@ export function resolvePassForm(layers: PassFormLayers): ResolvedPassForm {
     defaultCategoryId,
     fields: fields as PassFormFieldModes,
     singleHours,
+    startNow,
     sources,
     notes,
   };
@@ -321,3 +345,14 @@ export function fieldIsHidden(mode: WindowMode): boolean {
 export function defaultSingleEnd(startMs: number, singleHours: number, maxHours: number): number {
   return startMs + Math.min(singleHours, maxHours) * 3_600_000;
 }
+
+/** Подписи статусов пропуска (кабинет, выгрузка): один источник. Термины — `docs/GLOSSARY.md`. */
+export const PASS_STATUS_LABELS: Record<PassStatus, string> = {
+  draft: 'Черновик',
+  pending_approval: 'На согласовании',
+  approved: 'Действует',
+  rejected: 'Отклонён',
+  cancelled: 'Отменён',
+  expired: 'Закончился',
+  used: 'Использован',
+};

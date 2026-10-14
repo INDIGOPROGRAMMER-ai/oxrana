@@ -87,6 +87,10 @@ export const passes = pgTable(
     index('passes_person_name_trgm_idx').using('gin', t.personName.op('gin_trgm_ops')),
     index('passes_site_id_status_idx').on(t.siteId, t.status),
     index('passes_tenant_id_status_idx').on(t.tenantId, t.status),
+    // Список без потолка (7b.1): порядок «новые сверху» по объекту и по арендатору, фильтр по дню.
+    index('passes_site_created_idx').on(t.siteId, t.createdAt.desc(), t.id),
+    index('passes_tenant_created_idx').on(t.tenantId, t.createdAt.desc(), t.id),
+    index('passes_tenant_valid_from_idx').on(t.tenantId, t.validFrom),
     enumCheck('passes', t.passType, PASS_TYPES),
     enumCheck('passes', t.participant, PARTICIPANTS),
     enumCheck('passes', t.status, PASS_STATUSES),

@@ -15,16 +15,26 @@ const CAR = '11111111-1111-4111-8111-111111111111';
 const SEMI = '22222222-2222-4222-8222-222222222222';
 
 describe('настройка формы пропуска по уровням (этап 7b)', () => {
-  it('по умолчанию: ФИО и телефон водителя скрыты, окно — по политике, разовый — 23 часа', () => {
+  it('по умолчанию: ФИО и телефон водителя и окно скрыты, начало — «сейчас», разовый — 23 часа', () => {
     const form = resolvePassForm({});
     expect(form.fields.driverName).toBe('hidden');
     expect(form.fields.driverPhone).toBe('hidden');
-    expect(form.fields.window).toBe('policy');
+    expect(form.fields.window).toBe('hidden');
+    expect(form.startNow).toBe(true);
     expect(form.singleHours).toBe(DEFAULT_SINGLE_HOURS);
     expect(form.passTypes).toEqual(['single', 'multi', 'permanent']);
     expect(form.categoryIds).toBeNull();
     expect(Object.values(form.sources.fields).every((s) => s === 'default')).toBe(true);
     expect(PASS_FORM_DEFAULTS.defaultPassType).toBe('single');
+  });
+
+  it('startNow: уровни переопределяют, сброс (null) возвращает значение уровня выше', () => {
+    expect(resolvePassForm({ site: { startNow: false } }).startNow).toBe(false);
+    const form = resolvePassForm({ site: { startNow: false }, tenant: { startNow: true } });
+    expect(form.startNow).toBe(true);
+    expect(form.sources.startNow).toBe('tenant');
+    expect(applyPassFormPatch({ startNow: true }, { startNow: null })).toEqual({});
+    expect(applyPassFormPatch({}, { startNow: false })).toEqual({ startNow: false });
   });
 
   it('нижний уровень переопределяет верхний по каждому ключу; источник указан', () => {

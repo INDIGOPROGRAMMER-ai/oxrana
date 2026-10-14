@@ -100,6 +100,10 @@ export const visits = pgTable(
       .on(t.siteId, t.tenantId, t.categoryId)
       .where(sql`${t.timeOut} is null`),
     index('visits_open_by_plate_idx').on(t.siteId, t.plateNorm).where(sql`${t.timeOut} is null`),
+    // «Сейчас на территории» (7b.1): открытые визиты по объекту и арендатору, давно въехавшие — первыми.
+    index('visits_open_by_time_idx')
+      .on(t.siteId, t.tenantId, t.timeIn)
+      .where(sql`${t.timeOut} is null`),
     index('visits_pass_id_idx').on(t.passId),
     enumCheck('visits', t.participant, PARTICIPANTS),
     enumCheck('visits', t.methodIn, VISIT_METHODS),
