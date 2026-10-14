@@ -893,7 +893,7 @@ function ApprovalSection({ site }: { site: SiteView }) {
             <THead>
               <TR>
                 <TH>Кто создаёт</TH>
-                <TH>Тип пропуска</TH>
+                <TH>Вид пропуска</TH>
                 <TH>Режим</TH>
                 <TH>Комментарий</TH>
                 <TH>Эскалация</TH>

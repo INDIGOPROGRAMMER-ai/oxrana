@@ -7,18 +7,21 @@ import { RepeatDay } from '../components/cabinet/repeat-day';
 import { useMe } from '../lib/data';
 
 export const Route = createFileRoute('/cabinet/passes/')({
-  validateSearch: (search: Record<string, unknown>): { status?: PassStatus } =>
-    typeof search.status === 'string' &&
+  validateSearch: (search: Record<string, unknown>): { status?: PassStatus; pass?: string } => ({
+    ...(typeof search.status === 'string' &&
     (PASS_STATUSES as readonly string[]).includes(search.status)
       ? { status: search.status as PassStatus }
-      : {},
+      : {}),
+    // пропуск, который открыло уведомление (колокольчик)
+    ...(typeof search.pass === 'string' ? { pass: search.pass } : {}),
+  }),
   component: PassesPage,
 });
 
 const CREATE = ['pass.create.single', 'pass.create.multi', 'pass.create.permanent'] as const;
 
 function PassesPage() {
-  const { status } = Route.useSearch();
+  const { status, pass } = Route.useSearch();
   const { can } = useMe();
   const canCreate = CREATE.some((p) => can(p));
   return (
@@ -38,7 +41,7 @@ function PassesPage() {
           ) : undefined
         }
       />
-      <PassList key={status ?? 'all'} initialStatus={status} />
+      <PassList key={status ?? 'all'} initialStatus={status} openId={pass} />
     </div>
   );
 }

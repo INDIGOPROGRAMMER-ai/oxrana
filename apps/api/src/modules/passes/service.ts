@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { PassDraft, PassPatch, PassSource } from '@oxrana/contracts';
 import { schema } from '@oxrana/db';
 import { formatDateTime } from '@oxrana/engine';
-import { and, eq, gt, isNull, lt, ne, or } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, lt, ne, or } from 'drizzle-orm';
 import { coversTenant, isTenantUser } from '../../actor';
 import { assertTenantAccess, can, requirePermission, type Scope } from '../../core/context';
 import { type AuditDiff, changedFields, diffOf } from '../../core/diff';
@@ -10,6 +10,12 @@ import { labelDiff } from '../../core/labels';
 import { loadTenant, notFound, type TenantRow } from '../../core/loaders';
 import { EXCLUSION_VIOLATION, pgErrorCode } from '../../core/refs';
 import { AppError } from '../../errors';
+import {
+  type ActorForm,
+  assertFormAllows,
+  fillDefaults,
+  loadActorForm,
+} from '../pass-form/service';
 import {
   approvalPolicy,
   assertTenantAcceptsPasses,
@@ -24,7 +30,7 @@ import {
   valuesFromPatch,
   valuesOf,
 } from './validate';
-import type { PassRow } from './views';
+import { type PassRow, passPhaseOf } from './views';
 
 /** Подписи значений-ссылок пропуска в журнале. */
 const PASS_LABELS = { categoryId: 'category', dockId: 'dock', destinationZoneId: 'zone' } as const;
@@ -147,6 +153,8 @@ async function otherTenantWarnings(
 export interface CreateOptions {
   readonly via: PassSource;
   readonly batchId?: string;
+  /** Форма актора, уже загруженная (пакет грузит её один раз). */
+  readonly form?: ActorForm;
   /** Пропуск по запросу с поста: создаёт пользователь арендатора, ответивший на запрос. */
   readonly gateAccountId?: string | null;
 }
@@ -161,11 +169,20 @@ export async function createPass(
   assertCanCreate(s, tenant, draft.passType);
   const ctx = await loadPassContext(s, tenant);
   assertTenantAcceptsPasses(ctx);
-  const values = valuesFromDraft(draft);
+  const actorForm = options.form ?? (await loadActorForm(s, tenant));
+  const asked = valuesFromDraft(draft);
+  const creator = creatorKindOf(s);
+  const policy = await approvalPolicy(s, tenant.siteId, tenant.id, creator, asked.passType);
+  // Настройка формы (ADR-023): сначала проверка того, что прислали, потом значения по умолчанию.
+  // Комментарий, который требует политика согласования, форма скрыть не может.
+  const form =
+    policy?.commentRequired && actorForm.form.fields.comment === 'hidden'
+      ? { ...actorForm.form, fields: { ...actorForm.form.fields, comment: 'optional' as const } }
+      : actorForm.form;
+  if (actorForm.enforced) assertFormAllows(ctx, form, asked, 'all');
+  const values = fillDefaults(ctx, form, asked);
   await validatePass(s, ctx, values, 'all');
 
-  const creator = creatorKindOf(s);
-  const policy = await approvalPolicy(s, tenant.siteId, tenant.id, creator, values.passType);
   if (policy?.mode === 'deny') {
     throw new AppError('pass_type_forbidden', {
       message: `Политика «${CREATOR_LABEL[creator]} → ${PASS_TYPE_LABEL[values.passType]}» = Запрещено. Изменить: Настройки → Политики согласования.`,
@@ -278,23 +295,66 @@ const API_FIELD: Partial<Record<PassField, string>> = {
   plateCountry: 'plate',
 };
 
+/** Подписи полей пропуска в сообщениях о правке. */
+const FIELD_TITLE: Partial<Record<PassField, string>> = {
+  plateRaw: 'Номер',
+  plateNorm: 'Номер',
+  plateCountry: 'Номер',
+  categoryId: 'Тип транспорта',
+  validFrom: 'Начало действия',
+  validTo: 'Действует до',
+  windowFrom: 'Окно прибытия',
+  windowTo: 'Окно прибытия',
+  destinationZoneId: 'Место назначения',
+  dockId: 'Док',
+  brand: 'Марка',
+  driverName: 'Водитель',
+  driverPhone: 'Телефон водителя',
+  purposeId: 'Цель визита',
+  comment: 'Комментарий',
+};
+
+/** После въезда (визит открыт) правятся только комментарий и «действует до» (ADR-023). */
+const INSIDE_FIELDS: readonly PassField[] = ['comment', 'validTo'];
+
+/** Пропуска, по которым сейчас есть открытый визит (въехал и не выехал). */
+export async function openVisitPassIds(s: Scope, passIds: readonly string[]): Promise<Set<string>> {
+  if (passIds.length === 0) return new Set();
+  const rows = await s.db
+    .select({ passId: schema.visits.passId })
+    .from(schema.visits)
+    .where(
+      and(
+        eq(schema.visits.organizationId, s.organizationId),
+        inArray(schema.visits.passId, [...passIds]),
+        isNull(schema.visits.timeOut),
+      ),
+    );
+  return new Set(rows.map((r) => r.passId).filter((v): v is string => v !== null));
+}
+
+const LOCKED_TEXT: Partial<Record<PassRow['status'], string>> = {
+  used: 'Разовый пропуск использован — его не правят. Оформите новый.',
+  cancelled: 'Пропуск отменён — его не правят. Оформите новый.',
+  rejected: 'Пропуск отклонён — его не правят. Оформите новый.',
+  expired: 'Срок пропуска истёк — его не правят. Оформите новый.',
+};
+
 /**
- * Правка пропуска (10_ §5): меняются только присланные и реально изменённые поля (сценарий 19).
- * У начавшегося пропуска нужна причина (сценарий 20). Пользователь арендатора номер, тип и срок
- * согласованного пропуска, который уже начался (или согласовывался), меняет заявкой — пропуск не
- * перевыпускается (A8, сценарий 41).
+ * Правка пропуска (10_ §5, ADR-023): меняются только присланные и реально изменённые поля
+ * (сценарий 19). Этапы: до въезда правится почти всё; после въезда (визит открыт) — только
+ * комментарий и «действует до» в пределах максимума; после выезда или использования — просмотр.
+ * У начавшегося пропуска нужна причина (сценарий 20). Если пропуск проходил согласование
+ * (политика «на согласование»), пользователь арендатора номер, тип и срок меняет заявкой — пропуск
+ * не перевыпускается (A8, сценарий 41); продление «действует до» после въезда — тоже заявкой.
  */
 export async function patchPass(s: Scope, passId: string, patch: PassPatch): Promise<PatchResult> {
   const { pass, tenant } = await loadPass(s, passId);
   assertCanView(s, tenant.id);
-  if (pass.status === 'used' || pass.status === 'cancelled') {
-    throw new AppError('pass_not_editable', {
-      message:
-        pass.status === 'used'
-          ? 'Разовый пропуск использован — его не правят. Оформите новый.'
-          : 'Пропуск отменён — его не правят. Оформите новый.',
-    });
-  }
+  const locked = LOCKED_TEXT[pass.status];
+  if (locked) throw new AppError('pass_not_editable', { message: locked });
+  const open = await openVisitPassIds(s, [pass.id]);
+  const phase = passPhaseOf(pass.status, open.has(pass.id));
   const ctx = await loadPassContext(s, tenant);
   const requested = valuesFromPatch(patch);
   const current = valuesOf(pass);
@@ -310,6 +370,17 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
   ) as PassField[];
   if (fields.length === 0) return { row: pass, applied: [], changeRequest: null };
 
+  if (phase === 'inside') {
+    const blocked = fields.filter((f) => !INSIDE_FIELDS.includes(f));
+    if (blocked.length > 0) {
+      const names = [...new Set(blocked.map((f) => FIELD_TITLE[f] ?? f))].join(', ');
+      throw new AppError('pass_phase_locked', {
+        field: API_FIELD[blocked[0] as PassField] ?? blocked[0] ?? 'comment',
+        message: `Машина или человек уже на территории: правятся только комментарий и «действует до». Изменить нельзя: ${names}. Если нужно другое — оформите новый пропуск или обратитесь к администратору объекта.`,
+      });
+    }
+  }
+
   const started = pass.validFrom !== null && pass.validFrom.getTime() <= ctx.now;
   if (started && !patch.reason) {
     throw new AppError('reason_required', {
@@ -318,11 +389,25 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
     });
   }
 
+  // Настройка формы (ADR-023): тип, скрытые и обязательные поля — по уровням арендатора.
+  const actorForm = await loadActorForm(s, tenant);
+  const merged: PassValues = { ...current, ...requested };
+  if (actorForm.enforced) assertFormAllows(ctx, actorForm.form, merged, new Set(fields));
+
   let viaRequest: PassField[] = [];
   if (isTenantUser(s.ctx.actor) && pass.status === 'approved') {
     const policy = await approvalPolicy(s, tenant.siteId, tenant.id, 'tenant', pass.passType);
-    if (started || policy === null || policy.mode === 'on_request') {
+    // Заявка нужна, если пропуск проходил согласование (или политика не задана — Q-55).
+    if (policy === null || policy.mode === 'on_request') {
       viaRequest = fields.filter((f) => CHANGE_REQUEST_FIELDS.includes(f));
+      // Сокращение срока после въезда согласования не требует — только продление.
+      if (phase === 'inside') {
+        const shortened =
+          requested.validTo != null &&
+          current.validTo != null &&
+          requested.validTo.getTime() < current.validTo.getTime();
+        if (shortened) viaRequest = viaRequest.filter((f) => f !== 'validTo');
+      }
     }
   }
   const direct = fields.filter((f) => !viaRequest.includes(f));
@@ -330,7 +415,6 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
   if (viaRequest.length > 0) requirePermission(s.ctx, 'pass.change_request.create');
 
   // Проверяется пропуск таким, каким он станет (и с прямой правкой, и с запрошенной).
-  const merged: PassValues = { ...current, ...requested };
   await validatePass(s, ctx, merged, new Set(fields));
 
   let row = pass;
@@ -355,6 +439,7 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
       action: 'update',
       diff: await labelDiff(s, diffOf(pass, row, direct), PASS_LABELS),
       reason: patch.reason ?? null,
+      snapshot: { phase },
     });
     await s.emit('pass.updated', {
       siteId: pass.siteId,
@@ -386,7 +471,7 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
       action: 'change_request',
       diff: await labelDiff(s, changes, PASS_LABELS),
       reason: patch.reason ?? null,
-      snapshot: { changeRequestId: changeRequest.id },
+      snapshot: { changeRequestId: changeRequest.id, phase },
     });
     await s.emit('pass.change_requested', {
       siteId: pass.siteId,

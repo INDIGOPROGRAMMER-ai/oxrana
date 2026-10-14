@@ -69,6 +69,7 @@ const ENUM_COLUMNS: [table: string, column: string, schema: EnumSchema][] = [
   ['barrier_commands', 'status', c.BarrierCommandStatusSchema],
   ['audit_log', 'actor_type', c.AuditActorTypeSchema],
   ['notifications', 'status', c.NotificationStatusSchema],
+  ['pass_form_settings', 'level', c.PassFormLevelSchema],
 ];
 
 const owner = createPool({ connectionString: process.env.DATABASE_ADMIN_URL ?? '', max: 1 });

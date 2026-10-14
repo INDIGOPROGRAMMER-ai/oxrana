@@ -45,6 +45,7 @@ import {
   createPass,
   decideChangeRequest,
   loadPass,
+  openVisitPassIds,
   patchPass,
 } from './service';
 import { passView, visitView } from './views';
@@ -176,7 +177,11 @@ export function registerPassesModule(app: FastifyInstance): void {
           .orderBy(desc(schema.passes.createdAt), asc(schema.passes.id))
           .limit(q.limit)
           .offset(q.offset);
-        return { items: rows.map((r) => passView(r, ctx.now())) };
+        const open = await openVisitPassIds(
+          s,
+          rows.map((r) => r.id),
+        );
+        return { items: rows.map((r) => passView(r, ctx.now(), open.has(r.id))) };
       });
     },
   );
@@ -197,7 +202,8 @@ export function registerPassesModule(app: FastifyInstance): void {
       return ctx.tx(async (s) => {
         const { pass } = await loadPass(s, request.params.id);
         assertCanView(s, pass.tenantId);
-        return passView(pass, ctx.now());
+        const open = await openVisitPassIds(s, [pass.id]);
+        return passView(pass, ctx.now(), open.has(pass.id));
       });
     },
   );
@@ -269,8 +275,9 @@ export function registerPassesModule(app: FastifyInstance): void {
       const ctx = ctxOf(request);
       return ctx.tx(async (s) => {
         const result = await patchPass(s, request.params.id, request.body);
+        const open = await openVisitPassIds(s, [result.row.id]);
         return {
-          pass: passView(result.row, ctx.now()),
+          pass: passView(result.row, ctx.now(), open.has(result.row.id)),
           applied: result.applied,
           changeRequest: result.changeRequest ? changeRequestView(result.changeRequest) : null,
         };

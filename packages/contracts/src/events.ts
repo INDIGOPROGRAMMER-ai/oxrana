@@ -143,6 +143,22 @@ export const DOMAIN_EVENT_PAYLOADS = {
     status: OverrideStatusSchema,
   }),
 
+  /** Изменилась настройка формы пропуска: форма перечитывается (`tenantId` нет — уровень объекта). */
+  'pass_form.changed': z.strictObject({
+    level: z.enum(['site', 'tenant', 'user']),
+    tenantId: id.optional(),
+  }),
+
+  /**
+   * Пользователю создано уведомление (ADR-023): доставку по каналам (кабинет, позже почта,
+   * Telegram, push) ведёт диспетчер; событие видит только адресат. Текст в payload не попадает.
+   */
+  'notification.created': z.strictObject({
+    notificationId: id,
+    userId: id,
+    kind: z.string().min(1),
+  }),
+
   /** Устройство поста отозвано: открытые потоки SSE этого устройства закрываются сразу. */
   'gate_device.revoked': z.strictObject({ deviceId: id, gateId: id }),
 } as const;

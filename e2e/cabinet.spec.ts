@@ -188,7 +188,7 @@ test('автопарк: добавить машину, пропуск из ав�
   await expect(hints).toContainText('Фура → Въезд 2');
   await expect(hints).toContainText('Фура 0/3');
   await expect(hints).toContainText('Без согласования');
-  await page.getByRole('button', { name: 'Оформить пропуск' }).click();
+  await page.getByRole('button', { name: 'Создать пропуск' }).click();
   await expect(page.getByTestId('pass-created')).toContainText('Пропуск оформлен');
   await page.getByRole('link', { name: 'К списку пропусков' }).click();
   await expect(page.getByTestId('pass-row').first()).toContainText('A123BC174');
@@ -244,7 +244,7 @@ test('форма предупреждает о чёрном списке до с
   await expect(notice).toContainText('пропуск оформить нельзя');
   // оформить нельзя: кнопка неактивна и называет причину (Q-76)
   await page.getByLabel('Тип транспорта').selectOption({ label: 'легковой' });
-  await expect(page.getByRole('button', { name: 'Оформить пропуск' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Создать пропуск' })).toBeDisabled();
   await expect(page.getByText('Оформить нельзя: Номер в чёрном списке')).toBeVisible();
   await expect(page.getByTestId('hints')).not.toContainText('Драка');
   await page.getByLabel('Номер машины').fill('К999ХМ174');
@@ -279,11 +279,11 @@ test('пакет из 20 строк: предпросмотр 18 зелёных 
   await page.getByLabel('Вставьте строки из Excel или письма').fill(lines.join('\n'));
   await expect(page.getByTestId('batch-ok')).toHaveText('Будет создано 18', { timeout: 15_000 });
   await expect(page.getByTestId('batch-bad')).toHaveText('Ошибки в 2');
-  const bad = page.locator('tr[data-status="error"]');
+  const bad = page.locator('li[data-status="error"]');
   await expect(bad).toHaveCount(2);
   await expect(bad.nth(0)).toContainText('Тип «самокат» не найден');
   await expect(bad.nth(1)).toContainText('уже есть действующий пропуск');
-  await expect(page.locator('tr[data-status="ok"]')).toHaveCount(18);
+  await expect(page.locator('li[data-status="ok"]')).toHaveCount(18);
 
   await page.getByRole('button', { name: 'Создать пропуска: 18' }).click();
   const done = page.getByTestId('batch-done');
@@ -311,7 +311,7 @@ test('многоразовый пропуск уходит на согласов
   await page.getByLabel('Номер машины').fill('Е555КХ174');
   await page.getByLabel('Тип транспорта').selectOption({ label: 'легковой' });
   await page
-    .getByLabel('Тип пропуска')
+    .getByLabel('Вид пропуска')
     .selectOption({ label: 'Многоразовый — уйдёт на согласование' });
   await expect(page.getByTestId('hints')).toContainText('Уйдёт на согласование');
   await page.getByLabel('Действует по').fill(siteDate(3).typed);
@@ -365,7 +365,7 @@ test('администратор отклоняет с причиной — ло
   await page.getByLabel('Номер машины').fill('Е666КХ174');
   await page.getByLabel('Тип транспорта').selectOption({ label: 'легковой' });
   await page
-    .getByLabel('Тип пропуска')
+    .getByLabel('Вид пропуска')
     .selectOption({ label: 'Постоянный — уйдёт на согласование' });
   await page.getByLabel('Комментарий').fill('Директор компании');
   await page.getByRole('button', { name: 'Отправить на согласование' }).click();

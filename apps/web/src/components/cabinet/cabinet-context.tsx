@@ -1,4 +1,4 @@
-import type { CabinetContext } from '@oxrana/contracts';
+import type { CabinetContext, PassFormMine } from '@oxrana/contracts';
 import { SiteTimeProvider } from '@oxrana/ui';
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react';
 import { useApi, useMe } from '../../lib/data';
@@ -26,6 +26,8 @@ interface CabinetValue {
   readonly select: (tenantId: string) => void;
   /** Арендатор, объект с поясом и справочники форм; `undefined` — ещё грузится. */
   readonly ctx: CabinetContext | undefined;
+  /** Форма пропуска этого пользователя: итог уровней «объект → арендатор → сотрудник» (ADR-023). */
+  readonly passForm: PassFormMine | undefined;
   readonly loading: boolean;
   readonly error: unknown;
   readonly live: LiveState;
@@ -73,6 +75,7 @@ export function CabinetProvider({ children }: { children: ReactNode }) {
   }, []);
   const query = useApi<CabinetContext>(tenant ? `/tenants/${tenant.id}/cabinet` : null);
   const ctx = query.data;
+  const formQuery = useApi<PassFormMine>(tenant ? `/tenants/${tenant.id}/pass-form` : null);
   const live = useSiteEvents(ctx?.site.id ?? null);
   const settings = useApi<{
     showOwnTime: boolean;
@@ -94,12 +97,13 @@ export function CabinetProvider({ children }: { children: ReactNode }) {
       tenant,
       select,
       ctx,
+      passForm: formQuery.data,
       loading: query.isLoading,
       error: query.error,
       live,
       serverNow,
     }),
-    [tenants, tenant, select, ctx, query.isLoading, query.error, live, serverNow],
+    [tenants, tenant, select, ctx, formQuery.data, query.isLoading, query.error, live, serverNow],
   );
   return (
     <Cabinet.Provider value={value}>

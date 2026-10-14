@@ -1,27 +1,17 @@
-import type { FleetVehicleViewSchema, PassCreatedSchema, PassType } from '@oxrana/contracts';
-import { normalizePlate } from '@oxrana/plates';
+import type { FleetVehicleViewSchema, PassCreatedSchema } from '@oxrana/contracts';
 import {
   Alert,
   Button,
-  Card,
-  CardContent,
-  DateInput,
-  DateTimeInput,
   ErrorAlert,
   type ErrorView,
   errorView,
-  Field,
-  type FieldErrorLike,
-  Input,
   localToInstant,
-  Select,
-  Textarea,
-  TimeInput,
+  SiteTime,
 } from '@oxrana/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { CheckCircle2, Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { z } from 'zod';
 import { api } from '../../lib/api';
 import { useRefresh } from '../../lib/data';
@@ -31,40 +21,14 @@ import {
   type PassFormErrors,
   type PassFormValues,
 } from '../../lib/pass-form';
-import { PASS_TYPE_LABEL } from '../../lib/pass-text';
+import { buildFormView } from '../../lib/pass-form-view';
 import { useDebounced } from '../../lib/use-debounced';
 import { useCabinet } from './cabinet-context';
+import { PassFormFields } from './pass-form-fields';
 import { type PassHints, PassHintsPanel } from './pass-hints-panel';
 
 type Created = z.infer<typeof PassCreatedSchema>;
 export type FleetVehicle = z.infer<typeof FleetVehicleViewSchema>;
-
-const COUNTRY: Record<string, string> = {
-  RU: 'Россия',
-  BY: 'Беларусь',
-  KZ: 'Казахстан',
-  UZ: 'Узбекистан',
-  TJ: 'Таджикистан',
-  KG: 'Киргизия',
-  AM: 'Армения',
-};
-
-/** Номер при вводе: как он будет записан и откуда (A10: пробелы, тире, кириллица — не ошибка). */
-function PlatePreview({ text }: { text: string }) {
-  if (text.trim() === '') return null;
-  const plate = normalizePlate(text);
-  if (!plate.norm) return null;
-  return (
-    <p className="text-xs text-muted-foreground" data-testid="plate-preview">
-      Запишется как <span className="font-mono font-medium text-foreground">{plate.norm}</span>
-      {plate.recognized
-        ? plate.country
-          ? ` · ${COUNTRY[plate.country] ?? plate.country}`
-          : ''
-        : ' · формат не распознан, номер сохранится как есть'}
-    </p>
-  );
-}
 
 /** Начало пропуска, если это не сегодня (иначе «сейчас» — сервер знает сам). */
 function laterStart(values: PassFormValues, today: string, timezone: string): string {
@@ -72,34 +36,26 @@ function laterStart(values: PassFormValues, today: string, timezone: string): st
   return date && today && date > today ? localToInstant(date, '00:00', timezone) : '';
 }
 
-const PASS_TYPE_MODE: Record<string, string> = {
-  allow: 'без согласования',
-  on_request: 'уйдёт на согласование',
-};
-
 /**
  * Форма пропуска: одна на все случаи (08_ «Создание пропуска») — машина или пешеход, разовый,
- * многоразовый или постоянный. Подсказки приходят от сервера, пока человек заполняет форму; недоступное
- * ему (типы транспорта и пропусков) в списках не показывается.
+ * многоразовый или постоянный. Что в ней видно, решает настройка формы по уровням «объект →
+ * арендатор → сотрудник» (ADR-023); подсказки приходят от сервера, пока человек заполняет форму.
+ * Одно доступное место назначения и единственный нужный док подставлены сами. Кнопка «Создать»
+ * всегда видна внизу экрана.
  */
 export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undefined }) {
-  const { tenant, ctx, serverNow } = useCabinet();
+  const { tenant, ctx, passForm, serverNow } = useCabinet();
   const refresh = useRefresh();
   const [created, setCreated] = useState<Created | null>(null);
   const [error, setError] = useState<ErrorView | null>(null);
   const [errors, setErrors] = useState<PassFormErrors>({});
   const [submitting, setSubmitting] = useState(false);
+  const [more, setMore] = useState(false);
 
-  const available = (ctx?.categories ?? []).filter((c) => c.available);
-  const defaultCategory =
-    fleetVehicle?.categoryId ??
-    (ctx?.tenant.defaultCategoryId && available.some((c) => c.id === ctx.tenant.defaultCategoryId)
-      ? ctx.tenant.defaultCategoryId
-      : '');
   const initial: PassFormValues = {
     participant: 'vehicle',
     plate: fleetVehicle?.plateRaw ?? '',
-    categoryId: defaultCategory,
+    categoryId: fleetVehicle?.categoryId ?? '',
     brand: fleetVehicle?.brand ?? '',
     driverName: fleetVehicle?.driverName ?? '',
     driverPhone: fleetVehicle?.driverPhone ?? '',
@@ -107,6 +63,8 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
     personDocument: '',
     passType: 'single',
     date: ctx?.today ?? '',
+    startTime: '',
+    endTime: '',
     windowFromTime: '',
     windowToTime: '',
     from: ctx?.today ?? '',
@@ -124,7 +82,8 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
     setErrors((e) => ({ ...e, [key]: undefined }));
   };
 
-  // подсказки: тем же движком, что на посту; запрос — после паузы в наборе
+  // Подсказки: тем же движком, что на посту; запрос — после паузы в наборе. Типы транспорта и виды
+  // пропусков в подсказках уже отфильтрованы настройкой формы (сервер применяет её сам).
   const wanted = {
     participant: values.participant,
     categoryId: values.participant === 'vehicle' ? values.categoryId : '',
@@ -160,7 +119,60 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
   const settling =
     JSON.stringify(wanted) !== JSON.stringify(hintKey) || hintsQuery.isPlaceholderData;
 
-  if (!ctx || !tenant) return null;
+  const view = useMemo(
+    () =>
+      ctx && passForm
+        ? buildFormView({
+            form: passForm.form,
+            ctx,
+            enforced: passForm.enforced,
+            allowedPassTypes: hints?.passTypes.map((p) => p.passType),
+            windowRequiredByPolicy: Boolean(hints?.window.required),
+            commentRequiredByPolicy: Boolean(hints?.commentRequired),
+            dockRequired: Boolean(
+              hints?.dock.required ||
+                (values.participant === 'vehicle' &&
+                  ctx.tenant.trucksDockRequired &&
+                  ctx.categories.find((c) => c.id === values.categoryId)?.dockEligible),
+            ),
+          })
+        : null,
+    [ctx, passForm, hints, values.participant, values.categoryId],
+  );
+
+  // Умные значения: единственный тип, единственная зона, единственный нужный док — подставлены;
+  // вид пропуска — по умолчанию из настройки. Подставляется только пустое и только один раз на значение.
+  const applied = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (!view) return;
+    const fill = (key: 'categoryId' | 'destinationZoneId' | 'dockId', value: string) => {
+      if (value && applied.current[key] !== value) {
+        applied.current[key] = value;
+        setValues((v) => (v[key] === '' ? { ...v, [key]: value } : v));
+      }
+    };
+    if (!fleetVehicle) fill('categoryId', view.defaultCategoryId);
+    fill('destinationZoneId', view.defaultZoneId);
+    fill('dockId', view.defaultDockId);
+    if (view.passTypes && view.defaultPassType && applied.current.passType === undefined) {
+      applied.current.passType = view.defaultPassType;
+      setValues((v) =>
+        view.passTypes?.includes(v.passType)
+          ? v
+          : { ...v, passType: view.defaultPassType ?? v.passType },
+      );
+    }
+    // вид пропуска, который перестал быть доступным (права, настройка), заменяется доступным
+    if (view.passTypes && view.passTypes.length > 0) {
+      setValues((v) =>
+        view.passTypes?.includes(v.passType)
+          ? v
+          : { ...v, passType: view.passTypes?.[0] ?? v.passType },
+      );
+    }
+  }, [view, fleetVehicle]);
+
+  if (!ctx || !tenant || !passForm || !view) return null;
 
   if (created) {
     const waiting = created.status === 'pending_approval';
@@ -171,8 +183,14 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
           title={waiting ? 'Пропуск отправлен на согласование' : 'Пропуск оформлен'}
         >
           {waiting
-            ? 'Согласующий увидит его сразу. Решение появится в списке пропусков — обновлять страницу не нужно.'
+            ? 'Согласующий увидит его сразу. Решение появится в списке пропусков и в колокольчике — обновлять страницу не нужно.'
             : 'Он уже действует: охрана видит его на КПП.'}
+          {created.passType === 'single' && created.validFrom ? (
+            <span className="mt-1 block text-sm" data-testid="created-span">
+              Действует с <SiteTime value={created.validFrom} /> до{' '}
+              <SiteTime value={created.validTo} />
+            </span>
+          ) : null}
         </Alert>
         {created.warnings.map((w) => (
           <Alert key={w.code} tone="warning" data-testid={`warning-${w.code}`}>
@@ -184,6 +202,7 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
             size="lg"
             onClick={() => {
               setCreated(null);
+              applied.current = {};
               setValues(initial);
             }}
           >
@@ -200,30 +219,21 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
   const vehicle = values.participant === 'vehicle';
   const category = ctx.categories.find((c) => c.id === values.categoryId);
   const blockers = (hints?.notices ?? []).filter((n) => n.severity === 'error');
-  const dockRequired = vehicle && Boolean(hints?.dock.required);
-  const windowRequired = vehicle && Boolean(hints?.window.required);
-  const commentRequired = Boolean(hints?.commentRequired);
-  const passTypes = hints?.passTypes ?? [];
-  const noTypes = hints !== undefined && passTypes.length === 0;
-  const typeSelectable = passTypes.some((t) => t.passType === values.passType);
+  const noTypes = view.passTypes !== undefined && view.passTypes.length === 0;
   const approvalWait = hints?.approval?.mode === 'on_request';
 
-  const err = (name: keyof PassFormValues): FieldErrorLike | null => {
-    const message = errors[name];
-    return message ? { message } : null;
-  };
-
   async function submit() {
-    if (!ctx || !tenant) return;
+    if (!ctx || !tenant || !view) return;
     setError(null);
     const built = buildPassBody(values, {
       tenantId: tenant.id,
       timezone: ctx.site.timezone,
       today: ctx.today,
       nowMs: serverNow(),
-      commentRequired,
-      windowRequired,
-      dockRequired,
+      commentRequired: view.fields.comment === 'required',
+      windowRequired: view.fields.window === 'required',
+      dockRequired: vehicle && view.dockRequired,
+      fields: view.fields,
     });
     if (!built.ok) {
       setErrors(built.errors);
@@ -251,7 +261,7 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
 
   return (
     <form
-      className="space-y-5"
+      className="space-y-4"
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
@@ -278,262 +288,34 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
         ))}
       </fieldset>
 
-      <Card>
-        <CardContent className="grid gap-4 pt-5 sm:grid-cols-2">
-          {vehicle ? (
-            <>
-              <Field label="Номер машины" required error={err('plate')} className="sm:col-span-2">
-                <Input
-                  value={values.plate}
-                  onChange={(e) => set('plate', e.target.value)}
-                  autoComplete="off"
-                  autoCapitalize="characters"
-                  maxLength={30}
-                  className="font-mono text-base uppercase"
-                />
-                <PlatePreview text={values.plate} />
-              </Field>
-              <Field
-                label="Тип транспорта"
-                required
-                error={err('categoryId')}
-                hint={
-                  values.categoryId &&
-                  values.categoryId === ctx.tenant.defaultCategoryId &&
-                  !fleetVehicle
-                    ? 'Подставлен тип по умолчанию для вашей компании — можно выбрать другой.'
-                    : 'Показаны только типы, которые предусмотрены для вашей компании.'
-                }
-              >
-                <Select
-                  value={values.categoryId}
-                  onChange={(e) => set('categoryId', e.target.value)}
-                >
-                  <option value="">Выберите тип</option>
-                  {available.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Марка" error={err('brand')}>
-                <Input
-                  value={values.brand}
-                  onChange={(e) => set('brand', e.target.value)}
-                  maxLength={100}
-                />
-              </Field>
-              <Field label="Водитель" error={err('driverName')}>
-                <Input
-                  value={values.driverName}
-                  onChange={(e) => set('driverName', e.target.value)}
-                  maxLength={200}
-                />
-              </Field>
-              <Field label="Телефон водителя" error={err('driverPhone')}>
-                <Input
-                  type="tel"
-                  value={values.driverPhone}
-                  onChange={(e) => set('driverPhone', e.target.value)}
-                  maxLength={30}
-                />
-              </Field>
-            </>
-          ) : (
-            <>
-              <Field label="Фамилия и имя" required error={err('personName')}>
-                <Input
-                  value={values.personName}
-                  onChange={(e) => set('personName', e.target.value)}
-                  autoComplete="off"
-                  maxLength={200}
-                />
-              </Field>
-              <Field
-                label="Документ"
-                hint="Только вид документа («паспорт»), без номера."
-                error={err('personDocument')}
-              >
-                <Input
-                  value={values.personDocument}
-                  onChange={(e) => set('personDocument', e.target.value)}
-                  maxLength={100}
-                />
-              </Field>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="grid gap-4 pt-5 sm:grid-cols-2">
-          <Field
-            label="Тип пропуска"
-            required
-            hint={noTypes ? undefined : 'Показаны только те типы, которые вам разрешено оформлять.'}
-            {...(noTypes
-              ? {
-                  disabledReason:
-                    'Оформлять пропуска вам не разрешено. Обратитесь к ответственному вашей компании.',
-                }
-              : {})}
-          >
-            <Select
-              value={typeSelectable ? values.passType : ''}
-              onChange={(e) => set('passType', e.target.value as PassType)}
-              disabled={noTypes}
-            >
-              {typeSelectable ? null : <option value="">Загрузка…</option>}
-              {passTypes.map((t) => (
-                <option key={t.passType} value={t.passType}>
-                  {PASS_TYPE_LABEL[t.passType]} — {PASS_TYPE_MODE[t.mode] ?? t.mode}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          {values.passType === 'single' ? (
-            <>
-              <Field label="Дата приезда" required error={err('date')}>
-                <DateInput
-                  value={values.date}
-                  todayIso={ctx.today}
-                  onChange={(v) => set('date', v)}
-                />
-              </Field>
-              <Field
-                label="Окно прибытия, с"
-                required={windowRequired}
-                error={err('windowFromTime')}
-                hint={`Время объекта: ${ctx.site.timezoneLabel}`}
-              >
-                <TimeInput
-                  value={values.windowFromTime}
-                  onChange={(v) => set('windowFromTime', v)}
-                />
-              </Field>
-              <Field
-                label="Окно прибытия, по"
-                required={windowRequired}
-                error={err('windowToTime')}
-              >
-                <TimeInput value={values.windowToTime} onChange={(v) => set('windowToTime', v)} />
-              </Field>
-            </>
-          ) : (
-            <>
-              <Field label="Действует с" required error={err('from')}>
-                <DateInput
-                  value={values.from}
-                  todayIso={ctx.today}
-                  onChange={(v) => set('from', v)}
-                />
-              </Field>
-              {values.passType === 'multi' ? (
-                <Field
-                  label="Действует по"
-                  required
-                  error={err('to')}
-                  hint="Последний день включительно."
-                >
-                  <DateInput
-                    value={values.to}
-                    todayIso={ctx.today}
-                    onChange={(v) => set('to', v)}
-                  />
-                </Field>
-              ) : (
-                <p className="self-end text-sm text-muted-foreground">
-                  Постоянный пропуск действует без окончания, пока его не отменят.
-                </p>
-              )}
-              {windowRequired ? (
-                <>
-                  <Field label="Окно прибытия, с" required error={err('windowFrom')}>
-                    <DateTimeInput
-                      value={values.windowFrom}
-                      todayIso={ctx.today}
-                      onChange={(v) => set('windowFrom', v)}
-                    />
-                  </Field>
-                  <Field label="Окно прибытия, по" required error={err('windowTo')}>
-                    <DateTimeInput
-                      value={values.windowTo}
-                      todayIso={ctx.today}
-                      onChange={(v) => set('windowTo', v)}
-                    />
-                  </Field>
-                </>
-              ) : null}
-            </>
-          )}
-
-          {vehicle && ctx.docks.length > 0 ? (
-            <Field
-              label="Док"
-              required={dockRequired}
-              error={err('dockId')}
-              hint={hints?.dock.text ?? undefined}
-            >
-              <Select value={values.dockId} onChange={(e) => set('dockId', e.target.value)}>
-                <option value="">{dockRequired ? 'Выберите док' : 'Без дока'}</option>
-                {ctx.docks.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    Док {d.number}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          ) : null}
-          {ctx.zones.length > 0 && !(vehicle && dockRequired) ? (
-            <Field label="Место назначения" error={err('destinationZoneId')}>
-              <Select
-                value={values.destinationZoneId}
-                onChange={(e) => set('destinationZoneId', e.target.value)}
-              >
-                <option value="">Не указано</option>
-                {ctx.zones.map((z) => (
-                  <option key={z.id} value={z.id}>
-                    {z.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          ) : null}
-          {ctx.purposes.length > 0 ? (
-            <Field label="Цель визита" error={err('purposeId')}>
-              <Select value={values.purposeId} onChange={(e) => set('purposeId', e.target.value)}>
-                <option value="">Не указана</option>
-                {ctx.purposes.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          ) : null}
-          <Field
-            label="Комментарий"
-            required={commentRequired}
-            error={err('comment')}
-            hint={commentRequired ? 'Для чего и зачем нужен пропуск.' : undefined}
-            className="sm:col-span-2"
-          >
-            <Textarea
-              value={values.comment}
-              onChange={(e) => set('comment', e.target.value)}
-              rows={2}
-              maxLength={2000}
-            />
-          </Field>
-        </CardContent>
-      </Card>
+      <PassFormFields
+        ctx={ctx}
+        view={view}
+        values={values}
+        set={set}
+        errors={errors}
+        hints={hints}
+        fromFleet={Boolean(fleetVehicle)}
+        more={more}
+        setMore={setMore}
+        nowMs={serverNow()}
+      />
 
       <PassHintsPanel hints={hints} loading={hintsQuery.isFetching} />
 
       <ErrorAlert error={error} />
-      <div className="space-y-2">
+      {category && !category.available ? (
+        <p className="text-xs text-warning">Этот тип для вашей компании не предусмотрен.</p>
+      ) : null}
+      {blockers.length > 0 ? (
+        <p className="text-xs text-destructive">Оформить нельзя: {blockers[0]?.text}</p>
+      ) : settling && hints ? (
+        <p className="text-xs text-muted-foreground">Проверяем правила для введённого…</p>
+      ) : null}
+      <div
+        data-testid="submit-bar"
+        className="sticky bottom-16 z-20 -mx-4 border-t bg-background/95 px-4 py-2 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0"
+      >
         <Button
           type="submit"
           size="lg"
@@ -545,16 +327,8 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
           ) : (
             <CheckCircle2 aria-hidden />
           )}
-          {approvalWait ? 'Отправить на согласование' : 'Оформить пропуск'}
+          {approvalWait ? 'Отправить на согласование' : 'Создать пропуск'}
         </Button>
-        {blockers.length > 0 ? (
-          <p className="text-xs text-destructive">Оформить нельзя: {blockers[0]?.text}</p>
-        ) : settling && hints ? (
-          <p className="text-xs text-muted-foreground">Проверяем правила для введённого…</p>
-        ) : null}
-        {category && !category.available ? (
-          <p className="text-xs text-warning">Этот тип для вашей компании не предусмотрен.</p>
-        ) : null}
       </div>
     </form>
   );

@@ -60,6 +60,8 @@ catalog:
   '@dnd-kit/core': 6.3.1
   '@dnd-kit/sortable': 10.0.0
   '@dnd-kit/utilities': 3.2.2
+  # чтение .xlsx в браузере: распаковка zip без тяжёлой библиотеки таблиц (этап 7b)
+  fflate: 0.8.3
   # компонентные тесты
   '@testing-library/react': 16.3.3
   '@testing-library/user-event': 14.6.7

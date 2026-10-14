@@ -8,7 +8,17 @@ export type VisitRow = typeof schema.visits.$inferSelect;
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 const ms = (d: Date | null): number | null => (d === null ? null : d.getTime());
 
-export function passView(row: PassRow, now: number): PassApiView {
+/** Этап пропуска для правки (ADR-023): закрытые статусы — только просмотр, открытый визит — «внутри». */
+export function passPhaseOf(
+  status: PassRow['status'],
+  hasOpenVisit: boolean,
+): PassApiView['phase'] {
+  if (status === 'used' || status === 'cancelled' || status === 'rejected' || status === 'expired')
+    return 'locked';
+  return hasOpenVisit ? 'inside' : 'before';
+}
+
+export function passView(row: PassRow, now: number, hasOpenVisit = false): PassApiView {
   return {
     id: row.id,
     siteId: row.siteId,
@@ -46,6 +56,7 @@ export function passView(row: PassRow, now: number): PassApiView {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     started: row.validFrom !== null && row.validFrom.getTime() <= now,
+    phase: passPhaseOf(row.status, hasOpenVisit),
   };
 }
 

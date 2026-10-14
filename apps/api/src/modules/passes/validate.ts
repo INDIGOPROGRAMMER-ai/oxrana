@@ -455,17 +455,26 @@ export async function validatePass(
       throw fail('window_outside_validity', 'windowFrom');
     }
   }
-  if (values.participant === 'vehicle' && !wf) {
-    const policy = windowPolicyFor(rules, tenant.id, values.categoryId);
-    const waived = collectWaivers(
-      asEnginePass(values, tenant.id),
-      rules.exceptions,
-      from.getTime(),
-    ).waived;
-    if (policy?.windowRequired && !waived.has('time_window')) {
-      throw fail('window_required', 'windowFrom');
-    }
+  if (values.participant === 'vehicle' && !wf && windowRequiredByPolicy(ctx, values)) {
+    throw fail('window_required', 'windowFrom');
   }
+}
+
+/**
+ * Политика окон прибытия требует окно для этого пропуска и исключение не снимает проверку окна.
+ * Форма может не требовать окно (ADR-023) — тогда сервер подставляет окно на весь срок пропуска.
+ */
+export function windowRequiredByPolicy(ctx: PassContext, values: PassValues): boolean {
+  if (values.participant !== 'vehicle') return false;
+  const policy = windowPolicyFor(ctx.rules, ctx.tenant.id, values.categoryId);
+  if (!policy?.windowRequired) return false;
+  const at = values.validFrom?.getTime() ?? ctx.now;
+  const waived = collectWaivers(
+    asEnginePass(values, ctx.tenant.id),
+    ctx.rules.exceptions,
+    at,
+  ).waived;
+  return !waived.has('time_window');
 }
 
 /** Политика согласования (10_ §6): своя у арендатора важнее политики объекта. */

@@ -1,5 +1,14 @@
 export { ApiError, api, type ErrorView, errorView } from './api';
 export { type BatchColumn, BatchInput } from './batch/batch-input';
+export { FileDrop } from './batch/file-drop';
+export {
+  BATCH_FILE_ACCEPT,
+  buildXlsx,
+  decodeCsv,
+  fileToText,
+  tableToText,
+  xlsxToTable,
+} from './batch/spreadsheet';
 export { Alert, ErrorAlert } from './components/alert';
 export { Badge } from './components/badge';
 export { Button, buttonVariants } from './components/button';
@@ -40,6 +49,14 @@ export { EmptyState } from './components/empty-state';
 export { Field, type FieldErrorLike, useFieldState } from './components/field';
 export { Checkbox, Input, Select, Switch, Textarea } from './components/inputs';
 export { PageHeader, Section } from './components/page';
+export {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from './components/sheet';
 export { AppShell, type NavGroup, type NavItem } from './components/shell';
 export { Skeleton } from './components/skeleton';
 export { type SortableItem, SortableList } from './components/sortable-list';

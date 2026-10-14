@@ -91,6 +91,24 @@ export function parsePastedTable(text: string): string[][] {
   return lines.map((line) => splitLine(line, delimiter));
 }
 
+/**
+ * Таблица из вставки или файла: Tab (Excel), `;`, а если разделителей нет — запятые. Для писем и
+ * CSV, где колонки через запятую (в кавычках запятая внутри ячейки не разделяет).
+ */
+export function parseTableText(text: string): string[][] {
+  const table = parsePastedTable(text);
+  const clean = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  const commas = clean.split('\n').filter((l) => l.trim() !== '');
+  if (
+    table.length > 0 &&
+    table.every((row) => row.length === 1) &&
+    commas.some((l) => l.includes(','))
+  ) {
+    return commas.map((line) => splitLine(line, ','));
+  }
+  return table;
+}
+
 function splitLine(line: string, delimiter: string): string[] {
   const cells: string[] = [];
   let cell = '';

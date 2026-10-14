@@ -7,19 +7,26 @@ import {
   EmptyState,
   Field,
   formatInZone,
+  formatLocalDate,
   Input,
   Select,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
 } from '@oxrana/ui';
 import { Link } from '@tanstack/react-router';
-import { Ban, Inbox } from 'lucide-react';
-import { useState } from 'react';
+import { Ban, Inbox, Pencil, SlidersHorizontal, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useApi, useMe } from '../../lib/data';
 import { PASS_STATUS_LABEL, PASS_TYPE_LABEL, passTitle } from '../../lib/pass-text';
 import { useDebounced } from '../../lib/use-debounced';
+import { useWideScreen } from '../../lib/use-media';
 import { LoadError } from '../common';
 import { useCabinet } from './cabinet-context';
 import { CancelPassDialog } from './cancel-dialog';
 import { PassDetails } from './pass-details';
+import { PassEditDialog } from './pass-edit';
 import { PassStatus } from './status-badge';
 
 const STATUSES: PassStatusCode[] = [
@@ -36,7 +43,14 @@ const CANCELLABLE = new Set<PassStatusCode>(['pending_approval', 'approved']);
  * Список пропусков (08_ «История»): фильтры по статусу, дню, типу и цифрам номера; статусы
  * согласования; отмена своих. Обновляется по событиям объекта, без F5.
  */
-export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | undefined }) {
+export function PassList({
+  initialStatus,
+  openId,
+}: {
+  initialStatus?: PassStatusCode | undefined;
+  /** Пропуск, карточку которого надо открыть сразу (ссылка из уведомления). */
+  openId?: string | undefined;
+}) {
   const { me, can } = useMe();
   const { tenant, ctx } = useCabinet();
   const [status, setStatus] = useState<PassStatusCode | ''>(initialStatus ?? '');
@@ -45,7 +59,12 @@ export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | u
   const [query, setQuery] = useState('');
   const q = useDebounced(query.trim(), 300);
   const [opened, setOpened] = useState<PassView | null>(null);
+  const linked = useApi<PassView>(openId ? `/passes/${openId}` : null);
+  useEffect(() => {
+    if (linked.data) setOpened(linked.data);
+  }, [linked.data]);
   const [cancelling, setCancelling] = useState<PassView | null>(null);
+  const [editing, setEditing] = useState<PassView | null>(null);
 
   const params = new URLSearchParams({ limit: '200' });
   if (tenant) params.set('tenantId', tenant.id);
@@ -69,60 +88,155 @@ export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | u
       ? 'Вы можете отменять только пропуска, которые оформили сами.'
       : 'У вашей роли нет права отменять пропуска.';
   };
+  /** Почему правка недоступна (кнопка неактивна с причиной) или `null`. */
+  const editReason = (pass: PassView): string | null => {
+    if (pass.phase === 'locked') {
+      return pass.status === 'used'
+        ? 'Пропуск использован — его можно только посмотреть.'
+        : 'Пропуск закрыт — его можно только посмотреть.';
+    }
+    if (!can('pass.edit') && !can('pass.change_request.create')) {
+      return 'У вашей роли нет права править пропуска.';
+    }
+    return null;
+  };
   const tz = ctx?.site.timezone ?? 'UTC';
   const categoryName = (id: string | null) => ctx?.categories.find((c) => c.id === id)?.name;
 
+  const wide = useWideScreen();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const resetAll = () => {
+    setStatus('');
+    setPassType('');
+    setDate('');
+    setQuery('');
+  };
+  const chips = [
+    ...(status
+      ? [{ key: 'status', label: PASS_STATUS_LABEL[status], clear: () => setStatus('') }]
+      : []),
+    ...(passType
+      ? [{ key: 'type', label: PASS_TYPE_LABEL[passType], clear: () => setPassType('') }]
+      : []),
+    ...(date
+      ? [{ key: 'date', label: `в день ${formatLocalDate(date)}`, clear: () => setDate('') }]
+      : []),
+  ];
+  const activeCount = chips.length;
+
+  const statusField = (
+    <Field label="Статус">
+      <Select value={status} onChange={(e) => setStatus(e.target.value as PassStatusCode | '')}>
+        <option value="">Любой</option>
+        {STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {PASS_STATUS_LABEL[s]}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+  const typeField = (
+    <Field label="Вид пропуска">
+      <Select value={passType} onChange={(e) => setPassType(e.target.value as PassType | '')}>
+        <option value="">Любой</option>
+        {(Object.keys(PASS_TYPE_LABEL) as PassType[]).map((t) => (
+          <option key={t} value={t}>
+            {PASS_TYPE_LABEL[t]}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+  const dateField = (
+    <Field
+      label="Действует в день"
+      hint={ctx ? `Время объекта: ${ctx.site.timezoneLabel}` : undefined}
+    >
+      <div className="flex items-start gap-1">
+        <DateInput value={date} todayIso={ctx?.today} onChange={setDate} />
+        {date ? (
+          <Button variant="ghost" size="sm" onClick={() => setDate('')}>
+            Сбросить
+          </Button>
+        ) : null}
+      </div>
+    </Field>
+  );
+  const searchField = (
+    <Field label="Поиск" hint={wide ? 'Цифры номера или фамилия.' : undefined}>
+      <Input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        inputMode="search"
+        autoComplete="off"
+        placeholder="цифры номера"
+      />
+    </Field>
+  );
+
   return (
     <div className="space-y-4">
-      <Card>
-        <CardContent className="grid gap-3 pt-5 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Статус">
-            <Select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as PassStatusCode | '')}
-            >
-              <option value="">Любой</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {PASS_STATUS_LABEL[s]}
-                </option>
+      {wide ? (
+        <Card>
+          <CardContent className="grid gap-3 pt-5 sm:grid-cols-2 lg:grid-cols-4">
+            {statusField}
+            {typeField}
+            {dateField}
+            {searchField}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2" data-testid="filters-mobile">
+          <div className="flex items-end gap-2">
+            <div className="min-w-0 flex-1">{searchField}</div>
+            <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+              <Button
+                variant="outline"
+                onClick={() => setFiltersOpen(true)}
+                data-testid="filters-button"
+                aria-haspopup="dialog"
+              >
+                <SlidersHorizontal aria-hidden /> Фильтры
+                {activeCount > 0 ? ` · ${activeCount}` : ''}
+              </Button>
+              <SheetContent>
+                <SheetTitle className="text-lg font-semibold">Фильтры</SheetTitle>
+                <SheetDescription className="sr-only">
+                  Статус, тип пропуска и день, в который он действует.
+                </SheetDescription>
+                {statusField}
+                {typeField}
+                {dateField}
+                <div className="mt-auto flex gap-2">
+                  <Button className="flex-1" onClick={() => setFiltersOpen(false)}>
+                    Показать
+                  </Button>
+                  <Button variant="outline" onClick={resetAll} disabled={!filtered}>
+                    Сбросить
+                  </Button>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+          {chips.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5" aria-label="Включённые фильтры">
+              {chips.map((chip) => (
+                <li key={chip.key}>
+                  <button
+                    type="button"
+                    onClick={chip.clear}
+                    aria-label={`Убрать фильтр: ${chip.label}`}
+                    className="inline-flex items-center gap-1 rounded-full border bg-accent px-2.5 py-1 text-xs"
+                  >
+                    {chip.label} <X aria-hidden className="size-3" />
+                  </button>
+                </li>
               ))}
-            </Select>
-          </Field>
-          <Field label="Тип пропуска">
-            <Select value={passType} onChange={(e) => setPassType(e.target.value as PassType | '')}>
-              <option value="">Любой</option>
-              {(Object.keys(PASS_TYPE_LABEL) as PassType[]).map((t) => (
-                <option key={t} value={t}>
-                  {PASS_TYPE_LABEL[t]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field
-            label="Действует в день"
-            hint={ctx ? `Время объекта: ${ctx.site.timezoneLabel}` : undefined}
-          >
-            <div className="flex items-start gap-1">
-              <DateInput value={date} todayIso={ctx?.today} onChange={setDate} />
-              {date ? (
-                <Button variant="ghost" size="sm" onClick={() => setDate('')}>
-                  Сбросить
-                </Button>
-              ) : null}
-            </div>
-          </Field>
-          <Field label="Поиск" hint="Цифры номера или фамилия.">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              inputMode="search"
-              autoComplete="off"
-              placeholder="например, 174"
-            />
-          </Field>
-        </CardContent>
-      </Card>
+            </ul>
+          ) : null}
+        </div>
+      )}
 
       {list.error ? <LoadError error={list.error} retry={() => void list.refetch()} /> : null}
       {list.isLoading ? (
@@ -140,15 +254,7 @@ export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | u
           }
           action={
             filtered ? (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setStatus('');
-                  setPassType('');
-                  setDate('');
-                  setQuery('');
-                }}
-              >
+              <Button variant="outline" onClick={resetAll}>
                 Сбросить фильтры
               </Button>
             ) : (
@@ -196,6 +302,16 @@ export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | u
                     </div>
                     <div className="flex flex-col items-start gap-2 sm:items-end">
                       <PassStatus pass={pass} />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={editReason(pass) !== null}
+                        title={editReason(pass) ?? 'Изменить пропуск'}
+                        aria-label={`Изменить пропуск ${passTitle(pass)}`}
+                        onClick={() => setEditing(pass)}
+                      >
+                        <Pencil aria-hidden /> Изменить
+                      </Button>
                       {CANCELLABLE.has(pass.status) ? (
                         <Button
                           size="sm"
@@ -218,6 +334,7 @@ export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | u
       )}
       <PassDetails pass={opened} onClose={() => setOpened(null)} />
       <CancelPassDialog pass={cancelling} onClose={() => setCancelling(null)} />
+      <PassEditDialog pass={editing} onClose={() => setEditing(null)} />
     </div>
   );
 }

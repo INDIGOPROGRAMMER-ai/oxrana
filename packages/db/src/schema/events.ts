@@ -1,5 +1,5 @@
 import { AUDIT_ACTOR_TYPES, NOTIFICATION_STATUSES } from '@oxrana/contracts';
-import { bigint, index, inet, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { bigint, index, inet, jsonb, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
 import { createdAt, enumCheck, id, journalId, organizationIsolation, tstz } from './_helpers';
 import { organizationId } from './organization';
 import { users } from './people';
@@ -76,7 +76,14 @@ export const notifications = pgTable(
     sentAt: tstz('sent_at'),
     error: text('error'),
     eventId: bigint('event_id', { mode: 'number' }).references(() => domainEvents.id),
+    /** Когда пользователь прочитал (колокольчик кабинета, ADR-023); `null` — не прочитано. */
+    readAt: tstz('read_at'),
     createdAt: createdAt(),
   },
-  (t) => [enumCheck('notifications', t.status, NOTIFICATION_STATUSES), organizationIsolation()],
+  (t) => [
+    index('notifications_user_id_created_at_idx').on(t.userId, t.createdAt.desc()),
+    unique('notifications_event_key').on(t.eventId, t.userId, t.kind, t.channel),
+    enumCheck('notifications', t.status, NOTIFICATION_STATUSES),
+    organizationIsolation(),
+  ],
 );

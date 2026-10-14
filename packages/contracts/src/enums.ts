@@ -124,6 +124,14 @@ export const PASS_STATUSES = [
 export const PassStatusSchema = z.enum(PASS_STATUSES);
 export type PassStatus = (typeof PASS_STATUSES)[number];
 
+/**
+ * Этап жизни пропуска для правки (ADR-023): до въезда — правится почти всё; после въезда (визит
+ * открыт) — только комментарий и «действует до»; после выезда или использования — только просмотр.
+ */
+export const PASS_PHASES = ['before', 'inside', 'locked'] as const;
+export const PassPhaseSchema = z.enum(PASS_PHASES);
+export type PassPhase = (typeof PASS_PHASES)[number];
+
 /** Откуда создан пропуск (`passes.created_via`). */
 export const PASS_SOURCES = ['web', 'pwa', 'bot', 'api', 'gate', 'import'] as const;
 export const PassSourceSchema = z.enum(PASS_SOURCES);
@@ -246,6 +254,18 @@ export type GateDeviceKind = (typeof GATE_DEVICE_KINDS)[number];
 export const NOTIFICATION_CHANNELS = ['email', 'push', 'telegram'] as const;
 export const NotificationChannelSchema = z.enum(NOTIFICATION_CHANNELS);
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
+
+/** Виды уведомлений кабинета (ADR-023). Каналы доставки — `notifications.channel`. */
+export const NOTIFICATION_KINDS = [
+  'pass_approved',
+  'pass_approved_changed',
+  'pass_rejected',
+  'change_request_approved',
+  'change_request_rejected',
+] as const;
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+/** Канал «колокольчик в кабинете». */
+export const IN_APP_CHANNEL = 'in_app';
 
 export const NOTIFICATION_STATUSES = ['queued', 'sent', 'failed', 'skipped'] as const;
 export const NotificationStatusSchema = z.enum(NOTIFICATION_STATUSES);

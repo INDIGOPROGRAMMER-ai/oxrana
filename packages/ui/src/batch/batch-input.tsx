@@ -1,5 +1,5 @@
 import type { BatchResult, ParsedRow } from '@oxrana/contracts';
-import { CheckCircle2, FileUp, Loader2, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, Loader2, TriangleAlert } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { type ErrorView, errorView } from '../api';
 import { Alert, ErrorAlert } from '../components/alert';
@@ -7,6 +7,7 @@ import { Badge } from '../components/badge';
 import { Button } from '../components/button';
 import { Textarea } from '../components/inputs';
 import { Table, TBody, TD, TH, THead, TR } from '../components/table';
+import { FileDrop } from './file-drop';
 
 export interface BatchColumn<T> {
   readonly header: string;
@@ -16,7 +17,7 @@ export interface BatchColumn<T> {
 const SHOWN_ROWS = 200;
 
 /**
- * Пакетный ввод (CLAUDE.md, «Правила интерфейса»): вставка списка из Excel (или файл .csv/.tsv/.txt),
+ * Пакетный ввод (CLAUDE.md, «Правила интерфейса»): вставка списка из Excel (или файл .xlsx/.csv/.tsv/.txt),
  * предпросмотр «добавится N, ошибки в M» ещё до сохранения. Разбор текста локальный и мгновенный;
  * если задан `check`, допустимые строки сверх того проверяет сервер (повторы, существующие записи) —
  * тем же путём, что и сохранение. «Добавить» доступно, когда есть что добавлять и проверка закончилась.
@@ -50,7 +51,7 @@ export function BatchInput<T>({
   rows?: number;
 }) {
   const inputId = useId();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState('');
   const [text, setText] = useState('');
   const checkRef = useRef(check);
   checkRef.current = check;
@@ -99,12 +100,6 @@ export function BatchInput<T>({
   const errorCount = localErrors + serverErrors.size;
   const ready = addable > 0 && !checking && !current?.error && !committing;
 
-  async function onFile(file: File | undefined) {
-    if (!file) return;
-    setText(await file.text());
-    setDone(null);
-  }
-
   async function onCommit() {
     setCommitting(true);
     setCommitError(null);
@@ -140,20 +135,19 @@ export function BatchInput<T>({
             setDone(null);
           }}
         />
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {help ? <span>{help}</span> : null}
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,.tsv,.txt,text/plain,text/csv"
-            className="sr-only"
-            aria-label="Файл со списком"
-            onChange={(e) => void onFile(e.target.files?.[0])}
-          />
-          <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()}>
-            <FileUp aria-hidden /> Загрузить файл
-          </Button>
-        </div>
+        {help ? <p className="text-xs text-muted-foreground">{help}</p> : null}
+        <FileDrop
+          onText={(loaded) => {
+            setText(loaded);
+            setDone(null);
+          }}
+          onError={setFileError}
+        />
+        {fileError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {fileError}
+          </p>
+        ) : null}
       </div>
 
       {parsed.length > 0 ? (
