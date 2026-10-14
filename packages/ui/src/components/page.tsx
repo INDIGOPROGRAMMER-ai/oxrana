@@ -19,7 +19,7 @@ export function PageHeader({
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>
         ) : null}
       </div>
-      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   );
 }
@@ -43,12 +43,12 @@ export function Section({
 }) {
   return (
     <Card id={id} className={cn('mb-5 scroll-mt-4', className)}>
-      <CardHeader className="flex-row items-start justify-between gap-3">
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <CardTitle>{title}</CardTitle>
           {description ? <CardDescription>{description}</CardDescription> : null}
         </div>
-        {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>

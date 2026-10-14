@@ -48,6 +48,20 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      // кабинет арендатора продолжает базу после чистого старта (ADR-022): отдельный проект ниже
+      testIgnore: /cabinet\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(executablePath ? { launchOptions: { executablePath } } : {}),
+      },
+    },
+    {
+      // Этап 7a: кабинет и очередь согласования на той же чистой базе после `clean-start.spec.ts`
+      // (организация, объект, доки, арендаторы Альфа и Бета, администратор уже есть). Проект идёт после
+      // `chromium`: без зависимости файлы шли бы параллельно, а «чистый старт» отказал бы на непустой базе.
+      name: 'cabinet',
+      testMatch: /cabinet\.spec\.ts/,
+      dependencies: ['chromium'],
       use: {
         ...devices['Desktop Chrome'],
         ...(executablePath ? { launchOptions: { executablePath } } : {}),

@@ -14,6 +14,7 @@ import {
   capacityOf,
   collectWaivers,
   type PassView as EnginePass,
+  findBlacklisted,
   formatDateTime,
   localDate,
   overageDays,
@@ -227,9 +228,12 @@ function asEnginePass(values: PassValues, tenantId: string): EnginePass {
   };
 }
 
-/** Новые пропуска не оформляются заблокированному арендатору и после конца договора. */
-export function assertTenantAcceptsPasses(ctx: PassContext): void {
+/** Что мешает оформить новый пропуск арендатору: блокировка или конец договора; `null` — ничего. */
+export function tenantPassProblem(
+  ctx: PassContext,
+): { code: 'tenant_blocked' | 'contract_expired'; message: string; settingLink: string } | null {
   const { tenant } = ctx;
+  const settingLink = `/admin/tenants/${tenant.id}`;
   // Блокировка «запретить въезд» новые пропуска не запрещает (Q-73): они оформляются и ждут снятия.
   if (tenant.status !== 'active' && tenant.status !== 'blocked_entry') {
     const why = {
@@ -237,19 +241,56 @@ export function assertTenantAcceptsPasses(ctx: PassContext): void {
       blocked_full: 'арендатор заблокирован полностью',
       archived: 'арендатор в архиве',
     }[tenant.status];
-    throw new AppError('tenant_blocked', {
+    return {
+      code: 'tenant_blocked',
       message: `Пропуск не оформлен: ${why}. Решение принимает администратор объекта.`,
-      settingLink: `/admin/tenants/${tenant.id}`,
-    });
+      settingLink,
+    };
   }
   const view = ctx.rules.tenants.find((t) => t.id === tenant.id);
   const today = localDate(ctx.now, ctx.site.timezone);
   if (view?.contractValidTo && view.contractValidTo < today) {
-    throw new AppError('contract_expired', {
+    return {
+      code: 'contract_expired',
       message: `Договор арендатора закончился ${view.contractValidTo.split('-').reverse().join('.')} — новые пропуска не оформляются.`,
-      settingLink: `/admin/tenants/${tenant.id}`,
-    });
+      settingLink,
+    };
   }
+  return null;
+}
+
+/** Новые пропуска не оформляются заблокированному арендатору и после конца договора. */
+export function assertTenantAcceptsPasses(ctx: PassContext): void {
+  const problem = tenantPassProblem(ctx);
+  if (problem) throw new AppError(problem.code, problem);
+}
+
+/**
+ * Номер или человек в чёрном списке на момент начала пропуска (решение Q-76): пропуск не оформляется.
+ * Запись, которая кончается раньше начала, не мешает. Арендатору — без причины и с телефоном
+ * дежурного администратора, если он задан; администратору — с причиной.
+ */
+export function blacklistProblem(
+  ctx: PassContext,
+  who: { plateNorm?: string | null | undefined; personName?: string | null | undefined },
+  startsAt: number | null,
+): { message: string; settingLink?: string } | null {
+  const at = Math.max(startsAt ?? ctx.now, ctx.now);
+  const hit = findBlacklisted(ctx.rules.blacklist, who, at);
+  if (!hit) return null;
+  if (!ctx.tenantUser) {
+    return {
+      message: `В чёрном списке: ${hit.reason}. Пропуск оформить нельзя — сначала уберите запись из списка.`,
+      settingLink: '/admin/blacklist',
+    };
+  }
+  const subject = who.plateNorm ? 'Номер' : 'Человек';
+  const phone = ctx.settings.dutyAdminPhone
+    ? ` (дежурный администратор: ${ctx.settings.dutyAdminPhone})`
+    : '';
+  return {
+    message: `${subject} в чёрном списке объекта — пропуск оформить нельзя. Обратитесь к администратору объекта${phone}.`,
+  };
 }
 
 /**
@@ -318,6 +359,23 @@ export async function validatePass(
       throw new AppError('validation_failed', {
         field: values.plateNorm ? 'plate' : values.categoryId ? 'categoryId' : 'dockId',
         message: 'У пропуска пешехода нет номера, типа транспорта и дока.',
+      });
+    }
+  }
+
+  if (touched('plateNorm') || touched('personName') || touched('validFrom')) {
+    const listed = blacklistProblem(
+      ctx,
+      values.participant === 'vehicle'
+        ? { plateNorm: values.plateNorm }
+        : { personName: values.personName },
+      values.validFrom?.getTime() ?? null,
+    );
+    if (listed) {
+      throw new AppError('blacklisted', {
+        field: values.participant === 'vehicle' ? 'plate' : 'personName',
+        message: listed.message,
+        ...(listed.settingLink ? { settingLink: listed.settingLink } : {}),
       });
     }
   }

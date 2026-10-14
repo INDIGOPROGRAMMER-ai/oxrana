@@ -101,6 +101,31 @@ export function dayNumber(date: string): number {
   return Math.floor(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1) / 86_400_000);
 }
 
+/** Местная дата `YYYY-MM-DD`, сдвинутая на `days` суток (в календаре, без часовых поясов). */
+export function addLocalDays(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days)).toISOString().slice(0, 10);
+}
+
+/**
+ * Момент по местному времени пояса: «2026-03-10» + 840 минут от начала суток (14:00) в
+ * Asia/Yekaterinburg. Для «перенести пропуск на другой день» и границ местных суток.
+ */
+export function localInstant(date: string, minuteOfDay: number, timeZone: string): Instant {
+  const [y, m, d] = date.split('-').map(Number);
+  const wall = Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1, 0, minuteOfDay);
+  const offsetAt = (instant: Instant): number => {
+    const p = localParts(instant, timeZone);
+    return (
+      Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(instant / 60_000) * 60_000
+    );
+  };
+  let result = wall - offsetAt(wall);
+  const again = offsetAt(result);
+  if (again !== offsetAt(wall)) result = wall - again;
+  return result;
+}
+
 /** «ЧЧ:ММ» → минуты от начала суток; `24:00` → 1440. */
 export function minutesOf(time: string): number {
   const [h, m] = time.split(':').map(Number);

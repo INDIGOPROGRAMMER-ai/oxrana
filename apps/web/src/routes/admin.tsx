@@ -4,6 +4,7 @@ import { createFileRoute, Outlet, useNavigate, useRouterState } from '@tanstack/
 import {
   Ban,
   Building2,
+  CheckCheck,
   Cpu,
   DoorOpen,
   FileText,
@@ -24,7 +25,8 @@ import {
 } from 'lucide-react';
 import { useEffect } from 'react';
 import { api } from '../lib/api';
-import { useCategories, useGates, useMe } from '../lib/data';
+import { useApi, useCategories, useGates, useMe } from '../lib/data';
+import { useSiteEvents } from '../lib/events';
 import { STEPS, useSetupProgress } from '../lib/setup';
 import { SiteProvider, useSite } from '../lib/site-context';
 
@@ -64,6 +66,12 @@ function Shell() {
   const gates = useGates(siteId);
   const categories = useCategories(siteId, true);
   const { progress } = useSetupProgress(me);
+  // События объекта обновляют очередь согласования без F5; подписка — только тем, кому она разрешена
+  useSiteEvents(site && (can('pass.view_all_tenants') || can('occupancy.view')) ? site.id : null);
+  const pending = useApi<{ items: unknown[] }>(
+    site && can('pass.approve') ? `/sites/${site.id}/approvals` : null,
+  );
+  const pendingCount = pending.data?.items.length ?? 0;
 
   const noSite = site === null ? 'Сначала создайте объект (мастер настройки, шаг 1)' : undefined;
   const noRoutesBase =
@@ -134,6 +142,22 @@ function Shell() {
         }),
       ],
     },
+    ...(can('pass.approve')
+      ? [
+          {
+            title: 'Пропуска',
+            items: [
+              {
+                href: '/admin/approvals',
+                label: 'Согласование',
+                icon: CheckCheck,
+                ...(pendingCount > 0 ? { badge: String(pendingCount) } : {}),
+                ...(noSite ? { disabledReason: noSite } : {}),
+              },
+            ],
+          },
+        ]
+      : []),
     {
       title: 'Арендаторы и правила',
       items: [

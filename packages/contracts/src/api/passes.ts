@@ -116,6 +116,11 @@ export const PassListQuerySchema = z.strictObject({
   tenantId: IdSchema.optional(),
   status: PassStatusSchema.optional(),
   participant: ParticipantSchema.optional(),
+  passType: PassTypeSchema.optional(),
+  /** Пропуск действует хотя бы часть этих местных суток объекта: с даты… */
+  dateFrom: z.iso.date().optional(),
+  /** …по дату включительно. */
+  dateTo: z.iso.date().optional(),
   /** Цифры или часть номера, часть фамилии. */
   q: z.string().trim().max(50).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
@@ -192,6 +197,25 @@ export const PassHintsQuerySchema = z.strictObject({
   destinationZoneId: IdSchema.optional(),
 });
 
+/**
+ * Тот же запрос подсказок с номером или именем (проверка по чёрному списку). Номер и имя —
+ * персональные данные, поэтому уходят в теле POST, а не в адрес запроса, который попадает в логи.
+ */
+export const PassHintsRequestSchema = PassHintsQuerySchema.extend({
+  plate: z.string().max(30).optional(),
+  personName: z.string().max(200).optional(),
+  /** Начало пропуска, если оно позже «сейчас»: запись чёрного списка, которая кончается раньше, не мешает. */
+  validFrom: InstantInputSchema.optional(),
+});
+
+/** Предупреждение формы до сохранения: `error` не даст сохранить, `warning` — предупреждает. */
+export const PassNoticeSchema = z.object({
+  code: z.enum(['tenant_blocked', 'tenant_entry_blocked', 'contract_expired', 'blacklisted']),
+  severity: z.enum(['error', 'warning']),
+  text: z.string(),
+});
+export type PassNotice = z.infer<typeof PassNoticeSchema>;
+
 /** Подсказки формы до сохранения (CLAUDE.md, правила интерфейса; ARCHITECTURE §3.2). */
 export const PassHintsSchema = z.object({
   route: z.object({
@@ -225,6 +249,8 @@ export const PassHintsSchema = z.object({
   categories: z.array(z.object({ id: IdSchema, name: z.string() })),
   /** Типы пропусков, которые этот пользователь может оформить, и что будет с согласованием. */
   passTypes: z.array(z.object({ passType: PassTypeSchema, mode: ApprovalModeSchema })),
+  /** Блокировка арендатора, договор, чёрный список: то, что мешает или предупреждает до сохранения. */
+  notices: z.array(PassNoticeSchema),
 });
 
 export const PassHistoryEntrySchema = z.object({

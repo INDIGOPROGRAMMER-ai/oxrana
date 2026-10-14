@@ -64,6 +64,20 @@
       "when": 1791891738189,
       "tag": "0008_role_templates_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791895338189,
+      "tag": "0009_fleet_role_templates_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791898938189,
+      "tag": "0010_requester_occupancy_role_templates_sync",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,7 @@ import { assertRef } from '../../core/refs';
 import { AppError } from '../../errors';
 import { registerBlockingRoutes } from './blocking';
 import { fileViews, registerContractFileRoutes } from './contract-files';
+import { registerFleetRoutes } from './fleet';
 import { contractScope, tenantRowScope } from './scope';
 import { contractView, tenantView } from './views';
 
@@ -487,4 +488,5 @@ export function registerTenantsModule(app: FastifyInstance): void {
 
   registerBlockingRoutes(app);
   registerContractFileRoutes(app);
+  registerFleetRoutes(app);
 }

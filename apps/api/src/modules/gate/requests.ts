@@ -1,5 +1,6 @@
 import { SiteSettingsSchema } from '@oxrana/contracts';
 import { schema } from '@oxrana/db';
+import { findBlacklisted } from '@oxrana/engine';
 import { normalizePlate } from '@oxrana/plates';
 import { and, eq } from 'drizzle-orm';
 import { isTenantUser } from '../../actor';
@@ -60,6 +61,18 @@ export async function createGateRequest(
   const now = s.ctx.now();
   const settings = SiteSettingsSchema.parse(g.site.settings);
   const plate = input.plate?.trim() ? normalizePlate(input.plate.trim()) : null;
+  // Номер из чёрного списка пропуск не запрашивает: арендатору этот запрос не уходит (этап 7a).
+  const listed = findBlacklisted(
+    g.rules.blacklist,
+    { plateNorm: plate?.norm, personName: input.personName },
+    now,
+  );
+  if (listed) {
+    throw new AppError('forbidden', {
+      field: input.participant === 'vehicle' ? 'plate' : 'personName',
+      message: `В чёрном списке: ${listed.reason}. Запрос пропуска не отправляется — откажите во въезде и позвоните администратору.`,
+    });
+  }
   const { actor } = s.ctx;
   const [row] = await s.db
     .insert(schema.gateRequests)

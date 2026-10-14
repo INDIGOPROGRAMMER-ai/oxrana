@@ -296,9 +296,10 @@ test('чёрный список → песочница показывает кр
   await expect(page.getByTestId('plate-not-found')).toContainText(
     'Настоящих пропусков по этому номеру нет',
   );
-  // как на посту: у номера без пропуска охранник видит «Пропуска нет» (чёрный список — у найденного пропуска)
-  await expect(page.getByTestId('verdict')).toHaveAttribute('data-code', 'no_pass');
-  await expect(page.getByTestId('verdict')).toContainText('Пропуска нет: B777OP174');
+  // как на посту: номер из чёрного списка красный с причиной и тогда, когда пропуска нет (этап 7a)
+  await expect(page.getByTestId('verdict')).toHaveAttribute('data-code', 'deny');
+  await expect(page.getByTestId('verdict')).toHaveAttribute('data-color', 'red');
+  await expect(page.getByTestId('verdict')).toContainText('В чёрном списке: Драка на территории');
   await expect(page.getByTestId('example-notice')).toHaveCount(0);
 
   // режим «на примере»: тот же вердикт, но над ним крупно — что пропуск воображаемый

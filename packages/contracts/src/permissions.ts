@@ -29,6 +29,7 @@ export const PERMISSIONS = [
   'pass.approve',
   'pass.change_request.create',
   'pass.change_request.decide',
+  'fleet.manage', // автопарк арендатора: добавление, правка, удаление (этап 7a)
   // действия поста
   'visit.check_in',
   'visit.check_out',
@@ -80,6 +81,7 @@ export const PERMISSION_LABELS: Record<PermissionCode, string> = {
   'pass.approve': 'Согласование пропусков',
   'pass.change_request.create': 'Заявки на изменение пропуска',
   'pass.change_request.decide': 'Решение по заявкам на изменение',
+  'fleet.manage': 'Автопарк: постоянные машины компании',
   'visit.check_in': 'Пост: отметить въезд',
   'visit.check_out': 'Пост: отметить выезд',
   'gate.redirect': 'Пост: направить на другой КПП',
@@ -156,6 +158,7 @@ export const PERMISSION_GROUPS: readonly {
       'pass.approve',
       'pass.change_request.create',
       'pass.change_request.decide',
+      'fleet.manage',
     ],
   },
   {

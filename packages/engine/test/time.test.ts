@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addLocalDays,
   formatDate,
   formatDateTime,
   formatTime,
   isWithinHours,
   localDate,
+  localInstant,
   localParts,
 } from '../src';
 import { describeTodayHours, formatLocalDate, minutesOf } from '../src/time';
@@ -71,5 +73,31 @@ describe('локальное время объекта через Intl (ADR-009)
     expect(at('2026-03-10 14:00', TZ)).toBe(Date.UTC(2026, 2, 10, 9, 0));
     expect(at('2026-03-10 14:00', 'Asia/Kamchatka')).toBe(Date.UTC(2026, 2, 10, 2, 0));
     expect(() => at('вчера', TZ)).toThrow();
+  });
+});
+
+describe('addLocalDays и localInstant (перенос пропуска на другой день, этап 7a)', () => {
+  it('addLocalDays сдвигает календарную дату через границы месяца и года', () => {
+    expect(addLocalDays('2026-03-10', -1)).toBe('2026-03-09');
+    expect(addLocalDays('2026-03-01', -1)).toBe('2026-02-28');
+    expect(addLocalDays('2026-12-31', 1)).toBe('2027-01-01');
+  });
+
+  it('localInstant: полночь и 14:00 по Екатеринбургу (UTC+5)', () => {
+    expect(new Date(localInstant('2026-03-10', 0, 'Asia/Yekaterinburg')).toISOString()).toBe(
+      '2026-03-09T19:00:00.000Z',
+    );
+    expect(new Date(localInstant('2026-03-10', 14 * 60, 'Asia/Yekaterinburg')).toISOString()).toBe(
+      '2026-03-10T09:00:00.000Z',
+    );
+  });
+
+  it('localInstant учитывает переход на летнее время (Берлин, 2026-03-29)', () => {
+    expect(new Date(localInstant('2026-03-28', 12 * 60, 'Europe/Berlin')).toISOString()).toBe(
+      '2026-03-28T11:00:00.000Z',
+    );
+    expect(new Date(localInstant('2026-03-29', 12 * 60, 'Europe/Berlin')).toISOString()).toBe(
+      '2026-03-29T10:00:00.000Z',
+    );
   });
 });

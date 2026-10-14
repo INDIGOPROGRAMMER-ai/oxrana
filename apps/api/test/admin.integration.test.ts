@@ -191,6 +191,35 @@ describe('песочница: проверка номера, как на пос�
     await t.as(admin, { method: 'DELETE', url: `/blacklist/${created.json().id}` });
   });
 
+  it('номер в чёрном списке без пропуска — красный с причиной; убрали из списка — «пропуска нет»', async () => {
+    const plate = uniquePlate();
+    const created = await t.as(admin, {
+      method: 'POST',
+      url: `/sites/${site}/blacklist`,
+      payload: { level: 'site', plate, reason: 'Нет пропуска, но в списке' },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const res = await checkPlate({ gateId: gateKey('kpp2'), plate });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().pass).toBeNull();
+    expect(res.json().verdict).toMatchObject({ code: 'deny', color: 'red' });
+    expect(res.json().verdict.headline).toBe('В чёрном списке: Нет пропуска, но в списке');
+    expect(res.json().verdict.secondaryActions).not.toContain('request_pass');
+    // тот же вердикт получает пост
+    const post = await t.as(kpp2, {
+      method: 'POST',
+      url: '/gate/check',
+      payload: { plateQuery: plate, direction: 'in' },
+    });
+    expect(post.json().verdict).toMatchObject({ code: 'deny', color: 'red' });
+    // на выезде — только предупреждение
+    const out = await checkPlate({ gateId: gateKey('kpp2'), plate, direction: 'out' });
+    expect(out.json().verdict.code).toBe('no_pass');
+    await t.as(admin, { method: 'DELETE', url: `/blacklist/${created.json().id}` });
+    const after = await checkPlate({ gateId: gateKey('kpp2'), plate });
+    expect(after.json().verdict.code).toBe('no_pass');
+  });
+
   it('пустой номер и чужой КПП отклоняются с полем; без sandbox.use — 403', async () => {
     const empty = await checkPlate({ gateId: gateKey('kpp2'), plate: '  ' });
     expect(empty.statusCode).toBeGreaterThanOrEqual(400);

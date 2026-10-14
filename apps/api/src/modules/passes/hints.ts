@@ -1,4 +1,10 @@
-import { type ApprovalMode, PASS_TYPES, type Participant, type PassType } from '@oxrana/contracts';
+import {
+  type ApprovalMode,
+  PASS_TYPES,
+  type Participant,
+  type PassNotice,
+  type PassType,
+} from '@oxrana/contracts';
 import { openVisits } from '@oxrana/db';
 import {
   applicableQuotas,
@@ -9,14 +15,18 @@ import {
   type RuleSet,
   routeGates,
 } from '@oxrana/engine';
+import { normalizePlate } from '@oxrana/plates';
 import { isTenantUser } from '../../actor';
 import { can, type Scope } from '../../core/context';
 import type { TenantRow } from '../../core/loaders';
 import {
   approvalPolicy,
+  blacklistProblem,
   creatorKindOf,
   loadPassContext,
+  type PassContext,
   tenantDocks,
+  tenantPassProblem,
   windowPolicyFor,
 } from './validate';
 import { dockRanges, engineVisit } from './views';
@@ -49,11 +59,59 @@ function quotaText(q: QuotaView, occupied: number, capacity: number): string {
 }
 
 /** Типы, которые есть смысл показывать арендатору: лимит 0 по всем лимитам — «не предусмотрено». */
-function availableCategories(rules: RuleSet, tenantId: string, now: number, tz: string) {
+export function availableCategories(rules: RuleSet, tenantId: string, now: number, tz: string) {
   return rules.categories.filter((c) => {
     const quotas = applicableQuotas(rules.quotas, tenantId, { categoryId: c.id }, now, tz);
     return quotas.length === 0 || quotas.some((q) => capacityOf(q, rules.docks) > 0);
   });
+}
+
+/**
+ * Что мешает или предупреждает до сохранения: блокировка арендатора, конец договора, чёрный список.
+ * Пользователю арендатора причину записи чёрного списка не показываем — её видит администратор.
+ */
+function formNotices(
+  ctx: PassContext,
+  query: {
+    participant: Participant;
+    plate?: string | undefined;
+    personName?: string | undefined;
+    validFrom?: string | undefined;
+  },
+): PassNotice[] {
+  const notices: PassNotice[] = [];
+  const problem = tenantPassProblem(ctx);
+  if (problem) {
+    notices.push({
+      code: problem.code,
+      severity: 'error',
+      text: ctx.tenantUser
+        ? `${problem.message.replace(' Решение принимает администратор объекта.', '')} Обратитесь к администратору объекта.`
+        : problem.message,
+    });
+  } else if (ctx.tenant.status === 'blocked_entry') {
+    notices.push({
+      code: 'tenant_entry_blocked',
+      severity: 'warning',
+      text: ctx.tenantUser
+        ? 'Въезд вашей компании временно запрещён администратором объекта. Пропуск оформится, но машины не пропустят, пока блокировку не снимут.'
+        : 'Для арендатора включён запрет въезда. Пропуск оформится и будет ждать снятия блокировки.',
+    });
+  }
+  const plate =
+    query.participant === 'vehicle' && query.plate?.trim()
+      ? normalizePlate(query.plate.trim())
+      : null;
+  const listed = blacklistProblem(
+    ctx,
+    {
+      plateNorm: plate?.norm,
+      personName: query.participant === 'pedestrian' ? query.personName : null,
+    },
+    query.validFrom ? Date.parse(query.validFrom) : null,
+  );
+  if (listed) notices.push({ code: 'blacklisted', severity: 'error', text: listed.message });
+  return notices;
 }
 
 export async function passHints(
@@ -64,6 +122,10 @@ export async function passHints(
     categoryId?: string | undefined;
     passType?: PassType | undefined;
     destinationZoneId?: string | undefined;
+    /** Номер или имя — только для проверки по чёрному списку; нигде не сохраняются. */
+    plate?: string | undefined;
+    personName?: string | undefined;
+    validFrom?: string | undefined;
   },
 ) {
   const ctx = await loadPassContext(s, tenant);
@@ -164,6 +226,8 @@ export async function passHints(
     now,
   ).waived;
 
+  const notices = formNotices(ctx, query);
+
   const pedestrianRule =
     query.participant === 'pedestrian'
       ? (rules.pedestrianRules.find(
@@ -201,5 +265,6 @@ export async function passHints(
         ? availableCategories(rules, tenant.id, now, tz).map((c) => ({ id: c.id, name: c.name }))
         : [],
     passTypes,
+    notices,
   };
 }
