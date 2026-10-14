@@ -11,8 +11,8 @@ import {
   Select,
 } from '@oxrana/ui';
 import { Link } from '@tanstack/react-router';
-import { Ban, Inbox } from 'lucide-react';
-import { useState } from 'react';
+import { Ban, Inbox, Pencil } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useApi, useMe } from '../../lib/data';
 import { PASS_STATUS_LABEL, PASS_TYPE_LABEL, passTitle } from '../../lib/pass-text';
 import { useDebounced } from '../../lib/use-debounced';
@@ -20,6 +20,7 @@ import { LoadError } from '../common';
 import { useCabinet } from './cabinet-context';
 import { CancelPassDialog } from './cancel-dialog';
 import { PassDetails } from './pass-details';
+import { PassEditDialog } from './pass-edit';
 import { PassStatus } from './status-badge';
 
 const STATUSES: PassStatusCode[] = [
@@ -36,7 +37,14 @@ const CANCELLABLE = new Set<PassStatusCode>(['pending_approval', 'approved']);
  * Список пропусков (08_ «История»): фильтры по статусу, дню, типу и цифрам номера; статусы
  * согласования; отмена своих. Обновляется по событиям объекта, без F5.
  */
-export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | undefined }) {
+export function PassList({
+  initialStatus,
+  openId,
+}: {
+  initialStatus?: PassStatusCode | undefined;
+  /** Пропуск, карточку которого надо открыть сразу (ссылка из уведомления). */
+  openId?: string | undefined;
+}) {
   const { me, can } = useMe();
   const { tenant, ctx } = useCabinet();
   const [status, setStatus] = useState<PassStatusCode | ''>(initialStatus ?? '');
@@ -45,7 +53,12 @@ export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | u
   const [query, setQuery] = useState('');
   const q = useDebounced(query.trim(), 300);
   const [opened, setOpened] = useState<PassView | null>(null);
+  const linked = useApi<PassView>(openId ? `/passes/${openId}` : null);
+  useEffect(() => {
+    if (linked.data) setOpened(linked.data);
+  }, [linked.data]);
   const [cancelling, setCancelling] = useState<PassView | null>(null);
+  const [editing, setEditing] = useState<PassView | null>(null);
 
   const params = new URLSearchParams({ limit: '200' });
   if (tenant) params.set('tenantId', tenant.id);
@@ -68,6 +81,18 @@ export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | u
     return can('pass.cancel_own')
       ? 'Вы можете отменять только пропуска, которые оформили сами.'
       : 'У вашей роли нет права отменять пропуска.';
+  };
+  /** Почему правка недоступна (кнопка неактивна с причиной) или `null`. */
+  const editReason = (pass: PassView): string | null => {
+    if (pass.phase === 'locked') {
+      return pass.status === 'used'
+        ? 'Пропуск использован — его можно только посмотреть.'
+        : 'Пропуск закрыт — его можно только посмотреть.';
+    }
+    if (!can('pass.edit') && !can('pass.change_request.create')) {
+      return 'У вашей роли нет права править пропуска.';
+    }
+    return null;
   };
   const tz = ctx?.site.timezone ?? 'UTC';
   const categoryName = (id: string | null) => ctx?.categories.find((c) => c.id === id)?.name;
@@ -196,6 +221,16 @@ export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | u
                     </div>
                     <div className="flex flex-col items-start gap-2 sm:items-end">
                       <PassStatus pass={pass} />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={editReason(pass) !== null}
+                        title={editReason(pass) ?? 'Изменить пропуск'}
+                        aria-label={`Изменить пропуск ${passTitle(pass)}`}
+                        onClick={() => setEditing(pass)}
+                      >
+                        <Pencil aria-hidden /> Изменить
+                      </Button>
                       {CANCELLABLE.has(pass.status) ? (
                         <Button
                           size="sm"
@@ -218,6 +253,7 @@ export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | u
       )}
       <PassDetails pass={opened} onClose={() => setOpened(null)} />
       <CancelPassDialog pass={cancelling} onClose={() => setCancelling(null)} />
+      <PassEditDialog pass={editing} onClose={() => setEditing(null)} />
     </div>
   );
 }

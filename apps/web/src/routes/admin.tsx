@@ -17,6 +17,7 @@ import {
   ParkingSquare,
   Printer,
   Route as RouteIcon,
+  SlidersHorizontal,
   Smartphone,
   Truck,
   Users,
@@ -165,6 +166,12 @@ function Shell() {
           href: '/admin/tenants',
           label: 'Арендаторы',
           icon: Layers,
+          disabledReason: noSite,
+        }),
+        ...item('pass_form.manage', {
+          href: '/admin/pass-form',
+          label: 'Форма пропуска',
+          icon: SlidersHorizontal,
           disabledReason: noSite,
         }),
         ...item('rule.manage', {

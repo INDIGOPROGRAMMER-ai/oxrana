@@ -26,6 +26,7 @@ import { Route as AdminDocksRouteImport } from './routes/admin.docks'
 import { Route as AdminGatesRouteImport } from './routes/admin.gates'
 import { Route as AdminHardwareRouteImport } from './routes/admin.hardware'
 import { Route as AdminMemoRouteImport } from './routes/admin.memo'
+import { Route as AdminPassFormRouteImport } from './routes/admin.pass-form'
 import { Route as AdminPoliciesRouteImport } from './routes/admin.policies'
 import { Route as AdminRolesRouteImport } from './routes/admin.roles'
 import { Route as AdminRoutingRouteImport } from './routes/admin.routing'
@@ -33,6 +34,7 @@ import { Route as AdminSandboxRouteImport } from './routes/admin.sandbox'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as CabinetIndexRouteImport } from './routes/cabinet.index'
 import { Route as CabinetFleetRouteImport } from './routes/cabinet.fleet'
+import { Route as CabinetPassFormRouteImport } from './routes/cabinet.pass-form'
 import { Route as AdminRulesApprovalPoliciesRouteImport } from './routes/admin.rules.approval-policies'
 import { Route as AdminSetupIndexRouteImport } from './routes/admin.setup.index'
 import { Route as AdminSetupStepRouteImport } from './routes/admin.setup.$step'
@@ -130,6 +132,11 @@ const AdminMemoRoute = AdminMemoRouteImport.update({
   path: '/memo',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminPassFormRoute = AdminPassFormRouteImport.update({
+  id: '/pass-form',
+  path: '/pass-form',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminPoliciesRoute = AdminPoliciesRouteImport.update({
   id: '/policies',
   path: '/policies',
@@ -163,6 +170,11 @@ const CabinetIndexRoute = CabinetIndexRouteImport.update({
 const CabinetFleetRoute = CabinetFleetRouteImport.update({
   id: '/fleet',
   path: '/fleet',
+  getParentRoute: () => CabinetRoute,
+} as any)
+const CabinetPassFormRoute = CabinetPassFormRouteImport.update({
+  id: '/pass-form',
+  path: '/pass-form',
   getParentRoute: () => CabinetRoute,
 } as any)
 const AdminRulesApprovalPoliciesRoute =
@@ -242,12 +254,14 @@ export interface FileRoutesByFullPath {
   '/admin/gates': typeof AdminGatesRoute
   '/admin/hardware': typeof AdminHardwareRoute
   '/admin/memo': typeof AdminMemoRoute
+  '/admin/pass-form': typeof AdminPassFormRoute
   '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
   '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
   '/cabinet/fleet': typeof CabinetFleetRoute
+  '/cabinet/pass-form': typeof CabinetPassFormRoute
   '/admin/': typeof AdminIndexRoute
   '/cabinet/': typeof CabinetIndexRoute
   '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
@@ -277,12 +291,14 @@ export interface FileRoutesByTo {
   '/admin/gates': typeof AdminGatesRoute
   '/admin/hardware': typeof AdminHardwareRoute
   '/admin/memo': typeof AdminMemoRoute
+  '/admin/pass-form': typeof AdminPassFormRoute
   '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
   '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
   '/cabinet/fleet': typeof CabinetFleetRoute
+  '/cabinet/pass-form': typeof CabinetPassFormRoute
   '/admin': typeof AdminIndexRoute
   '/cabinet': typeof CabinetIndexRoute
   '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
@@ -315,12 +331,14 @@ export interface FileRoutesById {
   '/admin/gates': typeof AdminGatesRoute
   '/admin/hardware': typeof AdminHardwareRoute
   '/admin/memo': typeof AdminMemoRoute
+  '/admin/pass-form': typeof AdminPassFormRoute
   '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
   '/admin/sandbox': typeof AdminSandboxRoute
   '/admin/users': typeof AdminUsersRoute
   '/cabinet/fleet': typeof CabinetFleetRoute
+  '/cabinet/pass-form': typeof CabinetPassFormRoute
   '/admin/': typeof AdminIndexRoute
   '/cabinet/': typeof CabinetIndexRoute
   '/admin/rules/approval-policies': typeof AdminRulesApprovalPoliciesRoute
@@ -354,12 +372,14 @@ export interface FileRouteTypes {
     | '/admin/gates'
     | '/admin/hardware'
     | '/admin/memo'
+    | '/admin/pass-form'
     | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
     | '/admin/sandbox'
     | '/admin/users'
     | '/cabinet/fleet'
+    | '/cabinet/pass-form'
     | '/admin/'
     | '/cabinet/'
     | '/admin/rules/approval-policies'
@@ -389,12 +409,14 @@ export interface FileRouteTypes {
     | '/admin/gates'
     | '/admin/hardware'
     | '/admin/memo'
+    | '/admin/pass-form'
     | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
     | '/admin/sandbox'
     | '/admin/users'
     | '/cabinet/fleet'
+    | '/cabinet/pass-form'
     | '/admin'
     | '/cabinet'
     | '/admin/rules/approval-policies'
@@ -426,12 +448,14 @@ export interface FileRouteTypes {
     | '/admin/gates'
     | '/admin/hardware'
     | '/admin/memo'
+    | '/admin/pass-form'
     | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
     | '/admin/sandbox'
     | '/admin/users'
     | '/cabinet/fleet'
+    | '/cabinet/pass-form'
     | '/admin/'
     | '/cabinet/'
     | '/admin/rules/approval-policies'
@@ -578,6 +602,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminMemoRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/pass-form': {
+      id: '/admin/pass-form'
+      path: '/pass-form'
+      fullPath: '/admin/pass-form'
+      preLoaderRoute: typeof AdminPassFormRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/policies': {
       id: '/admin/policies'
       path: '/policies'
@@ -625,6 +656,13 @@ declare module '@tanstack/react-router' {
       path: '/fleet'
       fullPath: '/cabinet/fleet'
       preLoaderRoute: typeof CabinetFleetRouteImport
+      parentRoute: typeof CabinetRoute
+    }
+    '/cabinet/pass-form': {
+      id: '/cabinet/pass-form'
+      path: '/pass-form'
+      fullPath: '/cabinet/pass-form'
+      preLoaderRoute: typeof CabinetPassFormRouteImport
       parentRoute: typeof CabinetRoute
     }
     '/admin/rules/approval-policies': {
@@ -717,6 +755,7 @@ interface AdminRouteChildren {
   AdminGatesRoute: typeof AdminGatesRoute
   AdminHardwareRoute: typeof AdminHardwareRoute
   AdminMemoRoute: typeof AdminMemoRoute
+  AdminPassFormRoute: typeof AdminPassFormRoute
   AdminPoliciesRoute: typeof AdminPoliciesRoute
   AdminRolesRoute: typeof AdminRolesRoute
   AdminRoutingRoute: typeof AdminRoutingRoute
@@ -743,6 +782,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminGatesRoute: AdminGatesRoute,
   AdminHardwareRoute: AdminHardwareRoute,
   AdminMemoRoute: AdminMemoRoute,
+  AdminPassFormRoute: AdminPassFormRoute,
   AdminPoliciesRoute: AdminPoliciesRoute,
   AdminRolesRoute: AdminRolesRoute,
   AdminRoutingRoute: AdminRoutingRoute,
@@ -763,6 +803,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface CabinetRouteChildren {
   CabinetFleetRoute: typeof CabinetFleetRoute
+  CabinetPassFormRoute: typeof CabinetPassFormRoute
   CabinetIndexRoute: typeof CabinetIndexRoute
   CabinetPassesBatchRoute: typeof CabinetPassesBatchRoute
   CabinetPassesNewRoute: typeof CabinetPassesNewRoute
@@ -771,6 +812,7 @@ interface CabinetRouteChildren {
 
 const CabinetRouteChildren: CabinetRouteChildren = {
   CabinetFleetRoute: CabinetFleetRoute,
+  CabinetPassFormRoute: CabinetPassFormRoute,
   CabinetIndexRoute: CabinetIndexRoute,
   CabinetPassesBatchRoute: CabinetPassesBatchRoute,
   CabinetPassesNewRoute: CabinetPassesNewRoute,

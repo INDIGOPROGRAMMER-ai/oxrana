@@ -49,6 +49,9 @@ const create = async (actor: typeof logist, payload: Record<string, unknown>) =>
 };
 const bell = async (actor: typeof logist, query = '') =>
   (await t.as(actor, { url: `/notifications${query}` })).json();
+/** Уведомление об этом пропуске (часы в тестах стоят, поэтому порядок по времени не различает записи). */
+const about = async (actor: typeof logist, passId: string) =>
+  (await bell(actor)).items.find((i: { passId: string }) => i.passId === passId);
 
 beforeAll(async () => {
   await seedDemo();
@@ -73,7 +76,8 @@ describe('колокольчик', () => {
 
     const mine = await bell(logist);
     expect(mine.unreadCount).toBe(1);
-    expect(mine.items[0]).toMatchObject({
+    const first = await about(logist, pass.id);
+    expect(first).toMatchObject({
       kind: 'pass_approved',
       title: 'Пропуск одобрен',
       passId: pass.id,
@@ -81,8 +85,8 @@ describe('колокольчик', () => {
       readAt: null,
       changes: null,
     });
-    expect(mine.items[0].text).toContain(pass.plateNorm);
-    expect(mine.items[0].text).toContain('Хорошо');
+    expect(first.text).toContain(pass.plateNorm);
+    expect(first.text).toContain('Хорошо');
     // коллега заказчик и согласующий чужих уведомлений не видят
     expect((await bell(requester)).items).toEqual([]);
     expect((await bell(approver)).items).toEqual([]);
@@ -90,11 +94,11 @@ describe('колокольчик', () => {
     const read = await t.as(logist, {
       method: 'POST',
       url: '/notifications/read',
-      payload: { ids: [mine.items[0].id] },
+      payload: { ids: [first.id] },
     });
     expect(read.json()).toEqual({ unreadCount: 0 });
     expect((await bell(logist, '?unread=true')).items).toEqual([]);
-    expect((await bell(logist)).items[0].readAt).not.toBeNull();
+    expect((await about(logist, pass.id)).readAt).not.toBeNull();
   });
 
   it('одобрено с изменениями: что изменено — «было → стало» с названиями', async () => {
@@ -104,7 +108,7 @@ describe('колокольчик', () => {
       url: `/passes/${pass.id}/approve`,
       payload: { note: 'Хватит до 13-го', changes: { validTo: '2026-03-13T15:00:00.000Z' } },
     });
-    const [item] = (await bell(logist)).items;
+    const item = await about(logist, pass.id);
     expect(item).toMatchObject({
       kind: 'pass_approved_changed',
       title: 'Пропуск одобрен с изменениями',
@@ -113,7 +117,9 @@ describe('колокольчик', () => {
       from: '2026-03-15T15:00:00.000Z',
       to: '2026-03-13T15:00:00.000Z',
     });
-    expect(item.text).toContain('Действует до');
+    expect(item.text).toMatch(
+      /Действует до: \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} → \d{2}\.\d{2}\.\d{4} \d{2}:\d{2}/,
+    );
     expect(item.text).toContain('Хватит до 13-го');
   });
 
@@ -125,8 +131,9 @@ describe('колокольчик', () => {
       payload: { note: 'Нет места на стоянке' },
     });
     const bellNow = await bell(logist);
-    expect(bellNow.items[0]).toMatchObject({ kind: 'pass_rejected', title: 'Пропуск отклонён' });
-    expect(bellNow.items[0].text).toContain('Нет места на стоянке');
+    const rejected = await about(logist, pass.id);
+    expect(rejected).toMatchObject({ kind: 'pass_rejected', title: 'Пропуск отклонён' });
+    expect(rejected.text).toContain('Нет места на стоянке');
     expect(bellNow.unreadCount).toBeGreaterThan(0);
     const all = await t.as(logist, {
       method: 'POST',
@@ -161,7 +168,7 @@ describe('колокольчик', () => {
       url: `/change-requests/${requestId}/reject`,
       payload: { note: 'Нужен новый договор' },
     });
-    const [item] = (await bell(logist)).items;
+    const item = await about(logist, pass.id);
     expect(item).toMatchObject({ kind: 'change_request_rejected' });
     expect(item.text).toContain('Нужен новый договор');
   });

@@ -9,11 +9,13 @@ import {
   type LucideIcon,
   Plus,
   Radio,
+  SlidersHorizontal,
   Table2,
   Truck,
 } from 'lucide-react';
 import { useEffect } from 'react';
 import { CabinetProvider, tenantsOf, useCabinet } from '../components/cabinet/cabinet-context';
+import { NotificationBell } from '../components/cabinet/notification-bell';
 import { api } from '../lib/api';
 import { useMe } from '../lib/data';
 
@@ -80,12 +82,17 @@ function Shell() {
     ...(canCreate ? [{ href: '/cabinet/passes/new', label: 'Новый пропуск', icon: Plus }] : []),
     ...(canCreate ? [{ href: '/cabinet/passes/batch', label: 'Несколько', icon: Table2 }] : []),
     ...(can('pass.view') ? [{ href: '/cabinet/fleet', label: 'Автопарк', icon: Truck }] : []),
+    ...(can('pass_form.manage_users') || can('pass_form.manage')
+      ? [{ href: '/cabinet/pass-form', label: 'Форма пропуска', icon: SlidersHorizontal }]
+      : []),
   ];
   // Активен самый длинный подходящий пункт: «/cabinet/passes/new» не подсвечивает «Пропуска».
   const active = [...nav]
     .sort((a, b) => b.href.length - a.href.length)
     .find((n) => path === n.href || (n.href !== '/cabinet' && path.startsWith(`${n.href}/`)))?.href;
-  const mobile = nav.filter((n) => n.href !== '/cabinet/passes/batch');
+  const mobile = nav.filter(
+    (n) => n.href !== '/cabinet/passes/batch' && n.href !== '/cabinet/pass-form',
+  );
 
   async function logout() {
     await api('/auth/logout', { method: 'POST' });
@@ -147,6 +154,7 @@ function Shell() {
           <span className="hidden max-w-40 truncate text-sm text-muted-foreground md:inline">
             {me?.user?.fullName}
           </span>
+          <NotificationBell />
           <ThemeToggle />
           <Button variant="ghost" size="sm" onClick={() => void logout()}>
             <LogOut aria-hidden />

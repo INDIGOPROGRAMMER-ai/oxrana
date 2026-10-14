@@ -1,5 +1,6 @@
 import { IN_APP_CHANNEL, type NotificationKind } from '@oxrana/contracts';
 import { schema } from '@oxrana/db';
+import { formatDateTime } from '@oxrana/engine';
 import { and, eq } from 'drizzle-orm';
 import type { Scope } from '../../core/context';
 import type { AuditDiff } from '../../core/diff';
@@ -60,9 +61,18 @@ function recipient(s: Scope, pass: typeof schema.passes.$inferSelect): string | 
   return pass.createdBy === s.ctx.actor.id ? null : pass.createdBy;
 }
 
-function changeLine(field: string, change: AuditDiff[string]): string {
-  const show = (v: unknown, label: string | null | undefined) =>
-    label ?? (v === null || v === undefined || v === '' ? 'не задано' : String(v));
+const INSTANT_FIELDS = new Set(['validFrom', 'validTo', 'windowFrom', 'windowTo']);
+
+/** Строка «поле: было → стало»; время — в поясе объекта (ADR-009), названия — на момент события. */
+function changeLine(field: string, change: AuditDiff[string], timezone: string): string {
+  const show = (v: unknown, label: string | null | undefined) => {
+    if (label) return label;
+    if (v === null || v === undefined || v === '') return 'не задано';
+    if (INSTANT_FIELDS.has(field) && typeof v === 'string') {
+      return `${formatDateTime(Date.parse(v), timezone)}`;
+    }
+    return String(v);
+  };
   return `${CHANGE_TITLE[field] ?? field}: ${show(change.from, change.fromLabel)} → ${show(change.to, change.toLabel)}`;
 }
 
@@ -94,7 +104,13 @@ const planners: Partial<Record<string, Planner>> = {
     const changes =
       raw && Object.keys(raw).length > 0 ? await labelDiff(s, raw, PASS_LABELS) : null;
     if (changes) {
-      const lines = Object.entries(changes).map(([f, c]) => changeLine(f, c));
+      const [site] = await s.db
+        .select({ timezone: schema.sites.timezone })
+        .from(schema.sites)
+        .where(eq(schema.sites.id, pass.siteId));
+      const lines = Object.entries(changes).map(([f, c]) =>
+        changeLine(f, c, site?.timezone ?? 'UTC'),
+      );
       return [
         {
           userId,
