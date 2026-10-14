@@ -310,9 +310,7 @@ test('многоразовый пропуск уходит на согласов
   await page.goto(`${WEB_URL}/cabinet/passes/new`);
   await page.getByLabel('Номер машины').fill('Е555КХ174');
   await page.getByLabel('Тип транспорта').selectOption({ label: 'легковой' });
-  await page
-    .getByLabel('Вид пропуска')
-    .selectOption({ label: 'Многоразовый — уйдёт на согласование' });
+  await page.getByRole('radio', { name: 'Многоразовый' }).click();
   await expect(page.getByTestId('hints')).toContainText('Уйдёт на согласование');
   await page.getByLabel('Действует по').fill(siteDate(3).typed);
   // комментарий обязателен для многоразовых: ошибка у поля до запроса
@@ -364,9 +362,7 @@ test('администратор отклоняет с причиной — ло
   await page.goto(`${WEB_URL}/cabinet/passes/new`);
   await page.getByLabel('Номер машины').fill('Е666КХ174');
   await page.getByLabel('Тип транспорта').selectOption({ label: 'легковой' });
-  await page
-    .getByLabel('Вид пропуска')
-    .selectOption({ label: 'Постоянный — уйдёт на согласование' });
+  await page.getByRole('radio', { name: 'Постоянный' }).click();
   await page.getByLabel('Комментарий').fill('Директор компании');
   await page.getByRole('button', { name: 'Отправить на согласование' }).click();
   await expect(page.getByTestId('pass-created')).toContainText('отправлен на согласование');
