@@ -192,6 +192,33 @@ export function assertFormAllows(
 }
 
 /**
+ * Автопарк по форме (7b.2): колонки и поля машины автопарка берутся из той же настройки формы, что и
+ * пропуск. Скрытое поле значение не принимает; обязательное — нужно при добавлении машины, а при
+ * правке — только если его задают. Сервер проверяет так же, как форму.
+ */
+export function assertFleetFormAllows(
+  form: ResolvedPassForm,
+  input: Readonly<Record<string, unknown>>,
+  creating: boolean,
+): void {
+  const keys: readonly (readonly [PassFormFieldKey, string])[] = [
+    ['brand', 'brand'],
+    ['driverName', 'driverName'],
+    ['driverPhone', 'driverPhone'],
+    ['comment', 'comment'],
+  ];
+  for (const [key, field] of keys) {
+    const given = field in input;
+    const value = input[field];
+    const filled =
+      typeof value === 'string' ? value.trim() !== '' : value !== null && value !== undefined;
+    const mode = form.fields[key];
+    if (mode === 'hidden' && filled) throw hiddenError(key, field);
+    if (mode === 'required' && (creating || given) && !filled) throw requiredError(key, field);
+  }
+}
+
+/**
  * Заполнение значений по умолчанию (ADR-023). Разовый пропуск: начало — «сейчас» (по часам
  * сервера), окончание — начало + N часов, но не больше максимума объекта. Окно прибытия: если
  * политика окон требует его, а форма — нет, окно = весь срок пропуска (разовый и многоразовый).

@@ -189,6 +189,9 @@ export const fleetVehicles = pgTable(
     brand: text('brand'),
     driverName: text('driver_name'),
     driverPhone: text('driver_phone'),
+    /** Док и комментарий по умолчанию для машины: подставляются в пропуск на неё (7b.2). */
+    dockId: uuid('dock_id').references(() => docks.id),
+    comment: text('comment'),
     deletedAt: deletedAt(),
     ...timestamps(),
   },

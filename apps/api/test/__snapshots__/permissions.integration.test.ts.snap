@@ -157,6 +157,7 @@ exports[`тест-матрица прав (ADR-007, B12) > реестр марш
   "POST /sites/:siteId/parking-areas → site.manage",
   "PATCH /sites/:siteId/pass-form → pass_form.manage",
   "GET /sites/:siteId/passes → pass.view | pass.view_all_tenants",
+  "GET /sites/:siteId/passes/context → pass.view | pass.view_all_tenants",
   "GET /sites/:siteId/passes/export → report.export",
   "GET /sites/:siteId/queue → queue.view",
   "GET /sites/:siteId/quotas → quota.manage",
