@@ -149,7 +149,7 @@ export function ExportButton({
         <div
           role="menu"
           aria-label="Формат файла"
-          className="absolute right-0 z-30 mt-1 w-56 rounded-md border bg-popover p-1 shadow-md"
+          className="absolute right-0 z-30 mt-1 w-56 rounded-md border bg-card p-1 shadow-lg"
         >
           {(
             [

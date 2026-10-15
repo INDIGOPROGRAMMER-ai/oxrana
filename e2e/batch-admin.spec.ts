@@ -16,8 +16,12 @@ test.describe.configure({ mode: 'serial', retries: 0 });
 const ADMIN = { email: 'admin@example.test', password: 'Пароль-админа-2026' };
 const LOGIST = { email: 'logist@example.test', password: 'Пароль-логиста-2026' };
 
-async function loginAs(browser: Browser, who: { email: string; password: string }) {
-  const context = await browser.newContext();
+async function loginAs(
+  browser: Browser,
+  who: { email: string; password: string },
+  viewport?: { width: number; height: number },
+) {
+  const context = await browser.newContext(viewport ? { viewport, hasTouch: true } : {});
   const page = await context.newPage();
   await page.goto(`${WEB_URL}/login`);
   await page.getByLabel('E-mail или телефон').fill(who.email);
@@ -365,4 +369,44 @@ test('без права «Просмотр пропусков всех арен�
   await expect(item).toHaveAttribute('title', /Нет права «Просмотр пропусков всех арендаторов»/);
   await page.goto(`${WEB_URL}/admin/passes`);
   await expect(page.getByText('Нет права смотреть пропуска всех арендаторов')).toBeVisible();
+});
+
+async function expectNoHorizontalScroll(page: Page, where: string) {
+  const scroll = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(scroll, `горизонтальная прокрутка на ${where}`).toBeLessThanOrEqual(1);
+}
+
+test('на телефоне (360 px): пакет со временем строк и «Пропуска» в админке не прокручиваются вбок', async ({
+  browser,
+}) => {
+  test.setTimeout(60_000);
+  const phone = { width: 360, height: 740 };
+  const mine = await loginAs(browser, LOGIST, phone);
+  await mine.page.goto(`${WEB_URL}/cabinet/passes/batch`);
+  await mine.page
+    .getByLabel(/вставьте строки из Excel/)
+    .fill(
+      `Номер\tТип\tДата\tС\tПо\nО721ОО174\tлегковой\t${siteDate(1).short}\t10:00\t12:00\nО722ОО174\tлегковой\t\t\t`,
+    );
+  await expect(mine.page.getByTestId('batch-span').first()).toBeVisible({ timeout: 15_000 });
+  await expectNoHorizontalScroll(mine.page, 'пакет пропусков со временем строк');
+  await mine.page.goto(`${WEB_URL}/cabinet/passes`);
+  await expect(mine.page.getByTestId('found-total')).toBeVisible();
+  await expectNoHorizontalScroll(mine.page, 'список пропусков');
+  await mine.context.close();
+
+  const admin = await loginAs(browser, ADMIN, phone);
+  await admin.page.goto(`${WEB_URL}/admin/passes`);
+  await expect(admin.page.getByTestId('found-total')).toBeVisible();
+  await expect(admin.page.getByTestId('pass-tenant').first()).toBeVisible();
+  await expectNoHorizontalScroll(admin.page, 'страница «Пропуска» админки');
+  // на телефоне «Выгрузить» — в панели «Фильтры»
+  await expect(admin.page.getByTestId('export-button')).toHaveCount(0);
+  await admin.page.getByTestId('filters-button').click();
+  await expect(
+    admin.page.getByRole('dialog', { name: 'Фильтры' }).getByTestId('export-button'),
+  ).toBeVisible();
+  await admin.context.close();
 });
