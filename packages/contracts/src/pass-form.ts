@@ -69,6 +69,13 @@ export const DEFAULT_SINGLE_HOURS = 23;
 /** Время начала в форме подставляется само: «сейчас» по поясу объекта (по умолчанию включено). */
 export const DEFAULT_START_NOW = true;
 
+/**
+ * Кнопка «Повторить вчера» (7b.2): по умолчанию **не показывать** — разовые машины приезжают
+ * непредсказуемо, а кто ездит несколько дней, тому оформляют многоразовый пропуск. Включается на
+ * уровнях «объект» и «арендатор»; на уровне сотрудника не задаётся.
+ */
+export const DEFAULT_REPEAT_YESTERDAY = false;
+
 const fieldsShape = {
   brand: FieldModeSchema,
   driverName: FieldModeSchema,
@@ -98,6 +105,7 @@ export const PASS_FORM_DEFAULTS = {
   defaultPassType: 'single' as PassType,
   singleHours: DEFAULT_SINGLE_HOURS,
   startNow: DEFAULT_START_NOW,
+  repeatYesterday: DEFAULT_REPEAT_YESTERDAY,
 } as const;
 
 /**
@@ -120,6 +128,8 @@ export const PassFormSettingsSchema = z.strictObject({
   singleHours: z.int().min(1).max(168).optional(),
   /** Время начала в форме — «сейчас» по поясу объекта, подставлено само (иначе поле пустое). */
   startNow: z.boolean().optional(),
+  /** Показывать кнопку «Повторить вчера» (уровни «объект» и «арендатор»). */
+  repeatYesterday: z.boolean().optional(),
 });
 export type PassFormSettings = z.infer<typeof PassFormSettingsSchema>;
 
@@ -146,6 +156,7 @@ export const PassFormSettingsPatchSchema = z.strictObject({
     .optional(),
   singleHours: z.int().min(1).max(168).nullable().optional(),
   startNow: z.boolean().nullable().optional(),
+  repeatYesterday: z.boolean().nullable().optional(),
   /** Причина изменения — в журнал. */
   reason: z.string().trim().min(3).max(500).optional(),
 });
@@ -164,6 +175,7 @@ export function applyPassFormPatch(
     'defaultPassType',
     'singleHours',
     'startNow',
+    'repeatYesterday',
   ] as const) {
     const value = patch[key];
     if (value === undefined) continue;
@@ -201,6 +213,8 @@ export interface ResolvedPassForm {
   readonly singleHours: number;
   /** Время начала подставляется само («сейчас» по поясу объекта). */
   readonly startNow: boolean;
+  /** Показывать кнопку «Повторить вчера». */
+  readonly repeatYesterday: boolean;
   readonly sources: {
     readonly passTypes: PassFormSource;
     readonly defaultPassType: PassFormSource;
@@ -208,6 +222,7 @@ export interface ResolvedPassForm {
     readonly defaultCategoryId: PassFormSource;
     readonly singleHours: PassFormSource;
     readonly startNow: PassFormSource;
+    readonly repeatYesterday: PassFormSource;
     readonly fields: Record<PassFormFieldKey, PassFormSource>;
   };
   /** Что пришлось поправить, чтобы настройки не противоречили друг другу (показывает редактор). */
@@ -222,6 +237,7 @@ export const ResolvedPassFormSchema = z.object({
   fields: z.object(fieldsShape),
   singleHours: z.int(),
   startNow: z.boolean(),
+  repeatYesterday: z.boolean(),
   sources: z.object({
     passTypes: PassFormSourceSchema,
     defaultPassType: PassFormSourceSchema,
@@ -229,6 +245,7 @@ export const ResolvedPassFormSchema = z.object({
     defaultCategoryId: PassFormSourceSchema,
     singleHours: PassFormSourceSchema,
     startNow: PassFormSourceSchema,
+    repeatYesterday: PassFormSourceSchema,
     fields: z.object(
       Object.fromEntries(passFormFieldKeys.map((k) => [k, PassFormSourceSchema])) as {
         [K in PassFormFieldKey]: typeof PassFormSourceSchema;
@@ -252,6 +269,7 @@ export function resolvePassForm(layers: PassFormLayers): ResolvedPassForm {
   let defaultCategoryId: string | null = null;
   let singleHours: number = PASS_FORM_DEFAULTS.singleHours;
   let startNow: boolean = PASS_FORM_DEFAULTS.startNow;
+  let repeatYesterday: boolean = PASS_FORM_DEFAULTS.repeatYesterday;
   const fields: Record<PassFormFieldKey, WindowMode> = { ...PASS_FORM_DEFAULTS.fields };
   const sources = {
     passTypes: 'default' as PassFormSource,
@@ -260,6 +278,7 @@ export function resolvePassForm(layers: PassFormLayers): ResolvedPassForm {
     defaultCategoryId: 'default' as PassFormSource,
     singleHours: 'default' as PassFormSource,
     startNow: 'default' as PassFormSource,
+    repeatYesterday: 'default' as PassFormSource,
     fields: Object.fromEntries(passFormFieldKeys.map((k) => [k, 'default'])) as Record<
       PassFormFieldKey,
       PassFormSource
@@ -292,6 +311,11 @@ export function resolvePassForm(layers: PassFormLayers): ResolvedPassForm {
       startNow = layer.startNow;
       sources.startNow = level;
     }
+    // кнопку «Повторить вчера» задают объект и арендатор; значение уровня сотрудника не действует
+    if (layer.repeatYesterday !== undefined && level !== 'user') {
+      repeatYesterday = layer.repeatYesterday;
+      sources.repeatYesterday = level;
+    }
     for (const key of passFormFieldKeys) {
       const mode = layer.fields?.[key];
       if (mode) {
@@ -319,6 +343,7 @@ export function resolvePassForm(layers: PassFormLayers): ResolvedPassForm {
     fields: fields as PassFormFieldModes,
     singleHours,
     startNow,
+    repeatYesterday,
     sources,
     notes,
   };

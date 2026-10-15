@@ -88,6 +88,7 @@ export function patchOf(saved: PassFormSettings, draft: PassFormSettings): PassF
     'defaultPassType',
     'singleHours',
     'startNow',
+    'repeatYesterday',
   ] as const) {
     const a = JSON.stringify(saved[key] ?? null);
     const b = JSON.stringify(draft[key] ?? null);
@@ -604,6 +605,34 @@ export function PassFormEditorView({
                   onChange={(e) => update({ ...layer, startNow: e.target.checked })}
                   label="Подставлять автоматически"
                   hint="Включено: в поле «с» сразу видно текущее время объекта. Выключено: поле пустое, пропуск начинается «сейчас», если время не указать."
+                />
+              </Setting>
+            </div>
+            <div className="pt-3">
+              <Setting
+                title="Кнопка «Повторить вчера»"
+                source={
+                  activeLevel === 'user'
+                    ? 'для сотрудника не задаётся'
+                    : layer.repeatYesterday !== undefined
+                      ? 'задано на этом уровне'
+                      : PASS_FORM_SOURCE_LABELS[resolved.sources.repeatYesterday]
+                }
+                overridden={layer.repeatYesterday !== undefined}
+                disabled={!editable || activeLevel === 'user'}
+                onReset={() => update(without(layer, 'repeatYesterday'))}
+              >
+                <Switch
+                  aria-label="Показывать кнопку «Повторить вчера»"
+                  disabled={!editable || activeLevel === 'user'}
+                  checked={layer.repeatYesterday ?? inherited.repeatYesterday}
+                  onChange={(e) => update({ ...layer, repeatYesterday: e.target.checked })}
+                  label="Показывать кнопку"
+                  hint={
+                    activeLevel === 'user'
+                      ? 'Показ кнопки задаётся на уровне «Объект» или «Арендатор», для отдельного сотрудника — нет.'
+                      : 'По умолчанию не показывается: разовые машины приезжают непредсказуемо, а кто ездит несколько дней, тому лучше оформить многоразовый пропуск.'
+                  }
                 />
               </Setting>
             </div>
