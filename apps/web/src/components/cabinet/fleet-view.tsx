@@ -7,6 +7,7 @@ import {
 } from '@oxrana/contracts';
 import { normalizePlate } from '@oxrana/plates';
 import {
+  Alert,
   BatchInput,
   Button,
   Card,
@@ -23,17 +24,31 @@ import {
   Input,
   Section,
   Select,
+  Textarea,
   useCreateForm,
   useEditForm,
   useToast,
 } from '@oxrana/ui';
 import { Link } from '@tanstack/react-router';
 import { Pencil, Plus, Truck } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import type { z } from 'zod';
 import { api } from '../../lib/api';
+import {
+  columnsLabel,
+  type BatchColumn as FleetColumnKey,
+  fleetBatchLayout,
+  placeholderOf,
+  templateTitles,
+} from '../../lib/batch-columns';
 import { useApi, useMe, useMutate } from '../../lib/data';
-import { type FleetLine, parseFleetRows } from '../../lib/pass-batch';
+import { type FleetLine, ignoredColumnTitles, parseFleetRows, tableOf } from '../../lib/pass-batch';
+import { buildFormView } from '../../lib/pass-form-view';
+import {
+  findMultiPlateLines,
+  multiPlateQuestion,
+  splitMultiPlateLines,
+} from '../../lib/plate-split';
 import { assertValid } from '../cards/tenant-rule-helpers';
 import { DeleteAction, LoadError } from '../common';
 import { useCabinet } from './cabinet-context';
@@ -47,11 +62,34 @@ interface Values {
   brand: string;
   driverName: string;
   driverPhone: string;
+  dockId: string;
+  comment: string;
 }
-const EMPTY: Values = { plate: '', categoryId: '', brand: '', driverName: '', driverPhone: '' };
+const EMPTY: Values = {
+  plate: '',
+  categoryId: '',
+  brand: '',
+  driverName: '',
+  driverPhone: '',
+  dockId: '',
+  comment: '',
+};
+
+/** Поля машины автопарка — те же, что в форме пропуска: скрытое настройкой формы не показывается. */
+function useFleetFields() {
+  const { ctx, passForm } = useCabinet();
+  return useMemo(
+    () =>
+      ctx && passForm
+        ? buildFormView({ form: passForm.form, ctx, enforced: passForm.enforced }).fields
+        : null,
+    [ctx, passForm],
+  );
+}
 
 function Fields({ f }: { f: FormController<Values> }) {
   const { ctx } = useCabinet();
+  const mode = useFleetFields();
   const { register, watch } = f.form;
   const available = (ctx?.categories ?? []).filter((c) => c.available);
   const plate = watch('plate');
@@ -82,15 +120,56 @@ function Fields({ f }: { f: FormController<Values> }) {
           ))}
         </Select>
       </Field>
-      <Field label="Марка" error={f.fieldError('brand')}>
-        <Input {...register('brand')} maxLength={100} />
-      </Field>
-      <Field label="Водитель" error={f.fieldError('driverName')}>
-        <Input {...register('driverName')} maxLength={200} />
-      </Field>
-      <Field label="Телефон водителя" error={f.fieldError('driverPhone')}>
-        <Input type="tel" {...register('driverPhone')} maxLength={30} />
-      </Field>
+      {mode && mode.brand !== 'hidden' ? (
+        <Field label="Марка" required={mode.brand === 'required'} error={f.fieldError('brand')}>
+          <Input {...register('brand')} maxLength={100} />
+        </Field>
+      ) : null}
+      {mode && mode.driverName !== 'hidden' ? (
+        <Field
+          label="Водитель"
+          required={mode.driverName === 'required'}
+          error={f.fieldError('driverName')}
+        >
+          <Input {...register('driverName')} maxLength={200} />
+        </Field>
+      ) : null}
+      {mode && mode.driverPhone !== 'hidden' ? (
+        <Field
+          label="Телефон водителя"
+          required={mode.driverPhone === 'required'}
+          error={f.fieldError('driverPhone')}
+        >
+          <Input type="tel" {...register('driverPhone')} maxLength={30} />
+        </Field>
+      ) : null}
+      {(ctx?.docks.length ?? 0) > 0 ? (
+        <Field
+          label="Док по умолчанию"
+          hint="Подставляется в пропуск на эту машину."
+          error={f.fieldError('dockId')}
+        >
+          <Select {...register('dockId')}>
+            <option value="">Без дока</option>
+            {(ctx?.docks ?? []).map((d) => (
+              <option key={d.id} value={d.id}>
+                Док {d.number}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
+      {mode && mode.comment !== 'hidden' ? (
+        <Field
+          label="Комментарий по умолчанию"
+          required={mode.comment === 'required'}
+          hint="Подставляется в пропуск на эту машину."
+          error={f.fieldError('comment')}
+          className="sm:col-span-2"
+        >
+          <Textarea rows={2} {...register('comment')} maxLength={2000} />
+        </Field>
+      ) : null}
     </div>
   );
 }
@@ -109,6 +188,8 @@ function CreateForm({ tenantId, onDone }: { tenantId: string; onDone: () => void
       ...(v.brand.trim() ? { brand: v.brand.trim() } : {}),
       ...(v.driverName.trim() ? { driverName: v.driverName.trim() } : {}),
       ...(v.driverPhone.trim() ? { driverPhone: v.driverPhone.trim() } : {}),
+      ...(v.dockId ? { dockId: v.dockId } : {}),
+      ...(v.comment.trim() ? { comment: v.comment.trim() } : {}),
     }),
     onCreate: async (body) => {
       await mutate(`/tenants/${tenantId}/fleet`, 'POST', body);
@@ -133,6 +214,8 @@ function EditVehicle({ vehicle, onDone }: { vehicle: Vehicle; onDone: () => void
       brand: vehicle.brand ?? '',
       driverName: vehicle.driverName ?? '',
       driverPhone: vehicle.driverPhone ?? '',
+      dockId: vehicle.dockId ?? '',
+      comment: vehicle.comment ?? '',
     },
     onPatch: async (patch) => {
       const body: Record<string, unknown> = {};
@@ -141,6 +224,8 @@ function EditVehicle({ vehicle, onDone }: { vehicle: Vehicle; onDone: () => void
       if (patch.brand !== undefined) body.brand = nullable(patch.brand);
       if (patch.driverName !== undefined) body.driverName = nullable(patch.driverName);
       if (patch.driverPhone !== undefined) body.driverPhone = nullable(patch.driverPhone);
+      if (patch.dockId !== undefined) body.dockId = patch.dockId === '' ? null : patch.dockId;
+      if (patch.comment !== undefined) body.comment = nullable(patch.comment);
       assertValid(FleetVehiclePatchSchema, body);
       await mutate(`/fleet/${vehicle.id}`, 'PATCH', body);
       toast('Машина сохранена');
@@ -154,21 +239,32 @@ function EditVehicle({ vehicle, onDone }: { vehicle: Vehicle; onDone: () => void
   );
 }
 
-/** Пакетная вставка машин (Номер · Тип · Марка · Водитель · Телефон) с проверкой при вводе. */
+/**
+ * Пакетная вставка машин: колонки — из той же действующей настройки формы, что и форма пропуска
+ * (скрытое поле — нет колонки, обязательное — обязательная колонка), с проверкой при вводе.
+ */
 function BatchFleet({ tenantId }: { tenantId: string }) {
   const { ctx } = useCabinet();
+  const mode = useFleetFields();
   const mutate = useMutate();
   const catalog = useMemo(
     () => ({
       categories: (ctx?.categories ?? []).filter((c) => c.available),
-      docks: [],
+      docks: ctx?.docks ?? [],
       defaultCategoryId: ctx?.tenant.defaultCategoryId ?? null,
     }),
     [ctx],
   );
+  const layout = useMemo(
+    () =>
+      mode
+        ? fleetBatchLayout({ fields: mode, hasDocks: catalog.docks.length > 0, zoneChoice: false })
+        : null,
+    [mode, catalog.docks.length],
+  );
   const parse = useCallback(
-    (text: string): ParsedRow<FleetLine>[] => parseFleetRows(text, catalog),
-    [catalog],
+    (text: string): ParsedRow<FleetLine>[] => (layout ? parseFleetRows(text, catalog, layout) : []),
+    [catalog, layout],
   );
   const toBody = (rows: FleetLine[]) =>
     rows.map((r) => ({
@@ -177,21 +273,52 @@ function BatchFleet({ tenantId }: { tenantId: string }) {
       ...(r.brand ? { brand: r.brand } : {}),
       ...(r.driverName ? { driverName: r.driverName } : {}),
       ...(r.driverPhone ? { driverPhone: r.driverPhone } : {}),
+      ...(r.comment ? { comment: r.comment } : {}),
+      ...(r.dockId ? { dockId: r.dockId } : {}),
     }));
-  const columns = useMemo(
-    () => [
-      { header: 'Номер', render: (v: FleetLine) => <span className="font-mono">{v.plate}</span> },
-      { header: 'Тип', render: (v: FleetLine) => v.categoryName },
-      { header: 'Марка', render: (v: FleetLine) => v.brand || '—' },
-      { header: 'Водитель', render: (v: FleetLine) => v.driverName || '—' },
-    ],
-    [],
-  );
+  const columns = useMemo(() => {
+    const render: Record<string, { header: string; render: (v: FleetLine) => ReactNode }> = {
+      plate: {
+        header: 'Номер',
+        render: (v) => <span className="font-mono">{v.plate}</span>,
+      },
+      type: { header: 'Тип', render: (v) => v.categoryName },
+      brand: { header: 'Марка', render: (v) => v.brand || '—' },
+      driver: { header: 'Водитель', render: (v) => v.driverName || '—' },
+      phone: { header: 'Телефон', render: (v) => v.driverPhone || '—' },
+      comment: { header: 'Комментарий', render: (v) => v.comment || '—' },
+      dock: { header: 'Док', render: (v) => (v.dockNumber ? `Док ${v.dockNumber}` : '—') },
+    };
+    return (layout?.columns ?? []).flatMap((c) => {
+      const column = render[c.key as FleetColumnKey];
+      return column ? [column] : [];
+    });
+  }, [layout]);
+  if (!layout) return null;
   return (
     <BatchInput<FleetLine>
       label="Вставьте машины из Excel"
-      placeholder={'А123ВС174\tфура\tVolvo\tИванов И. И.\t+7 900 000-00-00'}
-      help="Колонки: Номер · Тип · Марка · Водитель · Телефон."
+      placeholder={placeholderOf(layout.columns, '')}
+      help={`${columnsLabel(layout.columns)} Комментарий и док — по умолчанию для машины, они подставляются в пропуск на неё.`}
+      template={{
+        fileName: 'шаблон-автопарк.xlsx',
+        titles: templateTitles(layout.columns),
+      }}
+      suggest={(text) => {
+        const lines = findMultiPlateLines(text);
+        return lines.length > 0
+          ? { message: multiPlateQuestion(lines), apply: splitMultiPlateLines }
+          : null;
+      }}
+      notice={(text) => {
+        const ignored = ignoredColumnTitles(tableOf(text), layout);
+        return ignored.length > 0 ? (
+          <Alert tone="warning" data-testid="batch-ignored">
+            Колонки «{ignored.join('», «')}» отключены настройкой формы пропуска — значения из них
+            не сохранятся.
+          </Alert>
+        ) : null;
+      }}
       parse={parse}
       columns={columns}
       check={(rows) =>
@@ -211,7 +338,7 @@ function BatchFleet({ tenantId }: { tenantId: string }) {
 /** Автопарк (08_): постоянные машины арендатора; пропуск из автопарка — в один клик. */
 export function FleetView() {
   const { can } = useMe();
-  const { tenant, ctx } = useCabinet();
+  const { tenant, ctx, passForm } = useCabinet();
   const list = useApi<{ items: Vehicle[] }>(tenant ? `/tenants/${tenant.id}/fleet` : null);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Vehicle | null>(null);
@@ -232,7 +359,7 @@ export function FleetView() {
         >
           <Plus aria-hidden /> Добавить машину
         </Button>
-        {canCreate ? <RepeatDay /> : null}
+        {canCreate && passForm?.form.repeatYesterday === true ? <RepeatDay /> : null}
         {!canManage ? (
           <span className="text-xs text-muted-foreground">
             Автопарк ведёт ответственный вашей компании — у вас нет права его менять.
@@ -264,7 +391,13 @@ export function FleetView() {
                       {v.brand ? ` · ${v.brand}` : ''}
                       {v.driverName ? ` · ${v.driverName}` : ''}
                       {v.driverPhone ? ` · ${v.driverPhone}` : ''}
+                      {v.dockId
+                        ? ` · док ${ctx?.docks.find((d) => d.id === v.dockId)?.number ?? '—'}`
+                        : ''}
                     </p>
+                    {v.comment ? (
+                      <p className="text-xs text-muted-foreground">{v.comment}</p>
+                    ) : null}
                   </div>
                   {canCreate ? (
                     <Button asChild size="sm">

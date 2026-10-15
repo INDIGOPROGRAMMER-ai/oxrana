@@ -27,6 +27,7 @@ import { Route as AdminGatesRouteImport } from './routes/admin.gates'
 import { Route as AdminHardwareRouteImport } from './routes/admin.hardware'
 import { Route as AdminMemoRouteImport } from './routes/admin.memo'
 import { Route as AdminPassFormRouteImport } from './routes/admin.pass-form'
+import { Route as AdminPassesRouteImport } from './routes/admin.passes'
 import { Route as AdminPoliciesRouteImport } from './routes/admin.policies'
 import { Route as AdminRolesRouteImport } from './routes/admin.roles'
 import { Route as AdminRoutingRouteImport } from './routes/admin.routing'
@@ -136,6 +137,11 @@ const AdminMemoRoute = AdminMemoRouteImport.update({
 const AdminPassFormRoute = AdminPassFormRouteImport.update({
   id: '/pass-form',
   path: '/pass-form',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPassesRoute = AdminPassesRouteImport.update({
+  id: '/passes',
+  path: '/passes',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminPoliciesRoute = AdminPoliciesRouteImport.update({
@@ -261,6 +267,7 @@ export interface FileRoutesByFullPath {
   '/admin/hardware': typeof AdminHardwareRoute
   '/admin/memo': typeof AdminMemoRoute
   '/admin/pass-form': typeof AdminPassFormRoute
+  '/admin/passes': typeof AdminPassesRoute
   '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
@@ -299,6 +306,7 @@ export interface FileRoutesByTo {
   '/admin/hardware': typeof AdminHardwareRoute
   '/admin/memo': typeof AdminMemoRoute
   '/admin/pass-form': typeof AdminPassFormRoute
+  '/admin/passes': typeof AdminPassesRoute
   '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
@@ -340,6 +348,7 @@ export interface FileRoutesById {
   '/admin/hardware': typeof AdminHardwareRoute
   '/admin/memo': typeof AdminMemoRoute
   '/admin/pass-form': typeof AdminPassFormRoute
+  '/admin/passes': typeof AdminPassesRoute
   '/admin/policies': typeof AdminPoliciesRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/routing': typeof AdminRoutingRoute
@@ -382,6 +391,7 @@ export interface FileRouteTypes {
     | '/admin/hardware'
     | '/admin/memo'
     | '/admin/pass-form'
+    | '/admin/passes'
     | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
@@ -420,6 +430,7 @@ export interface FileRouteTypes {
     | '/admin/hardware'
     | '/admin/memo'
     | '/admin/pass-form'
+    | '/admin/passes'
     | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
@@ -460,6 +471,7 @@ export interface FileRouteTypes {
     | '/admin/hardware'
     | '/admin/memo'
     | '/admin/pass-form'
+    | '/admin/passes'
     | '/admin/policies'
     | '/admin/roles'
     | '/admin/routing'
@@ -621,6 +633,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminPassFormRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/passes': {
+      id: '/admin/passes'
+      path: '/passes'
+      fullPath: '/admin/passes'
+      preLoaderRoute: typeof AdminPassesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/policies': {
       id: '/admin/policies'
       path: '/policies'
@@ -775,6 +794,7 @@ interface AdminRouteChildren {
   AdminHardwareRoute: typeof AdminHardwareRoute
   AdminMemoRoute: typeof AdminMemoRoute
   AdminPassFormRoute: typeof AdminPassFormRoute
+  AdminPassesRoute: typeof AdminPassesRoute
   AdminPoliciesRoute: typeof AdminPoliciesRoute
   AdminRolesRoute: typeof AdminRolesRoute
   AdminRoutingRoute: typeof AdminRoutingRoute
@@ -802,6 +822,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminHardwareRoute: AdminHardwareRoute,
   AdminMemoRoute: AdminMemoRoute,
   AdminPassFormRoute: AdminPassFormRoute,
+  AdminPassesRoute: AdminPassesRoute,
   AdminPoliciesRoute: AdminPoliciesRoute,
   AdminRolesRoute: AdminRolesRoute,
   AdminRoutingRoute: AdminRoutingRoute,

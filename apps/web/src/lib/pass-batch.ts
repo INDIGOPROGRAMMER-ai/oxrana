@@ -1,6 +1,17 @@
-import { type ParsedRow, parseTableText } from '@oxrana/contracts';
+import { type ParsedRow, parseTableText, passFormFieldKeys } from '@oxrana/contracts';
 import { normalizePlate } from '@oxrana/plates';
+import { formatInZone, localToInstant as localInstant } from '@oxrana/ui';
+import {
+  type BatchColumn,
+  type BatchLayout,
+  COLUMN_TITLE,
+  fleetBatchLayout,
+  passBatchLayout,
+} from './batch-columns';
+import { type RowTimeText, rowTime, type TimeEnv } from './batch-time';
+import { addDays } from './dates';
 import { buildPassBody, type EffectiveFields, type PassFormValues } from './pass-form';
+import { timeOf } from './pass-time';
 
 /** Что кабинет знает о справочниках для разбора таблицы. */
 export interface BatchCatalog {
@@ -10,11 +21,17 @@ export interface BatchCatalog {
   readonly defaultCategoryId: string | null;
 }
 
-/** Общие для всей пачки настройки: тип пропуска и срок. */
+/**
+ * Общие для всей пачки настройки: вид пропуска и срок. Срок — значения по умолчанию для строк, у
+ * которых ячейки «Дата», «С», «По» пусты (7b.2).
+ */
 export interface BatchSettings {
   readonly passType: 'single' | 'multi' | 'permanent';
   /** Разовый: дата приезда. */
   readonly date: string;
+  /** Разовый: время начала и окончания (`''` — «сейчас» и «начало + часы из настройки»). */
+  readonly start: string;
+  readonly end: string;
   /** Многоразовый и постоянный: начало и (у многоразового) конец. */
   readonly from: string;
   readonly to: string;
@@ -26,7 +43,7 @@ export interface BatchSettings {
  * Строка пачки: то, что было в таблице, уже сопоставленное со справочниками. Строка живёт в
  * состоянии экрана и правится прямо в предпросмотре — тип, док, место, время (этап 7b).
  */
-export interface BatchRow {
+export interface BatchRow extends RowTimeText {
   /** Номер строки в таблице (с 1, считая и заголовок). */
   readonly line: number;
   readonly plate: string;
@@ -58,30 +75,7 @@ export interface BatchImport {
   readonly headerFound: boolean;
 }
 
-/** Колонки пакета. */
-export type BatchColumn =
-  | 'plate'
-  | 'type'
-  | 'brand'
-  | 'driver'
-  | 'phone'
-  | 'window'
-  | 'comment'
-  | 'dock'
-  | 'zone';
-
-/** Порядок колонок без строки заголовков. */
-const DEFAULT_ORDER: BatchColumn[] = [
-  'plate',
-  'type',
-  'brand',
-  'driver',
-  'window',
-  'comment',
-  'dock',
-];
-
-/** Названия колонок в заголовке: по началу слова, без регистра. */
+/** Названия колонок в заголовке: по началу слова, без регистра («С» и «По» — только целиком). */
 const HEADER_WORDS: Record<BatchColumn, RegExp> = {
   plate: /^(номер|гос|гос\.?\s*номер|госномер|регистр|рег\.?\s*номер|№|plate)/,
   type: /^(тип|вид|категор|транспорт|тс\b|машин)/,
@@ -92,25 +86,16 @@ const HEADER_WORDS: Record<BatchColumn, RegExp> = {
   comment: /^(коммент|примеч|цель|заметк)/,
   dock: /^(док|ворот|рампа)/,
   zone: /^(мест|назнач|зона|куда|площадк)/,
-};
-
-const COLUMN_TITLE: Record<BatchColumn, string> = {
-  plate: 'Номер',
-  type: 'Тип',
-  brand: 'Марка',
-  driver: 'Водитель',
-  phone: 'Телефон',
-  window: 'Окно',
-  comment: 'Комментарий',
-  dock: 'Док',
-  zone: 'Место назначения',
+  date: /^(дата|день)/,
+  from: /^(с|от|начало|начал\S*|действует с)$/,
+  to: /^(по|до|конец|окончание|действует по|действует до)$/,
 };
 
 const clean = (value: string) =>
   value.trim().toLocaleLowerCase('ru-RU').replaceAll('ё', 'е').replace(/\s+/g, ' ');
 
 function headerColumn(cell: string): BatchColumn | null {
-  const text = clean(cell);
+  const text = clean(cell).replace(/:+$/, '');
   if (text === '') return null;
   return (
     (Object.keys(HEADER_WORDS) as BatchColumn[]).find((c) => HEADER_WORDS[c].test(text)) ?? null
@@ -253,35 +238,50 @@ export function parseWindow(
 
 // ---------- разбор таблицы ----------
 
-/** Что считается «отключённым» для колонки: поле выключено настройкой формы. */
-function hiddenColumns(fields: EffectiveFields | undefined): Set<BatchColumn> {
-  const out = new Set<BatchColumn>();
-  if (!fields) return out;
-  if (fields.brand === 'hidden') out.add('brand');
-  if (fields.driverName === 'hidden') out.add('driver');
-  if (fields.driverPhone === 'hidden') out.add('phone');
-  if (fields.window === 'hidden') out.add('window');
-  if (fields.comment === 'hidden') out.add('comment');
-  if (fields.destination === 'hidden') out.add('zone');
-  return out;
+/** Все поля формы необязательны: раскладка, когда настройки формы нет (юнит-тесты, старые вызовы). */
+const OPEN_FIELDS = Object.fromEntries(
+  passFormFieldKeys.map((key) => [key, 'optional']),
+) as EffectiveFields;
+
+function defaultLayout(catalog: BatchCatalog, kind: 'pass' | 'fleet'): BatchLayout {
+  const input = { fields: OPEN_FIELDS, hasDocks: catalog.docks.length > 0, zoneChoice: false };
+  return kind === 'pass' ? passBatchLayout(input) : fleetBatchLayout(input);
 }
 
 /**
- * Разбор таблицы пропусков (08_ «Пакетный ввод»): колонки по заголовку (если он есть) или по
- * порядку Номер · Тип · Марка · Водитель · Окно · Комментарий · Док. Строки независимы; в одной
- * пачке могут быть разные типы транспорта. Пробелы и разделители в номерах не мешают. Колонки,
- * отключённые настройкой формы, не попадают в пропуска — список таких колонок возвращается.
+ * Колонки таблицы, значения которых пакет не примет (поле отключено настройкой формы): только те,
+ * что узнаны по заголовку и непусты. Без заголовка колонки идут по раскладке и лишних нет.
+ */
+export function ignoredColumnTitles(
+  table: readonly (readonly string[])[],
+  layout: BatchLayout,
+): string[] {
+  const first = table[0];
+  const header = first ? headerMap(first) : null;
+  if (!header) return [];
+  const ignored = new Set<BatchColumn>();
+  header.forEach((column, index) => {
+    if (!column || layout.accepted.has(column)) return;
+    if (table.slice(1).some((row) => (row[index] ?? '').trim() !== '')) ignored.add(column);
+  });
+  return [...ignored].map((c) => COLUMN_TITLE[c]);
+}
+
+/**
+ * Разбор таблицы пропусков (08_ «Пакетный ввод»): колонки по заголовку (если он есть) или по порядку
+ * раскладки — той, что строится из настройки формы пользователя (скрытое поле — нет колонки). Строки
+ * независимы; в одной пачке могут быть разные типы транспорта. Пробелы и разделители в номерах не
+ * мешают. Колонки, отключённые настройкой формы, не попадают в пропуска — список таких колонок
+ * возвращается.
  */
 export function importPassTable(
   table: readonly (readonly string[])[],
   catalog: BatchCatalog,
-  fields?: EffectiveFields,
+  layout: BatchLayout = defaultLayout(catalog, 'pass'),
 ): BatchImport {
   const first = table[0];
   const header = first ? headerMap(first) : null;
-  const order: (BatchColumn | null)[] = header ?? DEFAULT_ORDER;
-  const hidden = hiddenColumns(fields);
-  const ignored = new Set<BatchColumn>();
+  const order: (BatchColumn | null)[] = header ?? layout.columns.map((c) => c.key);
   const rows: ParsedRow<BatchRow>[] = [];
 
   table.forEach((cells, index) => {
@@ -290,8 +290,7 @@ export function importPassTable(
     const at = (column: BatchColumn): string => {
       const i = order.indexOf(column);
       const value = i >= 0 ? (cells[i] ?? '').trim() : '';
-      if (value !== '' && hidden.has(column)) ignored.add(column);
-      return hidden.has(column) ? '' : value;
+      return layout.accepted.has(column) ? value : '';
     };
     const plateCell = (cells[Math.max(order.indexOf('plate'), 0)] ?? '').trim();
     if (normalizePlate(plateCell).norm === '') {
@@ -328,7 +327,6 @@ export function importPassTable(
     if (dock?.error) problems.dock = dock.error;
     const zone = resolveZone(at('zone'), catalog);
     if (zone?.error) problems.zone = zone.error;
-    const windowText = at('window');
     rows.push({
       line,
       value: {
@@ -343,7 +341,10 @@ export function importPassTable(
         comment: at('comment'),
         dockId: dock?.id ?? '',
         zoneId: zone?.id ?? '',
-        windowText,
+        windowText: at('window'),
+        dateText: at('date'),
+        fromText: at('from'),
+        toText: at('to'),
         note,
         problems,
       },
@@ -351,7 +352,7 @@ export function importPassTable(
   });
   return {
     rows,
-    ignoredColumns: [...ignored].map((c) => COLUMN_TITLE[c]),
+    ignoredColumns: ignoredColumnTitles(table, layout),
     headerFound: header !== null,
   };
 }
@@ -360,9 +361,9 @@ export function importPassTable(
 export function parseBatchRows(
   text: string,
   catalog: BatchCatalog,
-  fields?: EffectiveFields,
+  layout?: BatchLayout,
 ): BatchImport {
-  return importPassTable(tableOf(text), catalog, fields);
+  return importPassTable(tableOf(text), catalog, layout);
 }
 
 // ---------- строка → тело запроса ----------
@@ -377,9 +378,13 @@ export interface BatchBuildContext {
   readonly dockRequiredFor?: (categoryId: string) => boolean;
   /** Единственное место назначения подставляется в строки без места. */
   readonly defaultZoneId?: string | undefined;
-  /** Допуск «начало в прошлом» и максимум разового пропуска — для исправлений ошибок окна. */
+  /** Допуск «начало в прошлом» и максимум разового пропуска — для исправлений ошибок срока. */
   readonly pastToleranceMin?: number | undefined;
   readonly singleMaxHours?: number | undefined;
+  /** Время начала подставляется само («сейчас» по поясу объекта) — настройка формы. */
+  readonly startNow?: boolean | undefined;
+  /** Окончание разового по умолчанию: начало + столько часов (настройка формы). */
+  readonly singleHours?: number | undefined;
 }
 
 /** Исправление ошибки строки одним нажатием: «Начать окно с 13:50» → новое окно в строке. */
@@ -389,12 +394,101 @@ export interface RowFix {
 }
 
 export type BatchDraftResult =
-  | { ok: true; draft: Record<string, unknown> }
+  | {
+      ok: true;
+      draft: Record<string, unknown>;
+      /** Итоговое действие пропуска в поясе объекта: «15.10 13:44 → 16.10 12:44». */
+      span: string;
+    }
   | { ok: false; error: string; fixes: RowFix[] };
+
+/** Окружение расчёта времени строки из контекста сборки. */
+export function timeEnvOf(c: BatchBuildContext): TimeEnv {
+  return {
+    todayIso: c.today,
+    nowMs: c.nowMs,
+    timezone: c.timezone,
+    startNow: c.startNow ?? true,
+    singleHours: c.singleHours ?? 23,
+    singleMaxHours: c.singleMaxHours ?? 24,
+  };
+}
+
+/** Общие значения пачки — значения по умолчанию для пустых ячеек «Дата», «С», «По». */
+export const commonTimeOf = (settings: BatchSettings) => ({
+  date: settings.date,
+  start: settings.start,
+  end: settings.end,
+  from: settings.from,
+  to: settings.to,
+});
+
+/** `15.10 13:44` — день и время в поясе объекта, без года (подпись строки). */
+function stamp(ms: number, timezone: string): string {
+  const full = formatInZone(new Date(ms).toISOString(), timezone);
+  return `${full.slice(0, 5)} ${full.slice(11, 16)}`;
+}
+
+/** Итоговое действие пропуска: из тела запроса, а чего в нём нет, то подставит сервер («сейчас», +N ч). */
+function spanText(
+  draft: Record<string, unknown>,
+  passType: BatchSettings['passType'],
+  c: BatchBuildContext,
+): string {
+  const start = typeof draft.validFrom === 'string' ? Date.parse(draft.validFrom) : c.nowMs;
+  const end =
+    typeof draft.validTo === 'string'
+      ? Date.parse(draft.validTo)
+      : passType === 'single'
+        ? start + Math.min(c.singleHours ?? 23, c.singleMaxHours ?? 24) * 3_600_000
+        : null;
+  return `${stamp(start, c.timezone)} → ${end === null ? 'без окончания' : stamp(end, c.timezone)}`;
+}
+
+const hhmm = (ms: number, timezone: string) => timeOf(ms, timezone);
+
+/**
+ * Проверки срока разового пропуска со своими исправлениями: начало уже прошло и выходит за допуск;
+ * срок длиннее максимума объекта. Ошибка называет время, кнопка исправляет только эту строку.
+ */
+function singleSpanProblem(
+  t: ReturnType<typeof rowTime>,
+  date: string,
+  c: BatchBuildContext,
+): { error: string; fixes: RowFix[] } | null {
+  const tz = c.timezone;
+  const toMs = (day: string, time: string) => Date.parse(localInstant(day, time, tz));
+  const tolerance = (c.pastToleranceMin ?? 0) * 60_000;
+  const max = c.singleMaxHours ?? 24;
+  if (!t.startAuto && t.startTime && date === c.today) {
+    const startMs = toMs(date, t.startTime);
+    if (startMs < c.nowMs - tolerance) {
+      const now = hhmm(c.nowMs, tz);
+      return {
+        error: `Начало в ${t.startTime} уже прошло (сейчас ${now}, допуск «начало в прошлом» — ${c.pastToleranceMin ?? 0} мин).`,
+        fixes: [{ label: `Начать с ${now}`, patch: { fromText: now } }],
+      };
+    }
+  }
+  if (t.startTime && t.endTime && !t.endAuto) {
+    const startMs = t.startAuto ? c.nowMs : toMs(date, t.startTime);
+    const nextDay = t.endTime <= t.startTime;
+    const endMs = toMs(nextDay ? addDays(date, 1) : date, t.endTime);
+    if (endMs - startMs > max * 3_600_000) {
+      const latest = hhmm(startMs + max * 3_600_000, tz);
+      return {
+        error: `Пропуск ${hhmm(startMs, tz)}–${t.endTime}${nextDay ? ' (завтра)' : ''} действует дольше максимума объекта — ${max} ч.`,
+        fixes: [{ label: `Закончить в ${latest}`, patch: { toText: latest } }],
+      };
+    }
+  }
+  return null;
+}
 
 /**
  * Строка пачки → тело строки `POST /passes/batch`. Время считается так же, как в форме пропуска
- * (`buildPassBody`), поэтому «сегодня без окна» = «сейчас» (сервер), а окно — в пределах даты приезда.
+ * (`buildPassBody`): у строки своя дата и время («Дата», «С», «По»), а пустая ячейка — общее значение
+ * сверху; окончание подставляется само (начало + часы из настройки, не больше максимума объекта).
  */
 export function batchDraft(
   line: BatchRow,
@@ -409,7 +503,18 @@ export function batchDraft(
     return { ok: false, error: line.problems.dock, fixes: [] };
   if (line.problems.zone && !line.zoneId)
     return { ok: false, error: line.problems.zone, fixes: [] };
-  const date = window?.date || settings.date;
+  const t = rowTime(settings.passType, line, commonTimeOf(settings), timeEnvOf(c));
+  if (t.error) return { ok: false, error: t.error, fixes: [] };
+  const single = settings.passType === 'single';
+  const date = single ? window?.date || t.date : t.date;
+  if (single && date >= c.today) {
+    const problem = singleSpanProblem(t, date, c);
+    if (problem) return { ok: false, ...problem };
+  }
+  // окно позже «сейчас» и начало не задано: пропуск начинается с окна (как у пропуска без времени)
+  const windowStartMs =
+    single && window ? Date.parse(localInstant(date, window.from, c.timezone)) : 0;
+  const startFromWindow = single && t.startAuto && window !== null && windowStartMs > c.nowMs;
   const values: PassFormValues = {
     participant: 'vehicle',
     plate: line.plate,
@@ -421,18 +526,16 @@ export function batchDraft(
     personDocument: '',
     passType: settings.passType,
     date,
-    startTime: '',
-    endTime: '',
-    startAuto: false,
-    endAuto: false,
-    windowFromTime: settings.passType === 'single' ? (window?.from ?? '') : '',
-    windowToTime: settings.passType === 'single' ? (window?.to ?? '') : '',
-    from: settings.from,
-    to: settings.to,
-    windowFrom:
-      settings.passType !== 'single' && window ? `${date || settings.from}T${window.from}` : '',
-    windowTo:
-      settings.passType !== 'single' && window ? `${date || settings.from}T${window.to}` : '',
+    startTime: startFromWindow ? '' : t.startTime,
+    endTime: startFromWindow && t.endAuto ? '' : t.endTime,
+    startAuto: startFromWindow ? false : t.startAuto,
+    endAuto: startFromWindow ? false : t.endAuto,
+    windowFromTime: single ? (window?.from ?? '') : '',
+    windowToTime: single ? (window?.to ?? '') : '',
+    from: t.from,
+    to: t.to,
+    windowFrom: !single && window ? `${date || t.from}T${window.from}` : '',
+    windowTo: !single && window ? `${date || t.from}T${window.to}` : '',
     dockId: line.dockId,
     destinationZoneId: line.zoneId || c.defaultZoneId || '',
     purposeId: '',
@@ -451,20 +554,26 @@ export function batchDraft(
     singleMaxHours: c.singleMaxHours,
   });
   if (!built.ok) {
-    // исправления окна переводятся в окно строки; исправления самого пропуска в пакете не нужны
+    // исправления переводятся в правку строки: окно, время начала и окончания, дата
     const fixes: RowFix[] = [];
-    if (window && !('error' in window)) {
-      for (const fix of built.fixes) {
-        if (fix.id !== 'window_start' && fix.id !== 'window_end') continue;
+    for (const fix of built.fixes) {
+      if (fix.id === 'pass_start' && fix.apply.startTime) {
+        fixes.push({ label: fix.label, patch: { fromText: fix.apply.startTime } });
+      } else if (fix.id === 'pass_end' && fix.apply.endTime) {
+        fixes.push({ label: fix.label, patch: { toText: fix.apply.endTime } });
+      } else if ((fix.id === 'window_start' || fix.id === 'window_end') && window) {
         const from = fix.apply.windowFromTime ?? fix.apply.windowFrom?.split('T')[1] ?? window.from;
         const to = fix.apply.windowToTime ?? fix.apply.windowTo?.split('T')[1] ?? window.to;
         fixes.push({ label: fix.label, patch: { windowText: `${from}–${to}` } });
       }
     }
+    if (single && built.errors.date && !window?.date) {
+      fixes.push({ label: 'Поставить сегодня', patch: { dateText: c.today } });
+    }
     return { ok: false, error: Object.values(built.errors)[0] ?? 'Проверьте срок.', fixes };
   }
   const { tenantId: _tenant, ...draft } = built.body;
-  return { ok: true, draft };
+  return { ok: true, draft, span: spanText(draft, settings.passType, c) };
 }
 
 // ---------- автопарк ----------
@@ -477,31 +586,61 @@ export interface FleetLine {
   readonly brand: string;
   readonly driverName: string;
   readonly driverPhone: string;
+  /** Комментарий и док по умолчанию для машины: подставляются в пропуск на неё. */
+  readonly comment: string;
+  readonly dockId: string;
+  readonly dockNumber: string;
 }
 
-/** Вставка автопарка: Номер · Тип · Марка · Водитель · Телефон. Повтор номера внутри списка — ошибка строки. */
-export function parseFleetRows(text: string, catalog: BatchCatalog): ParsedRow<FleetLine>[] {
+/**
+ * Вставка автопарка: колонки — из настройки формы пользователя (скрытое поле — нет колонки,
+ * обязательное — обязательная колонка): Номер · Тип · Марка · Водитель · Телефон · Комментарий · Док.
+ * Повтор номера внутри списка — ошибка строки.
+ */
+export function parseFleetRows(
+  text: string,
+  catalog: BatchCatalog,
+  layout: BatchLayout = defaultLayout(catalog, 'fleet'),
+): ParsedRow<FleetLine>[] {
   const table = tableOf(text);
   const first = table[0];
   const header = first ? headerMap(first) : null;
+  const order: (BatchColumn | null)[] = header ?? layout.columns.map((c) => c.key);
   const seen = new Set<string>();
   const rows: ParsedRow<FleetLine>[] = [];
   const names = catalog.categories.map((c) => c.name).join(', ');
   table.forEach((cells, index) => {
     if (header && index === 0) return;
     const line = index + 1;
-    const [plateCell = '', typeCell = '', brand = '', driver = '', phone = ''] = cells;
+    const at = (column: BatchColumn): string => {
+      const i = order.indexOf(column);
+      const value = i >= 0 ? (cells[i] ?? '').trim() : '';
+      return layout.accepted.has(column) ? value : '';
+    };
+    const plateCell = (cells[Math.max(order.indexOf('plate'), 0)] ?? '').trim();
+    const typeCell = at('type');
     const norm = normalizePlate(plateCell).norm;
     if (norm === '') {
-      rows.push({ line, error: 'Нет номера — первая ячейка пуста.' });
+      rows.push({ line, error: 'Нет номера — ячейка с номером пуста.' });
       return;
     }
     if (seen.has(norm)) {
       rows.push({ line, error: `Номер ${norm} уже встречается выше в этом списке.` });
       return;
     }
+    // обязательная колонка: пустая ячейка — ошибка строки (сервер проверяет так же)
+    const missing = layout.columns.find(
+      (c) => c.required && c.key !== 'plate' && c.key !== 'type' && at(c.key) === '',
+    );
+    if (missing) {
+      rows.push({
+        line,
+        error: `Не заполнена колонка «${missing.title}» — она обязательна по настройке формы пропуска.`,
+      });
+      return;
+    }
     let category: { id: string; name: string; note?: string } | null = null;
-    if (typeCell.trim() === '') {
+    if (typeCell === '') {
       const byDefault = catalog.categories.find((c) => c.id === catalog.defaultCategoryId);
       if (byDefault) {
         category = {
@@ -533,16 +672,24 @@ export function parseFleetRows(text: string, catalog: BatchCatalog): ParsedRow<F
         return;
       }
     }
+    const dock = resolveDock(at('dock'), catalog);
+    if (dock?.error) {
+      rows.push({ line, error: dock.error.replace(' Выберите док ниже.', '') });
+      return;
+    }
     seen.add(norm);
     rows.push({
       line,
       value: {
-        plate: plateCell.trim(),
+        plate: plateCell,
         categoryId: category.id,
         categoryName: category.name,
-        brand,
-        driverName: driver,
-        driverPhone: phone,
+        brand: at('brand'),
+        driverName: at('driver'),
+        driverPhone: at('phone'),
+        comment: at('comment'),
+        dockId: dock?.id ?? '',
+        dockNumber: catalog.docks.find((d) => d.id === dock?.id)?.number ?? '',
       },
       ...(category.note ? { note: category.note } : {}),
     });

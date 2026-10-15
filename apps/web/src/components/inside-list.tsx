@@ -25,6 +25,7 @@ export function InsideList({
   serverNow,
   quotaId,
   onClearQuota,
+  showTenant = false,
 }: {
   siteId: string;
   /** Арендатор; без него — все арендаторы, которых актор видит. */
@@ -33,6 +34,8 @@ export function InsideList({
   serverNow: () => number;
   quotaId?: string | undefined;
   onClearQuota?: (() => void) | undefined;
+  /** Страница объекта в админке: в строке — название арендатора. */
+  showTenant?: boolean;
 }) {
   const { can } = useMe();
   const [query, setQuery] = useState('');
@@ -58,46 +61,47 @@ export function InsideList({
   return (
     <div className="space-y-4">
       <Card>
-        <CardContent className="grid gap-3 pt-5 sm:grid-cols-2">
-          <Field label="Поиск" hint="Цифры номера или фамилия.">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              inputMode="search"
-              autoComplete="off"
-              placeholder="цифры номера"
-            />
-          </Field>
-          {quotaId ? (
-            <div className="flex items-end">
-              <button
-                type="button"
-                onClick={onClearQuota}
-                aria-label="Показать всех, не только этот лимит"
-                data-testid="quota-chip"
-                className="inline-flex items-center gap-1 rounded-full border bg-accent px-3 py-1.5 text-sm"
-              >
-                Лимит: {quotaName ?? 'выбранный'} <X aria-hidden className="size-3.5" />
-              </button>
+        <CardContent className="space-y-3 pt-5">
+          <div className="flex flex-wrap items-start gap-3">
+            <Field label="Поиск" hint="Цифры номера или фамилия." className="min-w-60 flex-1">
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                inputMode="search"
+                autoComplete="off"
+                placeholder="цифры номера"
+              />
+            </Field>
+            {/* «Выгрузить в Excel» — рядом с поиском: все строки по фильтру */}
+            <div className="pt-[1.375rem]">
+              <ExportButton
+                path={`/sites/${siteId}/inside/export`}
+                params={params}
+                fileLabel="на территории"
+                disabledReason={
+                  list.total === 0 ? 'На территории никого нет — выгружать нечего.' : undefined
+                }
+              />
             </div>
+          </div>
+          {quotaId ? (
+            <button
+              type="button"
+              onClick={onClearQuota}
+              aria-label="Показать всех, не только этот лимит"
+              data-testid="quota-chip"
+              className="inline-flex items-center gap-1 rounded-full border bg-accent px-3 py-1.5 text-sm"
+            >
+              Лимит: {quotaName ?? 'выбранный'} <X aria-hidden className="size-3.5" />
+            </button>
           ) : null}
         </CardContent>
       </Card>
 
       {!list.isLoading ? (
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <p className="pt-2 text-sm text-muted-foreground" data-testid="inside-total">
-            На территории: <span className="font-semibold text-foreground">{list.total}</span>
-          </p>
-          <ExportButton
-            path={`/sites/${siteId}/inside/export`}
-            params={params}
-            fileLabel="на территории"
-            disabledReason={
-              list.total === 0 ? 'На территории никого нет — выгружать нечего.' : undefined
-            }
-          />
-        </div>
+        <p className="text-sm text-muted-foreground" data-testid="inside-total">
+          На территории: <span className="font-semibold text-foreground">{list.total}</span>
+        </p>
       ) : null}
 
       {list.error ? <LoadError error={list.error} retry={() => void list.refetch()} /> : null}
@@ -129,6 +133,12 @@ export function InsideList({
                   <CardContent className="grid gap-1 pt-4 sm:grid-cols-[1fr_auto] sm:items-start">
                     <div className="min-w-0 space-y-1">
                       <p className="font-mono text-base font-semibold">{row.title}</p>
+                      {showTenant ? (
+                        <p className="text-sm font-medium" data-testid="inside-tenant">
+                          <span className="text-muted-foreground">Арендатор: </span>
+                          {row.tenantName}
+                        </p>
+                      ) : null}
                       <p className="text-sm text-muted-foreground">
                         {[
                           row.categoryName,

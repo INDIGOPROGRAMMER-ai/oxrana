@@ -1,3 +1,4 @@
+import { PERMISSION_LABELS } from '@oxrana/contracts';
 import { AppShell, Button, type NavGroup, Select, Skeleton, ThemeToggle } from '@oxrana/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
@@ -19,6 +20,7 @@ import {
   Route as RouteIcon,
   SlidersHorizontal,
   Smartphone,
+  Ticket,
   Truck,
   Users,
   Wand2,
@@ -143,11 +145,24 @@ function Shell() {
         }),
       ],
     },
-    ...(can('pass.approve')
-      ? [
-          {
-            title: 'Пропуска',
-            items: [
+    {
+      title: 'Пропуска',
+      items: [
+        // пункт виден всем, у кого есть админка; без права — неактивен с причиной (CLAUDE.md)
+        {
+          href: '/admin/passes',
+          label: 'Пропуска',
+          icon: Ticket,
+          ...(noSite
+            ? { disabledReason: noSite }
+            : !can('pass.view_all_tenants')
+              ? {
+                  disabledReason: `Нет права «${PERMISSION_LABELS['pass.view_all_tenants']}». Его выдаёт администратор объекта.`,
+                }
+              : {}),
+        },
+        ...(can('pass.approve')
+          ? [
               {
                 href: '/admin/approvals',
                 label: 'Согласование',
@@ -155,10 +170,10 @@ function Shell() {
                 ...(pendingCount > 0 ? { badge: String(pendingCount) } : {}),
                 ...(noSite ? { disabledReason: noSite } : {}),
               },
-            ],
-          },
-        ]
-      : []),
+            ]
+          : []),
+      ],
+    },
     {
       title: 'Арендаторы и правила',
       items: [

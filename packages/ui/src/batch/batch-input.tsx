@@ -7,6 +7,7 @@ import { Badge } from '../components/badge';
 import { Button } from '../components/button';
 import { Textarea } from '../components/inputs';
 import { Table, TBody, TD, TH, THead, TR } from '../components/table';
+import { BatchSuggestion, BatchTemplateButton } from './batch-tools';
 import { FileDrop } from './file-drop';
 
 export interface BatchColumn<T> {
@@ -34,6 +35,9 @@ export function BatchInput<T>({
   commitLabel = (n: number) => `Добавить ${n}`,
   onDone,
   rows = 6,
+  template,
+  suggest,
+  notice,
 }: {
   label: string;
   placeholder?: string;
@@ -49,6 +53,12 @@ export function BatchInput<T>({
   commitLabel?: (count: number) => string;
   onDone?: (result: BatchResult) => void;
   rows?: number;
+  /** Шаблон для Excel: файл с заголовками тех колонок, которые принимает этот ввод. */
+  template?: { fileName: string; titles: string[] };
+  /** Предложение поправить вставленный текст одной кнопкой (несколько номеров в строке). */
+  suggest?: (text: string) => { message: string; apply: (text: string) => string } | null;
+  /** Замечание о вставленном тексте (колонки, отключённые настройкой формы). */
+  notice?: (text: string) => ReactNode;
 }) {
   const inputId = useId();
   const [fileError, setFileError] = useState('');
@@ -136,6 +146,20 @@ export function BatchInput<T>({
           }}
         />
         {help ? <p className="text-xs text-muted-foreground">{help}</p> : null}
+        {template ? <BatchTemplateButton {...template} /> : null}
+        {(() => {
+          const offer = suggest?.(text);
+          return offer ? (
+            <BatchSuggestion
+              message={offer.message}
+              onApply={() => {
+                setText(offer.apply(text));
+                setDone(null);
+              }}
+            />
+          ) : null;
+        })()}
+        {notice?.(text)}
         <FileDrop
           onText={(loaded) => {
             setText(loaded);

@@ -3,6 +3,8 @@ import { normalizePlate } from '@oxrana/plates';
 import {
   Alert,
   Badge,
+  BatchSuggestion,
+  BatchTemplateButton,
   Button,
   Card,
   CardContent,
@@ -12,17 +14,26 @@ import {
   errorView,
   Field,
   FileDrop,
+  formatLocalDate,
   Input,
   maskTimeRange,
   SegmentedChoice,
   Select,
   Textarea,
+  TimeInput,
 } from '@oxrana/ui';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Loader2, TriangleAlert } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import type { z } from 'zod';
 import { api } from '../../lib/api';
+import {
+  columnsLabel,
+  passBatchLayout,
+  placeholderOf,
+  templateTitles,
+} from '../../lib/batch-columns';
+import { ownTime } from '../../lib/batch-time';
 import { useRefresh } from '../../lib/data';
 import {
   type BatchRow,
@@ -34,15 +45,17 @@ import {
 } from '../../lib/pass-batch';
 import { buildFormView } from '../../lib/pass-form-view';
 import { PASS_TYPE_LABEL } from '../../lib/pass-text';
+import {
+  findMultiPlateLines,
+  multiPlateQuestion,
+  splitMultiPlateLines,
+} from '../../lib/plate-split';
 import { useAutoPreview } from '../../lib/use-auto-preview';
 import { useCabinet } from './cabinet-context';
 import type { PassHints } from './pass-hints-panel';
 
 type BatchResult = z.infer<typeof PassBatchResultSchema>;
 type Line = ParsedRow<BatchRow>;
-
-const PLACEHOLDER = `А123ВС174\tфура\tVolvo\tИванов И. И.\t12:00-14:00\tразгрузка\t12
-В456НР174\tлегковые\tKia\t\t\t`;
 
 const SHOWN_ROWS = 200;
 
@@ -64,10 +77,14 @@ export function PassBatch() {
   const [settings, setSettings] = useState<BatchSettings>({
     passType: 'single',
     date: ctx?.today ?? '',
+    start: '',
+    end: '',
     from: ctx?.today ?? '',
     to: '',
     comment: '',
   });
+  // «Применить ко всем» перепишет своё время строк — сначала спрашиваем
+  const [confirmApply, setConfirmApply] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [commitError, setCommitError] = useState<ErrorView | null>(null);
   const [done, setDone] = useState<{
@@ -118,6 +135,18 @@ export function PassBatch() {
     }),
     [ctx, view],
   );
+  // колонки пакета — из той же действующей настройки формы, что и сама форма
+  const layout = useMemo(
+    () =>
+      view
+        ? passBatchLayout({
+            fields: view.fields,
+            hasDocks: view.docks.length > 0,
+            zoneChoice: view.zones.length > 1,
+          })
+        : null,
+    [view],
+  );
   const needsDock = (categoryId: string) =>
     Boolean(
       ctx?.tenant.trucksDockRequired &&
@@ -138,12 +167,12 @@ export function PassBatch() {
   function load(source: string) {
     setText(source);
     setDone(null);
-    if (source.trim() === '' || !view) {
+    if (source.trim() === '' || !view || !layout) {
       setLines([]);
       setIgnored([]);
       return;
     }
-    const imported = parseBatchRows(source, catalog, view.fields);
+    const imported = parseBatchRows(source, catalog, layout);
     setLines(imported.rows.map((r) => (r.value ? { ...r, value: withDefaults(r.value) } : r)));
     setIgnored(imported.ignoredColumns);
   }
@@ -181,40 +210,52 @@ export function PassBatch() {
     setDone(null);
   }
 
+  /** Контекст расчёта строки: настройки формы и объекта + «сейчас» по часам сервера. */
+  const buildContext = (nowMs: number) =>
+    ctx && view
+      ? {
+          timezone: ctx.site.timezone,
+          today: ctx.today,
+          nowMs,
+          fields: view.fields,
+          dockRequiredFor: needsDock,
+          defaultZoneId: view.defaultZoneId,
+          pastToleranceMin: ctx.site.pastStartToleranceMin,
+          singleMaxHours: ctx.site.singlePassMaxHours,
+          startNow: view.startNow,
+          singleHours: view.singleHours,
+        }
+      : null;
+
   // Строки для сервера: «сейчас» фиксируется при смене ввода, чтобы проверка не перезапускалась сама.
   const prepared = useMemo(() => {
     const drafts: Record<string, unknown>[] = [];
     const rows: { line: number; value: BatchRow }[] = [];
     const errors = new Map<number, string>();
     const fixes = new Map<number, RowFix[]>();
-    if (!ctx || !view) return { rows, drafts, errors, fixes };
-    const nowMs = serverNow();
+    const spans = new Map<number, string>();
+    const context = buildContext(serverNow());
+    if (!context) return { rows, drafts, errors, fixes, spans };
     for (const row of lines) {
       if (!row.value) continue;
-      const built = batchDraft(row.value, effective, {
-        timezone: ctx.site.timezone,
-        today: ctx.today,
-        nowMs,
-        fields: view.fields,
-        dockRequiredFor: needsDock,
-        defaultZoneId: view.defaultZoneId,
-        pastToleranceMin: ctx.site.pastStartToleranceMin,
-        singleMaxHours: ctx.site.singlePassMaxHours,
-      });
+      const built = batchDraft(row.value, effective, context);
       if (built.ok) {
         rows.push({ line: row.line, value: row.value });
         drafts.push(built.draft);
+        spans.set(row.line, built.span);
       } else {
         errors.set(row.line, built.error);
         if (built.fixes.length > 0) fixes.set(row.line, built.fixes);
       }
     }
-    return { rows, drafts, errors, fixes };
+    return { rows, drafts, errors, fixes, spans };
     // eslint-disable-next-line
   }, [
     lines,
     settings.passType,
     settings.date,
+    settings.start,
+    settings.end,
     settings.from,
     settings.to,
     settings.comment,
@@ -257,6 +298,25 @@ export function PassBatch() {
   const badLines = lines.length - okLines;
   const ready = okLines > 0 && !checking && preview.status === 'ready' && !committing;
 
+  const multi = findMultiPlateLines(text);
+  const ownTimeCount = lines.filter(
+    (l) =>
+      l.value &&
+      (l.value.dateText.trim() !== '' ||
+        l.value.fromText.trim() !== '' ||
+        l.value.toText.trim() !== ''),
+  ).length;
+  /** «Применить ко всем»: своё время строк снимается — они следуют общим значениям сверху. */
+  function applyTimeToAll() {
+    setLines((all) =>
+      all.map((l) =>
+        l.value ? { ...l, value: { ...l.value, dateText: '', fromText: '', toText: '' } } : l,
+      ),
+    );
+    setConfirmApply(false);
+    setDone(null);
+  }
+
   const noType = lines.filter((l) => l.value && !l.value.categoryId).length;
   const noDock = lines.filter(
     (l) => l.value && !l.value.dockId && needsDock(l.value.categoryId) && catalog.docks.length > 0,
@@ -274,18 +334,10 @@ export function PassBatch() {
       // время «сейчас» берётся заново: между проверкой и нажатием могло пройти время
       const nowMs = serverNow();
       const sent: { line: number; draft: Record<string, unknown> }[] = [];
+      const context = buildContext(nowMs);
       for (const row of prepared.rows) {
-        if (serverErrors.has(row.line)) continue;
-        const built = batchDraft(row.value, effective, {
-          timezone: ctx.site.timezone,
-          today: ctx.today,
-          nowMs,
-          fields: view.fields,
-          dockRequiredFor: needsDock,
-          defaultZoneId: view.defaultZoneId,
-          pastToleranceMin: ctx.site.pastStartToleranceMin,
-          singleMaxHours: ctx.site.singlePassMaxHours,
-        });
+        if (serverErrors.has(row.line) || !context) continue;
+        const built = batchDraft(row.value, effective, context);
         if (built.ok) sent.push({ line: row.line, draft: built.draft });
       }
       const result = await api<BatchResult>('/passes/batch', {
@@ -360,17 +412,39 @@ export function PassBatch() {
             </Field>
           )}
           {single ? (
-            <Field
-              label="Дата приезда"
-              required
-              hint={`Время объекта: ${ctx.site.timezoneLabel}. Сегодня без времени пропуск действует с «сейчас» ${view.singleHours} ч, на будущую дату — весь день до 23:59.`}
-            >
-              <DateInput
-                value={settings.date}
-                todayIso={ctx.today}
-                onChange={(date) => setSettings({ ...settings, date })}
-              />
-            </Field>
+            <>
+              <Field
+                label="Дата приезда"
+                required
+                hint={`Общее значение: для строк, у которых дата не указана. Время объекта: ${ctx.site.timezoneLabel}. На будущую дату без времени пропуск действует весь день до 23:59.`}
+              >
+                <DateInput
+                  aria-label="Общая дата приезда"
+                  value={settings.date}
+                  todayIso={ctx.today}
+                  onChange={(date) => setSettings({ ...settings, date })}
+                />
+              </Field>
+              <Field
+                label="Время действия"
+                hint={`Пустое «с» — «сейчас»${view.startNow ? '' : ' (если не указать)'}, пустое «до» — начало + ${view.singleHours} ч, не больше ${ctx.site.singlePassMaxHours} ч. Для строк без своего времени.`}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted-foreground">с</span>
+                  <TimeInput
+                    aria-label="Общее время «с»"
+                    value={settings.start}
+                    onChange={(start) => setSettings({ ...settings, start })}
+                  />
+                  <span className="text-xs text-muted-foreground">до</span>
+                  <TimeInput
+                    aria-label="Общее время «до»"
+                    value={settings.end}
+                    onChange={(end) => setSettings({ ...settings, end })}
+                  />
+                </div>
+              </Field>
+            </>
           ) : (
             <>
               <Field label="Действует с" required>
@@ -391,6 +465,40 @@ export function PassBatch() {
               ) : null}
             </>
           )}
+          {lines.length > 0 ? (
+            <div className="space-y-1.5 sm:col-span-2" data-testid="apply-time">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => (ownTimeCount > 0 ? setConfirmApply(true) : applyTimeToAll())}
+              >
+                Применить ко всем
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Общие {single ? 'дата и время' : 'даты'} станут временем всех строк: своё время
+                строк, заданное в таблице или в предпросмотре, будет заменено.
+              </p>
+              {confirmApply ? (
+                <Alert tone="warning" data-testid="apply-time-confirm">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span>В {ownTimeCount} строках уже есть своё время. Заменить его общим?</span>
+                    <Button type="button" size="sm" onClick={applyTimeToAll}>
+                      Заменить во всех строках
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setConfirmApply(false)}
+                    >
+                      Не менять
+                    </Button>
+                  </div>
+                </Alert>
+              ) : null}
+            </div>
+          ) : null}
           {!single && view.fields.comment !== 'hidden' ? (
             <Field
               label="Общий комментарий"
@@ -425,17 +533,28 @@ export function PassBatch() {
           id={textId}
           rows={5}
           value={text}
-          placeholder={PLACEHOLDER}
+          placeholder={placeholderOf(layout?.columns ?? [], formatLocalDate(ctx.today))}
           spellCheck={false}
           className="font-mono"
           onChange={(e) => load(e.target.value)}
         />
-        <p className="text-xs text-muted-foreground">
-          Колонки: Номер · Тип · Марка · Водитель · Окно · Комментарий · Док — по порядку, а если в
-          первой строке заголовки («Номер», «Тип», «Док»…), то по ним. Пробелы в номерах не мешают.
-          Типы можно писать как удобно: «легковые», «Фура». Доступные типы:{' '}
+        <p className="text-xs text-muted-foreground" data-testid="batch-columns">
+          {columnsLabel(layout?.columns ?? [])} Колонки идут по порядку, а если в первой строке
+          заголовки («Номер», «Тип», «Дата»…), то по ним. «Дата», «С», «По» — свой срок каждой
+          машины, пустая ячейка берёт общее значение сверху. Пробелы в номерах не мешают. Типы можно
+          писать как удобно: «легковые», «Фура». Доступные типы:{' '}
           {view.categories.map((c) => c.name).join(', ') || '—'}.
         </p>
+        <BatchTemplateButton
+          fileName="шаблон-пакет-пропусков.xlsx"
+          titles={templateTitles(layout?.columns ?? [])}
+        />
+        {multi.length > 0 ? (
+          <BatchSuggestion
+            message={multiPlateQuestion(multi)}
+            onApply={() => load(splitMultiPlateLines(text))}
+          />
+        ) : null}
         {ignored.length > 0 ? (
           <Alert tone="warning" data-testid="batch-ignored">
             Колонки «{ignored.join('», «')}» отключены настройкой формы пропуска — значения из них
@@ -481,6 +600,9 @@ export function PassBatch() {
                 view={view}
                 needsDock={needsDock}
                 showWindow={view.fields.window !== 'hidden'}
+                passType={effective.passType}
+                todayIso={ctx.today}
+                span={prepared.spans.get(row.line)}
                 fixes={prepared.fixes.get(row.line)}
                 onChange={(patch) => update(row.line, patch)}
               />
@@ -648,6 +770,9 @@ function BatchRowCard({
   view,
   needsDock,
   showWindow,
+  passType,
+  todayIso,
+  span,
   fixes,
   onChange,
 }: {
@@ -657,6 +782,10 @@ function BatchRowCard({
   view: NonNullable<ReturnType<typeof buildFormView>>;
   needsDock: (categoryId: string) => boolean;
   showWindow: boolean;
+  passType: PassType;
+  todayIso: string;
+  /** Итоговое действие пропуска в поясе объекта: «15.10 13:44 → 16.10 12:44». */
+  span: string | undefined;
   /** Исправления ошибки окна одним нажатием («Начать окно с 13:50»). */
   fixes: RowFix[] | undefined;
   onChange: (patch: Partial<BatchRow>) => void;
@@ -671,6 +800,10 @@ function BatchRowCard({
         ...(value?.note ? [value.note] : []),
         ...(info?.warnings ?? []),
       ].join(' · ');
+  const own = value
+    ? ownTime(passType, value, todayIso)
+    : { date: '', start: '', end: '', from: '', to: '', error: null };
+  const ownAny = Boolean(own.date || own.start || own.end || own.from || own.to);
   const windowParsed = value ? parseWindow(value.windowText) : null;
   const windowBad = windowParsed !== null && 'error' in windowParsed;
   const typeOptions =
@@ -772,6 +905,66 @@ function BatchRowCard({
                 className={`h-9 ${windowBad ? 'border-destructive' : ''}`}
               />
             </Field>
+          ) : null}
+        </div>
+      ) : null}
+      {value ? (
+        <div className="mt-2 space-y-1" data-testid="batch-time">
+          <div className="flex flex-wrap items-end gap-2">
+            {passType === 'single' ? (
+              <>
+                <Field label="Дата">
+                  <DateInput
+                    aria-label={`Дата, строка ${row.line}`}
+                    value={own.date}
+                    todayIso={todayIso}
+                    onChange={(v) => onChange({ dateText: v })}
+                  />
+                </Field>
+                <Field label="С">
+                  <TimeInput
+                    aria-label={`С, строка ${row.line}`}
+                    value={own.start}
+                    onChange={(v) => onChange({ fromText: v })}
+                  />
+                </Field>
+                <Field label="По">
+                  <TimeInput
+                    aria-label={`По, строка ${row.line}`}
+                    value={own.end}
+                    onChange={(v) => onChange({ toText: v })}
+                  />
+                </Field>
+              </>
+            ) : (
+              <>
+                <Field label="С">
+                  <DateInput
+                    aria-label={`С, строка ${row.line}`}
+                    value={own.from}
+                    todayIso={todayIso}
+                    onChange={(v) => onChange({ fromText: v })}
+                  />
+                </Field>
+                {passType === 'multi' ? (
+                  <Field label="По">
+                    <DateInput
+                      aria-label={`По, строка ${row.line}`}
+                      value={own.to}
+                      todayIso={todayIso}
+                      onChange={(v) => onChange({ toText: v })}
+                    />
+                  </Field>
+                ) : null}
+              </>
+            )}
+          </div>
+          {span ? (
+            <p className="text-xs" data-testid="batch-span">
+              <span className="text-muted-foreground">Действует: </span>
+              <span className="font-medium">{span}</span>
+              {ownAny ? null : <span className="text-muted-foreground"> · общее время</span>}
+            </p>
           ) : null}
         </div>
       ) : null}

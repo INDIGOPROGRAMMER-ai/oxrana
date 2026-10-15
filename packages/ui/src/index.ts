@@ -1,5 +1,6 @@
 export { ApiError, api, downloadFile, type ErrorView, errorView } from './api';
 export { type BatchColumn, BatchInput } from './batch/batch-input';
+export { BatchSuggestion, BatchTemplateButton, saveBytes } from './batch/batch-tools';
 export { FileDrop } from './batch/file-drop';
 export {
   BATCH_FILE_ACCEPT,
