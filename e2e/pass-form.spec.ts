@@ -181,6 +181,55 @@ test('администратор настраивает форму: у А тол
   await expect(preview.getByLabel('Тип транспорта').locator('option')).toHaveText(['фура']);
 });
 
+test('редактор формы: правка не пропадает, пока сохранение и перезагрузка идут медленно (поля заблокированы)', async () => {
+  test.setTimeout(60_000);
+  const page = adminSession.page;
+  const saved = page.getByText('Настройка формы сохранена');
+  await page.goto(`${WEB_URL}/admin/pass-form`);
+  await expect(saved).toHaveCount(0, { timeout: 10_000 });
+  await page.getByLabel('Сотрудник', { exact: true }).selectOption({ label: STAFF_B.name });
+  await page.getByRole('button', { name: 'Сотрудник', exact: true }).click();
+  const preview = page.getByTestId('form-preview');
+  await expect(preview.getByLabel('Тип транспорта').locator('option')).toHaveText(['фура']);
+
+  // перезагрузка редактора после сохранения приходит с задержкой в 1,5 с — как на медленной сети
+  let slow = false;
+  await page.route('**/api/tenants/*/pass-form/editor*', async (route) => {
+    if (slow) await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+  const types = page.getByRole('group', { name: 'Типы транспорта' });
+  await types.getByText('Рефрижератор', { exact: true }).click();
+  slow = true;
+  await page.getByRole('button', { name: /Сохранить уровень/ }).click();
+  // не дожидаясь перезагрузки, человек жмёт «Сбросить к уровню выше»: пока идёт сохранение,
+  // поля заблокированы, нажатие срабатывает после него и потом не затирается пришедшими данными
+  const reset = page.getByRole('button', {
+    name: /Сбросить к уровню выше: Какие типы транспорта можно выбрать/,
+  });
+  await expect(reset).toBeDisabled();
+  await reset.click();
+  await expect(saved).toBeVisible();
+  slow = false;
+  await expect(preview.getByLabel('Тип транспорта').locator('option')).toHaveCount(4);
+  // сохранённое на сервере осталось (сброс не сохраняли)
+  await page.reload();
+  await page.getByLabel('Сотрудник', { exact: true }).selectOption({ label: STAFF_B.name });
+  await page.getByRole('button', { name: 'Сотрудник', exact: true }).click();
+  await expect(preview.getByLabel('Тип транспорта').locator('option')).toHaveText([
+    'Выберите тип',
+    'Рефрижератор',
+    'фура',
+  ]);
+
+  // вернуть сотруднику Б только «фуру» — как ждут следующие проверки
+  await types.getByText('Рефрижератор', { exact: true }).click();
+  await expect(preview.getByLabel('Тип транспорта').locator('option')).toHaveText(['фура']);
+  await page.getByRole('button', { name: /Сохранить уровень/ }).click();
+  await expect(saved.first()).toBeVisible();
+  await page.unroute('**/api/tenants/*/pass-form/editor*');
+});
+
 test('каждый видит только своё; сервер отклоняет чужой тип и вид пропуска через API', async () => {
   const a = staffA.page;
   await a.goto(`${WEB_URL}/cabinet/passes/new`);
@@ -523,6 +572,8 @@ test('на телефоне (360 px): фильтры свёрнуты в «Фи�
     firstRow?.y ?? 0,
     'список пропусков виден сразу под строкой поиска, а не под полэкрана фильтров',
   ).toBeLessThan(380);
+  // запас до порога виден в отчёте: список не должен подбираться к границе впритык
+  test.info().annotations.push({ type: 'первая-строка-y', description: String(firstRow?.y) });
   expect(header?.y ?? 0).toBeLessThan(300);
   await page.getByTestId('filters-button').click();
   const sheet = page.getByRole('dialog', { name: 'Фильтры' });

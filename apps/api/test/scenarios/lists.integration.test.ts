@@ -340,6 +340,55 @@ describe('выгрузка XLSX/CSV', () => {
     expect(res.body).toContain("'=1+1");
   });
 
+  it('«Изменён последним» и «Изменён»: пропуск правил другой пользователь — в выгрузке его имя и время; не менялся — пусто', async () => {
+    const make = async (plate: string) => {
+      const res = await t.as(logist, {
+        method: 'POST',
+        url: '/passes',
+        payload: {
+          tenantId: dns,
+          passType: 'single',
+          participant: 'vehicle',
+          plate,
+          categoryId: car,
+          validFrom: new Date(Date.parse(NOON) + HOUR).toISOString(),
+          validTo: new Date(Date.parse(NOON) + 3 * HOUR).toISOString(),
+        },
+      });
+      expect(res.statusCode, res.body).toBe(201);
+      return res.json().id as string;
+    };
+    const edited = await make('М701ЕД174');
+    await make('М702ЕД174');
+    t.clock.set(new Date(Date.parse(NOON) + 20 * 60_000).toISOString());
+    const patched = await t.as(admin, {
+      method: 'PATCH',
+      url: `/passes/${edited}`,
+      payload: { comment: 'Уточнил диспетчер' },
+    });
+    expect(patched.statusCode, patched.body).toBe(200);
+    t.clock.set(NOON);
+
+    const [adminUser] = await ownerDb()
+      .select({ name: schema.users.fullName })
+      .from(schema.users)
+      .where(eq(schema.users.id, admin.id));
+    expect(adminUser?.name).toBeTruthy();
+
+    const res = await t.as(logist, { url: exportUrl('passes', `tenantId=${dns}&q=70&format=csv`) });
+    const lines = csvLines(res.body);
+    const header = (lines[0] ?? '').split(';');
+    const who = header.indexOf('Изменён последним');
+    const when = header.indexOf('Изменён (Челябинск, UTC+5)');
+    expect(who).toBeGreaterThan(0);
+    expect(when).toBe(who + 1);
+    const cells = (plate: string) => (lines.find((l) => l.startsWith(plate)) ?? '').split(';');
+    expect(cells('М701ЕД174')[who]).toBe(adminUser?.name);
+    expect(cells('М701ЕД174')[when]).toBe('10.03.2026 12:20');
+    expect(cells('М702ЕД174')[who]).toBe('');
+    expect(cells('М702ЕД174')[when]).toBe('');
+  });
+
   it('бухгалтер (report.export без права видеть пропуска) выгрузить список не может — 403 называет право', async () => {
     const accountant = roleActor('accountant');
     const res = await t.as(accountant, { url: exportUrl('passes', 'format=csv') });

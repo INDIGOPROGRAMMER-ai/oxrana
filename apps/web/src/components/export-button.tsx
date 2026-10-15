@@ -7,9 +7,11 @@ import {
   Select,
   useToast,
 } from '@oxrana/ui';
+import { Link } from '@tanstack/react-router';
 import { Download, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { useMe } from '../lib/data';
+import { exportBlockedReason } from '../lib/export-access';
 
 /**
  * «Выгрузить» (7b.1): все строки по текущему фильтру, а не только показанная страница. Формат —
@@ -34,10 +36,8 @@ export function ExportButton({
   const [format, setFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrorView | null>(null);
-  const allowed = can('report.export');
-  const reason = !allowed
-    ? 'У вашей роли нет права выгружать списки (право «Выгрузка отчётов»).'
-    : (disabledReason ?? null);
+  const blocked = exportBlockedReason(can);
+  const reason = blocked?.text ?? disabledReason ?? null;
 
   async function run() {
     setBusy(true);
@@ -78,6 +78,18 @@ export function ExportButton({
           Выгрузить
         </Button>
       </div>
+      {blocked ? (
+        <p className="text-xs text-warning" data-testid="export-blocked">
+          {blocked.text}{' '}
+          {blocked.rolesLink ? (
+            <Link to="/admin/roles" className="font-medium underline">
+              Настроить роли
+            </Link>
+          ) : (
+            'Права выдаёт администратор объекта.'
+          )}
+        </p>
+      ) : null}
       <ErrorAlert error={error} />
     </div>
   );

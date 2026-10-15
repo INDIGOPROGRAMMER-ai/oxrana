@@ -19,6 +19,7 @@ import {
   inArray,
   isNull,
   lt,
+  ne,
   or,
   type SQL,
   sql,
@@ -308,6 +309,19 @@ async function authorLabels(
     '—';
 }
 
+/** Колонки «Изменён последним» и «Изменён»: не менялся — пусто; действие системы (задача по сроку) — «Система». */
+function lastEdit(
+  edit:
+    | { at: Date; actorType: string; userId: string | null; gateAccountId: string | null }
+    | undefined,
+  author: (row: { createdBy: string | null; gateAccountId: string | null }) => string,
+  at: (d: Date | null) => string,
+): [string, string] {
+  if (!edit) return ['', ''];
+  const named = author({ createdBy: edit.userId, gateAccountId: edit.gateAccountId });
+  return [named === '—' ? (edit.actorType === 'system' ? 'Система' : '') : named, at(edit.at)];
+}
+
 /** Выгрузка пропусков: все строки по фильтру. Факт выгрузки — в аудит (число строк, формат). */
 export async function exportPasses(
   s: Scope,
@@ -330,10 +344,36 @@ export async function exportPasses(
     s,
     rows.map((r) => r.id),
   );
-  const author = await authorLabels(
-    s,
-    rows.map((r) => ({ createdBy: r.createdBy, gateAccountId: r.createdByGateAccountId })),
+  // Кто и когда менял последним: любое событие пропуска в аудите после создания — одним запросом на всю выгрузку
+  const edits = new Map(
+    (
+      await s.db
+        .selectDistinctOn([schema.auditLog.entityId], {
+          entityId: schema.auditLog.entityId,
+          at: schema.auditLog.at,
+          actorType: schema.auditLog.actorType,
+          userId: schema.auditLog.actorUserId,
+          gateAccountId: schema.auditLog.actorGateAccountId,
+        })
+        .from(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.organizationId, s.organizationId),
+            eq(schema.auditLog.entity, 'pass'),
+            ne(schema.auditLog.action, 'create'),
+            inArray(
+              schema.auditLog.entityId,
+              s.db.select({ id: schema.passes.id }).from(schema.passes).where(where),
+            ),
+          ),
+        )
+        .orderBy(schema.auditLog.entityId, desc(schema.auditLog.at), desc(schema.auditLog.id))
+    ).map((e) => [e.entityId, e]),
   );
+  const author = await authorLabels(s, [
+    ...rows.map((r) => ({ createdBy: r.createdBy, gateAccountId: r.createdByGateAccountId })),
+    ...[...edits.values()].map((e) => ({ createdBy: e.userId, gateAccountId: e.gateAccountId })),
+  ]);
   const tenantNames = new Map(rules.tenants.map((t) => [t.id, t.name]));
   const tz = site.timezone;
   const zoneLabel = siteTimeLabel(site, s.ctx.now());
@@ -348,6 +388,8 @@ export async function exportPasses(
     'Место назначения',
     'Автор',
     `Создан (${zoneLabel})`,
+    'Изменён последним',
+    `Изменён (${zoneLabel})`,
     'На территории сейчас',
     'Арендатор',
   ];
@@ -366,6 +408,7 @@ export async function exportPasses(
       .join(', '),
     author({ createdBy: r.createdBy, gateAccountId: r.createdByGateAccountId }),
     at(r.createdAt),
+    ...lastEdit(edits.get(r.id), author, at),
     open.has(r.id) ? 'да' : 'нет',
     tenantNames.get(r.tenantId) ?? '',
   ]);

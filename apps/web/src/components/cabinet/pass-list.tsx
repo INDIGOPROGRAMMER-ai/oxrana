@@ -166,6 +166,16 @@ export function PassList({
       </div>
     </Field>
   );
+  const exportButton = ctx ? (
+    <ExportButton
+      path={`/sites/${ctx.site.id}/passes/export`}
+      params={params}
+      fileLabel="пропуска"
+      disabledReason={
+        list.total === 0 ? 'По этому фильтру пропусков нет — выгружать нечего.' : undefined
+      }
+    />
+  ) : null;
   const searchField = (
     <Field label="Поиск" hint={wide ? 'Цифры номера или фамилия.' : undefined}>
       <Input
@@ -192,7 +202,16 @@ export function PassList({
       ) : (
         <div className="space-y-2" data-testid="filters-mobile">
           <div className="flex items-end gap-2">
-            <div className="min-w-0 flex-1">{searchField}</div>
+            <div className="min-w-0 flex-1">
+              <Input
+                aria-label="Поиск"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                inputMode="search"
+                autoComplete="off"
+                placeholder="Поиск: цифры номера"
+              />
+            </div>
             <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
               <Button
                 variant="outline"
@@ -211,6 +230,13 @@ export function PassList({
                 {statusField}
                 {typeField}
                 {dateField}
+                <div className="space-y-1 border-t pt-3">
+                  <p className="text-sm font-medium">Выгрузка</p>
+                  <p className="text-xs text-muted-foreground">
+                    Все пропуска по этим условиям, а не только показанные на экране.
+                  </p>
+                  {exportButton}
+                </div>
                 <div className="mt-auto flex gap-2">
                   <Button className="flex-1" onClick={() => setFiltersOpen(false)}>
                     Показать
@@ -222,8 +248,13 @@ export function PassList({
               </SheetContent>
             </Sheet>
           </div>
-          {chips.length > 0 ? (
-            <ul className="flex flex-wrap gap-1.5" aria-label="Включённые фильтры">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {ctx && !list.isLoading ? (
+              <p className="mr-1 text-xs text-muted-foreground" data-testid="found-total">
+                Найдено {list.total}
+              </p>
+            ) : null}
+            <ul className="contents" aria-label="Включённые фильтры">
               {chips.map((chip) => (
                 <li key={chip.key}>
                   <button
@@ -237,23 +268,16 @@ export function PassList({
                 </li>
               ))}
             </ul>
-          ) : null}
+          </div>
         </div>
       )}
 
-      {ctx && !list.isLoading ? (
+      {wide && ctx && !list.isLoading ? (
         <div className="flex flex-wrap items-start justify-between gap-2">
           <p className="pt-2 text-sm text-muted-foreground" data-testid="found-total">
             Найдено {list.total}
           </p>
-          <ExportButton
-            path={`/sites/${ctx.site.id}/passes/export`}
-            params={params}
-            fileLabel="пропуска"
-            disabledReason={
-              list.total === 0 ? 'По этому фильтру пропусков нет — выгружать нечего.' : undefined
-            }
-          />
+          {exportButton}
         </div>
       ) : null}
       {list.error ? <LoadError error={list.error} retry={() => void list.refetch()} /> : null}

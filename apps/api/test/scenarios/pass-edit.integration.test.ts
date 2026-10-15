@@ -3,6 +3,7 @@ import { schema } from '@oxrana/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  customActor,
   KEYS,
   NOON,
   ownerDb,
@@ -213,6 +214,61 @@ describe('после въезда (визит открыт)', () => {
     });
     expect(decided.statusCode, decided.body).toBe(200);
     expect((await view(passId)).validTo).toBe(beyondTo);
+  });
+
+  it('Q-90: у правящего есть право согласовать — заявка создаётся и сразу согласуется им же, в аудите обе записи; причина обязательна', async () => {
+    const plate = nextPlate();
+    const passId = await create(admin, single({ plate }));
+    await enter(passId, plate.toUpperCase());
+    const start = (await view(passId)).validFrom;
+    const beyondTo = iso(Date.parse(start) + 36 * HOUR);
+    // без причины не пускает: согласование — на совести того, кто нажал
+    const noReason = await patch(admin, passId, { validTo: beyondTo });
+    expect(error(noReason).code).toBe('reason_required');
+    const res = await patch(admin, passId, { validTo: beyondTo, reason: 'Фура ждёт растаможки' });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().applied).toEqual(['validTo']);
+    expect(res.json().changeRequest).toMatchObject({
+      status: 'approved',
+      requestedBy: admin.id,
+      decidedBy: admin.id,
+    });
+    expect((await view(passId)).validTo).toBe(beyondTo);
+    const history = (await t.as(admin, { url: `/passes/${passId}/history` })).json().items as {
+      action: string;
+      reason: string | null;
+    }[];
+    expect(history.map((h) => h.action)).toEqual(
+      expect.arrayContaining(['change_request', 'update']),
+    );
+    const audit = await ownerDb()
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.entity, 'pass_change_request'));
+    expect(
+      audit.some((a) => a.action === 'approve' && a.entityId === res.json().changeRequest.id),
+    ).toBe(true);
+  });
+
+  it('Q-90: права согласовать нет — не отказ, а заявка на согласование (в том числе у правящего без права заявок)', async () => {
+    const editor = customActor(['pass.view_all_tenants', 'pass.view', 'pass.edit']);
+    const plate = nextPlate();
+    const passId = await create(admin, single({ plate }));
+    await enter(passId, plate.toUpperCase());
+    const start = (await view(passId)).validFrom;
+    const res = await patch(editor, passId, {
+      validTo: iso(Date.parse(start) + 36 * HOUR),
+      reason: 'Нужно продлить',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().applied).toEqual([]);
+    expect(res.json().changeRequest).toMatchObject({ status: 'pending' });
+    // в пределах максимума тот же человек правит сразу
+    const within = await patch(editor, passId, {
+      validTo: iso(Date.parse(start) + 20 * HOUR),
+      reason: 'Достаточно до утра',
+    });
+    expect(within.json().applied).toEqual(['validTo']);
   });
 
   it('Q-85: сокращение «действует до» после въезда — сразу', async () => {

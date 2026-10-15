@@ -479,12 +479,14 @@ test('продление после въезда: до максимума — с
   // сверх максимума — заявка; до решения действует прежний срок
   dialog = await open();
   await setEnd(dialog, startMs + 30 * 3_600_000);
-  await expect(dialog.getByTestId('edit-beyond-max')).toBeVisible();
+  // права согласовать у логиста нет: форма не отказывает, а предлагает отправить на согласование
+  await expect(dialog.getByTestId('edit-beyond-max')).toContainText('нужно согласование');
+  await expect(dialog.getByRole('button', { name: 'Сохранить' })).toHaveCount(0);
   await dialog.getByLabel('Причина изменения').fill('Фура стоит под разгрузкой двое суток');
   const request = page.waitForRequest(
     (r) => r.method() === 'PATCH' && r.url().includes(`/passes/${created.id}`),
   );
-  await dialog.getByRole('button', { name: 'Сохранить' }).click();
+  await dialog.getByRole('button', { name: 'Отправить на согласование' }).click();
   const sent = (await request).postDataJSON();
   expect(Object.keys(sent).sort()).toEqual(['reason', 'validTo']);
   await expect(dialog).toBeHidden();
@@ -519,13 +521,25 @@ test('на телефоне (360 px): списки, «Сейчас на терр
   await page.getByTestId('show-more').click();
   await expect(page.getByTestId('pass-row')).toHaveCount(100);
   await expectNoHorizontalScroll(page, 'список пропусков после «Показать ещё»');
-  // кнопка «Выгрузить» доступна и помещается
-  await expect(page.getByTestId('export-button')).toBeVisible();
+  // на телефоне «Выгрузить» — в панели «Фильтры», а не над списком: список остаётся на первом экране
+  await expect(page.getByTestId('export-button')).toHaveCount(0);
+  await page.getByTestId('filters-button').click();
+  await expect(
+    page.getByRole('dialog', { name: 'Фильтры' }).getByTestId('export-button'),
+  ).toBeVisible();
+  await expectNoHorizontalScroll(page, 'панель фильтров с выгрузкой');
+  await page.keyboard.press('Escape');
   // вид пропуска: на 360 px либо три кнопки в ряд, либо обычный список — но не выход за край
   await page.goto(`${WEB_URL}/cabinet/passes/new`);
   const buttons = page.getByRole('radio');
   const select = page.getByRole('combobox', { name: 'Вид пропуска' });
   await expect(buttons.first().or(select)).toBeVisible();
+  // что вышло на деле — в аннотации и на снимке (test-results)
+  test.info().annotations.push({
+    type: 'вид-пропуска-360',
+    description: (await buttons.count()) === 3 ? 'кнопки' : 'список',
+  });
+  await page.screenshot({ path: test.info().outputPath('form-360.png') });
   await expectNoHorizontalScroll(page, 'форма: вид пропуска');
   await phone.context.close();
 });
@@ -554,7 +568,8 @@ test('без права «Выгрузка отчётов» кнопка неа�
   await page.goto(`${WEB_URL}/cabinet/passes`);
   const button = page.getByTestId('export-button');
   await expect(button).toBeDisabled();
-  await expect(button).toHaveAttribute('title', /нет права выгружать/);
+  await expect(button).toHaveAttribute('title', /Нет права «Выгрузка отчётов»/);
+  await expect(page.getByTestId('export-blocked')).toContainText('Нет права «Выгрузка отчётов»');
   await api(
     page,
     'GET',

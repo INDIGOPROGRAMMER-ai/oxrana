@@ -404,20 +404,37 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
     if (policy === null || policy.mode === 'on_request') {
       viaRequest = fields.filter((f) => CHANGE_REQUEST_FIELDS.includes(f));
     }
-    // После въезда «действует до»: сокращение и продление в пределах того, что можно было оформить
-    // без согласования, — сразу; продление сверх — заявкой, решает согласующий (Q-85).
-    if (phase === 'inside' && fields.includes('validTo')) {
-      viaRequest = viaRequest.filter((f) => f !== 'validTo');
-      const verdict = extensionVerdict(ctx, pass.passType, current.validFrom, current, requested);
-      if (verdict === 'beyond') {
-        viaRequest.push('validTo');
-        beyondMax = true;
-      }
+  }
+  // После въезда «действует до»: сокращение и продление в пределах того, что можно было оформить
+  // без согласования, — сразу; продление сверх — всегда через согласование, одинаково для всех (Q-85, Q-90).
+  if (phase === 'inside' && fields.includes('validTo')) {
+    viaRequest = viaRequest.filter((f) => f !== 'validTo');
+    const verdict = extensionVerdict(ctx, pass.passType, current.validFrom, current, requested);
+    if (verdict === 'beyond') {
+      viaRequest.push('validTo');
+      beyondMax = true;
     }
+  }
+  // Есть право согласовать — заявка создаётся и сразу согласуется им же, причина обязательна;
+  // в аудите видны и заявка, и согласование (Q-90).
+  const approvesSelf =
+    beyondMax && can(s.ctx, 'pass.approve') && can(s.ctx, 'pass.change_request.decide');
+  if (approvesSelf && !patch.reason) {
+    throw new AppError('reason_required', {
+      field: 'reason',
+      message:
+        'Срок выходит за максимум и согласуется вами же — укажите причину, она попадёт в журнал.',
+    });
   }
   const direct = fields.filter((f) => !viaRequest.includes(f));
   if (direct.length > 0) requirePermission(s.ctx, 'pass.edit');
-  if (viaRequest.length > 0) requirePermission(s.ctx, 'pass.change_request.create');
+  if (viaRequest.length > 0 && !approvesSelf) {
+    // просить продлить сверх максимума вправе и тот, кто правит пропуска (pass.edit): форма не отклоняет, а отправляет на согласование
+    requirePermission(
+      s.ctx,
+      ...(beyondMax ? ['pass.change_request.create', 'pass.edit'] : ['pass.change_request.create']),
+    );
+  }
 
   // Проверяется пропуск таким, каким он станет (и с прямой правкой, и с запрошенной).
   await validatePass(s, ctx, merged, new Set(fields), { skipMaxDuration: beyondMax });
@@ -489,6 +506,17 @@ export async function patchPass(s: Scope, passId: string, patch: PassPatch): Pro
         fields: apiFields(viaRequest),
       },
     });
+  }
+  if (changeRequest && approvesSelf) {
+    const decided = await decideChangeRequest(
+      s,
+      changeRequest.id,
+      'approved',
+      patch.reason ?? null,
+    );
+    changeRequest = decided.request;
+    row = decided.pass;
+    return { row, applied: apiFields([...direct, ...viaRequest]), changeRequest };
   }
   return { row, applied: apiFields(direct), changeRequest };
 }
