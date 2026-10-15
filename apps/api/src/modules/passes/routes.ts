@@ -6,16 +6,21 @@ import {
   ChangeRequestViewSchema,
   DecisionSchema,
   IdParamsSchema,
+  InsideExportQuerySchema,
+  InsideListSchema,
+  InsideQuerySchema,
   PassApproveSchema,
   PassBatchResultSchema,
   PassBatchSchema,
   PassCreatedSchema,
   PassCreateSchema,
+  PassExportQuerySchema,
   PassHintsQuerySchema,
   PassHintsRequestSchema,
   PassHintsSchema,
   PassHistoryEntrySchema,
   PassListQuerySchema,
+  PassListSchema,
   PassPatchResultSchema,
   PassPatchSchema,
   PassViewSchema,
@@ -26,19 +31,25 @@ import {
   VisitViewSchema,
 } from '@oxrana/contracts';
 import { schema } from '@oxrana/db';
-import { addLocalDays, localInstant } from '@oxrana/engine';
-import { normalizePlateText, plateDigits } from '@oxrana/plates';
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { localDate } from '@oxrana/engine';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { isTenantUser } from '../../actor';
-import { assertTenantAccess, type Ctx, can, ctxOf, type Scope } from '../../core/context';
+import { ctxOf, requirePermission, type Scope } from '../../core/context';
 import { loadSite, loadTenant } from '../../core/loaders';
 import { approvePass, creatorNames, rejectPass } from './approvals';
 import { createBatch } from './batch';
 import { registerCabinetRoutes } from './cabinet';
 import { passHints } from './hints';
+import {
+  exportInside,
+  exportPasses,
+  insidePage,
+  passConditions,
+  passPage,
+  visibleTenants,
+} from './listing';
 import {
   assertCanView,
   cancelPass,
@@ -54,16 +65,6 @@ const VIEW = ['pass.view', 'pass.view_all_tenants'] as const;
 const CREATE = ['pass.create.single', 'pass.create.multi', 'pass.create.permanent'] as const;
 const EDIT = ['pass.edit', 'pass.change_request.create'] as const;
 const iso = (d: Date | null) => (d === null ? null : d.toISOString());
-
-/** Арендаторы, чьи пропуска видит актор на объекте; `null` — все. */
-function visibleTenants(ctx: Ctx, requested: string | undefined): string[] | null {
-  const all = can(ctx, 'pass.view_all_tenants') && !isTenantUser(ctx.actor);
-  if (requested) {
-    if (!all) assertTenantAccess(ctx, requested);
-    return [requested];
-  }
-  return all ? null : [...(ctx.actor.tenantIds ?? [])];
-}
 
 function changeRequestView(row: typeof schema.passChangeRequests.$inferSelect) {
   return {
@@ -126,10 +127,11 @@ export function registerPassesModule(app: FastifyInstance): void {
       config: { permission: VIEW },
       schema: {
         tags,
-        summary: 'Пропуска объекта (свои арендаторы или все — по праву)',
+        summary:
+          'Пропуска объекта порциями (свои арендаторы или все — по праву); total — итог по фильтру',
         params: SiteParamsSchema,
         querystring: PassListQuerySchema,
-        response: { 200: z.object({ items: z.array(PassViewSchema) }) },
+        response: { 200: PassListSchema },
       },
     },
     async (request) => {
@@ -138,51 +140,119 @@ export function registerPassesModule(app: FastifyInstance): void {
       return ctx.tx(async (s) => {
         const site = await loadSite(s, request.params.siteId);
         const tenants = visibleTenants(ctx, q.tenantId);
-        if (tenants !== null && tenants.length === 0) return { items: [] };
-        const conditions: (SQL | undefined)[] = [
-          eq(schema.passes.organizationId, s.organizationId),
-          eq(schema.passes.siteId, site.id),
-          tenants === null ? undefined : inArray(schema.passes.tenantId, tenants),
-          q.status ? eq(schema.passes.status, q.status) : undefined,
-          q.participant ? eq(schema.passes.participant, q.participant) : undefined,
-          q.passType ? eq(schema.passes.passType, q.passType) : undefined,
-          // Даты — местные сутки объекта: пропуск действует хотя бы часть этого промежутка.
-          q.dateTo
-            ? lt(
-                schema.passes.validFrom,
-                new Date(localInstant(addLocalDays(q.dateTo, 1), 0, site.timezone)),
-              )
-            : undefined,
-          q.dateFrom
-            ? or(
-                isNull(schema.passes.validTo),
-                gt(schema.passes.validTo, new Date(localInstant(q.dateFrom, 0, site.timezone))),
-              )
-            : undefined,
-        ];
-        if (q.q) {
-          const digits = plateDigits(q.q);
-          const plate = /^\d+$/.test(q.q.replace(/\s/g, '')) ? digits : normalizePlateText(q.q);
-          conditions.push(
-            or(
-              plate ? ilike(schema.passes.plateNorm, `%${plate}%`) : undefined,
-              ilike(schema.passes.personName, `%${q.q}%`),
-            ),
-          );
-        }
-        const rows = await s.db
-          .select()
-          .from(schema.passes)
-          .where(and(...conditions))
-          .orderBy(desc(schema.passes.createdAt), asc(schema.passes.id))
-          .limit(q.limit)
-          .offset(q.offset);
-        const open = await openVisitPassIds(
-          s,
-          rows.map((r) => r.id),
-        );
-        return { items: rows.map((r) => passView(r, ctx.now(), open.has(r.id))) };
+        if (tenants !== null && tenants.length === 0) return { items: [], total: 0 };
+        return passPage(s, passConditions(s, site, tenants, q), q, ctx.now());
       });
+    },
+  );
+
+  typed.get(
+    '/sites/:siteId/passes/export',
+    {
+      // Выгрузка — отдельное право; видимость строк — как у списка (свои арендаторы или все).
+      config: { permission: 'report.export' },
+      schema: {
+        tags,
+        summary: 'Выгрузить пропуска XLSX/CSV: все строки по текущему фильтру, факт — в аудит',
+        params: SiteParamsSchema,
+        querystring: PassExportQuerySchema,
+      },
+    },
+    async (request, reply) => {
+      const ctx = ctxOf(request);
+      const { format, ...q } = request.query;
+      const file = await ctx.tx(async (s) => {
+        requirePermission(s.ctx, ...VIEW);
+        const site = await loadSite(s, request.params.siteId);
+        const tenants = visibleTenants(ctx, q.tenantId);
+        const note = {
+          tenantId: q.tenantId ?? null,
+          status: q.status ?? null,
+          passType: q.passType ?? null,
+          dateFrom: q.dateFrom ?? null,
+          dateTo: q.dateTo ?? null,
+          search: Boolean(q.q),
+        };
+        const conditions =
+          tenants !== null && tenants.length === 0
+            ? [sql`false`]
+            : passConditions(s, site, tenants, q);
+        return {
+          ...(await exportPasses(s, site, conditions, format, note)),
+          date: localDate(ctx.now(), site.timezone),
+        };
+      });
+      return reply
+        .header('content-type', file.contentType)
+        .header('content-length', file.body.length)
+        .header(
+          'content-disposition',
+          `attachment; filename*=UTF-8''${encodeURIComponent(`propuska-${file.date}.${file.extension}`)}`,
+        )
+        .header('cache-control', 'private, no-store')
+        .header('x-content-type-options', 'nosniff')
+        .send(file.body);
+    },
+  );
+
+  typed.get(
+    '/sites/:siteId/inside',
+    {
+      config: { permission: VIEW },
+      schema: {
+        tags,
+        summary:
+          'Сейчас на территории: все открытые визиты без потолка, порциями; quotaId — как в виджете лимитов',
+        params: SiteParamsSchema,
+        querystring: InsideQuerySchema,
+        response: { 200: InsideListSchema },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      const { limit, offset, ...filter } = request.query;
+      return ctx.tx(async (s) =>
+        insidePage(s, ctx, await loadSite(s, request.params.siteId), filter, { limit, offset }),
+      );
+    },
+  );
+
+  typed.get(
+    '/sites/:siteId/inside/export',
+    {
+      config: { permission: 'report.export' },
+      schema: {
+        tags,
+        summary: 'Выгрузить «Сейчас на территории» XLSX/CSV: все строки по фильтру, факт — в аудит',
+        params: SiteParamsSchema,
+        querystring: InsideExportQuerySchema,
+      },
+    },
+    async (request, reply) => {
+      const ctx = ctxOf(request);
+      const { format, ...filter } = request.query;
+      const file = await ctx.tx(async (s) => {
+        requirePermission(s.ctx, ...VIEW);
+        const site = await loadSite(s, request.params.siteId);
+        return {
+          ...(await exportInside(s, ctx, site, filter, format, {
+            tenantId: filter.tenantId ?? null,
+            quotaId: filter.quotaId ?? null,
+            search: Boolean(filter.q),
+          })),
+          date: localDate(ctx.now(), site.timezone),
+        };
+      });
+      return reply
+        .header('content-type', file.contentType)
+        .header('content-length', file.body.length)
+        .header(
+          'content-disposition',
+          `attachment; filename*=UTF-8''${encodeURIComponent(`na-territorii-${file.date}.${file.extension}`)}`,
+        )
+        .header('cache-control', 'private, no-store')
+        .header('x-content-type-options', 'nosniff')
+        .send(file.body);
     },
   );
 

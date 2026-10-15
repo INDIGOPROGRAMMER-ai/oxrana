@@ -126,9 +126,24 @@ export const PassListQuerySchema = z.strictObject({
   dateTo: z.iso.date().optional(),
   /** Цифры или часть номера, часть фамилии. */
   q: z.string().trim().max(50).optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(100),
+  /** Порция списка (7b.1): по 50, дальше «Показать ещё»; итог — `total` в ответе. */
+  limit: z.coerce.number().int().min(1).max(500).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+/** Форматы выгрузки списков (7b.1). */
+export const EXPORT_FORMATS = ['xlsx', 'csv'] as const;
+export const ExportFormatSchema = z.enum(EXPORT_FORMATS);
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+
+/** Выгрузка списка пропусков: те же фильтры, что у списка, но все строки, без порций. */
+export const PassExportQuerySchema = PassListQuerySchema.omit({ limit: true, offset: true }).extend(
+  { format: ExportFormatSchema.default('xlsx') },
+);
+
+/** Страница списка пропусков и общий итог по фильтру: «Найдено N» (7b.1). */
+export const PassListSchema = z.object({ items: z.array(PassViewSchema), total: z.int() });
+export type PassList = z.infer<typeof PassListSchema>;
 
 export const ChangeRequestViewSchema = z.object({
   id: IdSchema,
@@ -285,6 +300,40 @@ export const VisitViewSchema = z.object({
   overage: z.boolean(),
   flags: z.array(VisitFlagSchema),
 });
+
+/** «Сейчас на территории» (7b.1): открытый визит с тем, что нужно охране и арендатору. */
+export const InsideRowSchema = z.object({
+  visitId: IdSchema,
+  passId: IdSchema.nullable(),
+  tenantId: IdSchema,
+  tenantName: z.string(),
+  participant: ParticipantSchema,
+  /** Номер машины как записан в пропуске (или нормализованный) либо фамилия пешехода. */
+  title: z.string(),
+  categoryName: z.string().nullable(),
+  passType: PassTypeSchema.nullable(),
+  timeIn: InstantSchema.nullable(),
+  gateInName: z.string().nullable(),
+  dock: z.string().nullable(),
+  zone: z.string().nullable(),
+});
+export type InsideRow = z.infer<typeof InsideRowSchema>;
+
+export const InsideListSchema = z.object({ items: z.array(InsideRowSchema), total: z.int() });
+
+export const InsideQuerySchema = z.strictObject({
+  tenantId: IdSchema.optional(),
+  /** Только визиты, занимающие место в этом лимите — число совпадает с виджетом лимитов. */
+  quotaId: IdSchema.optional(),
+  /** Цифры номера или часть фамилии. */
+  q: z.string().trim().max(50).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export const InsideExportQuerySchema = InsideQuerySchema.omit({ limit: true, offset: true }).extend(
+  { format: ExportFormatSchema.default('xlsx') },
+);
+
 export const VisitListQuerySchema = z.strictObject({
   tenantId: IdSchema.optional(),
   open: z.enum(['true', 'false']).optional(),

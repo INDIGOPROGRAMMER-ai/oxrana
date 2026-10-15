@@ -3,7 +3,7 @@ import { ErrorBodySchema } from '@oxrana/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RouteAccess } from '../src/permission-guard';
 import { ACTION_VARIANTS, concreteUrl, isStream, matrixActors } from './permissions.matrix';
-import { seedDemo, startTestApp, type TestApp } from './support/harness';
+import { KEYS, seedDemo, startTestApp, type TestApp } from './support/harness';
 
 let t: TestApp;
 let routes: RouteAccess[];
@@ -88,6 +88,39 @@ describe('тест-матрица прав (ADR-007, B12)', () => {
     }
     expect(failures).toEqual([]);
   }, 120_000);
+
+  it('выгрузка списков (7b.1): выгружаешь только то, что можешь видеть — report.export и право просмотра; иначе 403 с названием права', async () => {
+    const failures: string[] = [];
+    const urls = [
+      `/sites/${KEYS.siteId}/passes/export?format=csv`,
+      `/sites/${KEYS.siteId}/inside/export?format=csv`,
+    ];
+    for (const { role, actor } of matrixActors()) {
+      const exports = actor.permissions.has('report.export');
+      const sees =
+        actor.permissions.has('pass.view') || actor.permissions.has('pass.view_all_tenants');
+      for (const url of urls) {
+        const res = await t.as(actor, { url });
+        if (exports && sees) {
+          if (res.statusCode !== 200)
+            failures.push(`${role}: ${url} — ожидался файл, получено ${res.statusCode}`);
+        } else {
+          const body = res.statusCode === 403 ? ErrorBodySchema.safeParse(res.json()) : null;
+          const named = exports ? 'pass.view' : 'report.export';
+          if (
+            res.statusCode !== 403 ||
+            !body?.success ||
+            !JSON.stringify(body.data).includes(named)
+          ) {
+            failures.push(
+              `${role}: ${url} — ожидался 403 с «${named}», получено ${res.statusCode}`,
+            );
+          }
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
 
   it('действия поста: право своего вида, у каждой роли-шаблона', async () => {
     const failures: string[] = [];

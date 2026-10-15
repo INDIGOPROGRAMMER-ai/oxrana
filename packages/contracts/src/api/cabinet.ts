@@ -27,6 +27,11 @@ export const CabinetContextSchema = z.object({
     timezone: z.string(),
     /** «Челябинск, UTC+5» — подпись пояса, в котором показывается всё время. */
     timezoneLabel: z.string(),
+    /** Допуск «начало в прошлом», минут: форма предлагает «начать пропуск с …», если оно в допуске. */
+    pastStartToleranceMin: z.int(),
+    /** Максимум разового пропуска объекта, часов: окончание по умолчанию не выходит за него. */
+    singlePassMaxHours: z.int(),
+    multiPassMaxDays: z.int(),
   }),
   /** Все включённые типы транспорта объекта (для названий в списках) и признак «доступен арендатору». */
   categories: z.array(

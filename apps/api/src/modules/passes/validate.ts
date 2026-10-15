@@ -16,6 +16,7 @@ import {
   type PassView as EnginePass,
   findBlacklisted,
   formatDateTime,
+  formatTime,
   localDate,
   overageDays,
   type RuleSet,
@@ -297,11 +298,20 @@ export function blacklistProblem(
  * Проверка значений пропуска. `changed` — какие поля задаёт этот запрос: «не в прошлом» проверяется
  * только при создании и при изменении начала (ADR-009 п. 6).
  */
+export interface ValidateOptions {
+  /**
+   * Не проверять предельную длительность пропуска: продление после въезда сверх максимума уходит
+   * заявкой на изменение, и решает согласующий (Q-85).
+   */
+  readonly skipMaxDuration?: boolean;
+}
+
 export async function validatePass(
   s: Scope,
   ctx: PassContext,
   values: PassValues,
   changed: ReadonlySet<PassField> | 'all',
+  options: ValidateOptions = {},
 ): Promise<void> {
   const { rules, tenant, settings, site } = ctx;
   const tz = site.timezone;
@@ -337,7 +347,13 @@ export async function validatePass(
     const docks = tenantDocks(rules, tenant.id);
     const list = dockRanges(docks.map((d) => d.number));
     const whose = ctx.tenantUser ? 'Ваши доки' : 'Доки арендатора';
-    if (tenant.trucksDockRequired && category.dockEligible && !values.dockId) {
+    // Док обязателен только разовому: многоразовый и постоянный — на много поездок, док каждый раз свой.
+    if (
+      values.passType === 'single' &&
+      tenant.trucksDockRequired &&
+      category.dockEligible &&
+      !values.dockId
+    ) {
       throw fail(
         'dock_required',
         'dockId',
@@ -419,7 +435,7 @@ export async function validatePass(
     }
     if (values.passType === 'single') {
       const hours = (to.getTime() - from.getTime()) / 3_600_000;
-      if (hours > settings.singlePassMaxHours) {
+      if (hours > settings.singlePassMaxHours && !options.skipMaxDuration) {
         throw fail(
           'invalid_period',
           'validTo',
@@ -428,7 +444,10 @@ export async function validatePass(
       }
     } else {
       const days = overageDays(from.getTime(), to.getTime(), tz);
-      if (days < settings.multiPassMinDays || days > settings.multiPassMaxDays) {
+      if (
+        days < settings.multiPassMinDays ||
+        (days > settings.multiPassMaxDays && !options.skipMaxDuration)
+      ) {
         throw fail(
           'invalid_period',
           'validTo',
@@ -451,8 +470,24 @@ export async function validatePass(
   if (wf && wt) {
     if (wt.getTime() <= wf.getTime())
       throw fail('invalid_period', 'windowTo', 'Конец окна должен быть позже начала.');
-    if (wf.getTime() < from.getTime() || (to !== null && wt.getTime() > to.getTime())) {
-      throw fail('window_outside_validity', 'windowFrom');
+    // Одна дата — только время («12:00–14:00»), разные — с датами: что именно не сходится, видно сразу.
+    const sameDay = localDate(wf.getTime(), tz) === localDate(from.getTime(), tz);
+    const at = (d: Date) =>
+      sameDay ? formatTime(d.getTime(), tz) : formatDateTime(d.getTime(), tz);
+    const range = `${at(wf)}–${at(wt)}`;
+    if (wf.getTime() < from.getTime()) {
+      throw fail(
+        'window_outside_validity',
+        'windowFrom',
+        `Окно ${range} начинается раньше начала пропуска (${at(from)}). Начните окно не раньше начала пропуска или начните пропуск раньше.`,
+      );
+    }
+    if (to !== null && wt.getTime() > to.getTime()) {
+      throw fail(
+        'window_outside_validity',
+        'windowTo',
+        `Окно ${range} заканчивается позже конца пропуска (${at(to)}). Закончите окно не позже конца пропуска или продлите пропуск.`,
+      );
     }
   }
   if (values.participant === 'vehicle' && !wf && windowRequiredByPolicy(ctx, values)) {

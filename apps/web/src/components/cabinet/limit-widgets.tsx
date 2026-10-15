@@ -1,5 +1,6 @@
 import type { OccupancyViewSchema, TenantTodaySchema } from '@oxrana/contracts';
 import { Badge, Card, CardContent, cn, Skeleton } from '@oxrana/ui';
+import { Link } from '@tanstack/react-router';
 import type { z } from 'zod';
 import { useApi, useMe } from '../../lib/data';
 import { useCabinet } from './cabinet-context';
@@ -37,32 +38,43 @@ export function LimitWidgets() {
         const none = q.capacity === 0;
         return (
           <li key={q.quotaId}>
-            <Card data-testid="limit-widget" data-full={full}>
-              <CardContent className="space-y-2 pt-4">
-                <p className="text-sm text-muted-foreground">{q.name}</p>
-                <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span
-                    className={cn('text-3xl font-semibold tabular-nums', full && 'text-warning')}
-                  >
-                    {q.occupied} / {q.capacity}
-                  </span>
-                  {q.waiting > 0 ? (
-                    <Badge tone="warning">
-                      {q.waiting} {waitingWord(q.waiting)}
-                    </Badge>
-                  ) : null}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {none
-                    ? 'не предусмотрено договором'
-                    : full
-                      ? q.enforcement === 'hard'
-                        ? 'место занято — следующая машина будет ждать у ворот'
-                        : 'лимит заполнен'
-                      : `свободно: ${q.capacity - q.occupied}`}
-                </p>
-              </CardContent>
-            </Card>
+            <Link
+              to="/cabinet/inside"
+              search={{ quota: q.quotaId }}
+              aria-label={`${q.name}: ${q.occupied} из ${q.capacity}. Показать, кто на территории`}
+              className="block rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <Card
+                data-testid="limit-widget"
+                data-full={full}
+                className="transition-colors hover:bg-accent/40"
+              >
+                <CardContent className="space-y-2 pt-4">
+                  <p className="text-sm text-muted-foreground">{q.name}</p>
+                  <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span
+                      className={cn('text-3xl font-semibold tabular-nums', full && 'text-warning')}
+                    >
+                      {q.occupied} / {q.capacity}
+                    </span>
+                    {q.waiting > 0 ? (
+                      <Badge tone="warning">
+                        {q.waiting} {waitingWord(q.waiting)}
+                      </Badge>
+                    ) : null}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {none
+                      ? 'не предусмотрено договором'
+                      : full
+                        ? q.enforcement === 'hard'
+                          ? 'место занято — следующая машина будет ждать у ворот'
+                          : 'лимит заполнен'
+                        : `свободно: ${q.capacity - q.occupied}`}
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
           </li>
         );
       })}
@@ -104,7 +116,13 @@ export function TodaySummary() {
       </ul>
       {t ? (
         <p className="text-xs text-muted-foreground">
-          Сейчас на территории: {t.inside}
+          <Link
+            to="/cabinet/inside"
+            className="underline-offset-2 hover:underline"
+            data-testid="inside-link"
+          >
+            Сейчас на территории: {t.inside}
+          </Link>
           {t.pendingApproval > 0 ? ` · на согласовании: ${t.pendingApproval}` : ''}
         </p>
       ) : null}

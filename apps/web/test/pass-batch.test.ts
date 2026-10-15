@@ -244,6 +244,26 @@ describe('строка пачки → тело для сервера', () => {
     expect(built.ok && 'tenantId' in built.draft).toBe(false);
   });
 
+  it('окно началось раньше «сейчас»: конкретная ошибка и кнопка «Начать окно с …» меняет окно строки', () => {
+    // сейчас 12:00, окно 11:00–14:00: пропуск начинается «сейчас», окно — раньше него
+    const built = batchDraft(line('А123ВС174\tлегковой\t\t\t11:00-14:00'), settings, context);
+    expect(built).toMatchObject({
+      ok: false,
+      error: 'Окно 11:00–14:00 начинается раньше начала пропуска (12:00).',
+    });
+    if (built.ok) throw new Error('ожидалась ошибка');
+    expect(built.fixes).toEqual([
+      { label: 'Начать окно с 12:00', patch: { windowText: '12:00–14:00' } },
+    ]);
+    // применили исправление — строка проходит
+    const fixed = batchDraft(
+      { ...line('А123ВС174\tлегковой'), windowText: '12:00–14:00' },
+      settings,
+      context,
+    );
+    expect(fixed.ok).toBe(true);
+  });
+
   it('дата в строке важнее даты пачки; прошлая дата — понятная ошибка', () => {
     const built = batchDraft(
       line('А123ВС174\tфура\t\t\t01.03.2026 12:00-14:00'),
@@ -269,6 +289,21 @@ describe('строка пачки → тело для сервера', () => {
     const needs = { ...context, dockRequiredFor: (id: string) => id === 'semi' };
     expect(batchDraft(row, settings, needs)).toMatchObject({ ok: false, error: 'Укажите док.' });
     expect(batchDraft({ ...row, dockId: 'dz1' }, settings, needs)).toMatchObject({ ok: true });
+  });
+
+  it('док нужен только разовому пропуску: пакет многоразовых и постоянных идёт без дока', () => {
+    const row = line('А123ВС174\tфура');
+    const needs = { ...context, dockRequiredFor: (id: string) => id === 'semi' };
+    const multi: BatchSettings = {
+      passType: 'multi',
+      date: '',
+      from: '2026-03-10',
+      to: '2026-03-14',
+      comment: 'Ревизия',
+    };
+    expect(batchDraft(row, multi, needs).ok).toBe(true);
+    const permanent: BatchSettings = { ...multi, passType: 'permanent', to: '' };
+    expect(batchDraft(row, permanent, needs).ok).toBe(true);
   });
 
   it('многоразовый: комментарий пачки подставляется в строки без своего', () => {

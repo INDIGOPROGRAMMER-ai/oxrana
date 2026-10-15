@@ -14,6 +14,7 @@ import {
   seedDemo,
   startTestApp,
   type TestApp,
+  windowFollowsPolicy,
 } from '../support/harness';
 import {
   action,
@@ -61,6 +62,7 @@ function multiPass(overrides: Record<string, unknown> = {}) {
 beforeAll(async () => {
   await seedDemo();
   t = await startTestApp();
+  await windowFollowsPolicy(t);
 });
 beforeEach(() => t.clock.set(NOON));
 afterAll(() => t.close());

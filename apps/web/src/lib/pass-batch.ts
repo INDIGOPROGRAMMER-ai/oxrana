@@ -377,7 +377,20 @@ export interface BatchBuildContext {
   readonly dockRequiredFor?: (categoryId: string) => boolean;
   /** Единственное место назначения подставляется в строки без места. */
   readonly defaultZoneId?: string | undefined;
+  /** Допуск «начало в прошлом» и максимум разового пропуска — для исправлений ошибок окна. */
+  readonly pastToleranceMin?: number | undefined;
+  readonly singleMaxHours?: number | undefined;
 }
+
+/** Исправление ошибки строки одним нажатием: «Начать окно с 13:50» → новое окно в строке. */
+export interface RowFix {
+  readonly label: string;
+  readonly patch: Partial<BatchRow>;
+}
+
+export type BatchDraftResult =
+  | { ok: true; draft: Record<string, unknown> }
+  | { ok: false; error: string; fixes: RowFix[] };
 
 /**
  * Строка пачки → тело строки `POST /passes/batch`. Время считается так же, как в форме пропуска
@@ -387,13 +400,15 @@ export function batchDraft(
   line: BatchRow,
   settings: BatchSettings,
   c: BatchBuildContext,
-): { ok: true; draft: Record<string, unknown> } | { ok: false; error: string } {
+): BatchDraftResult {
   const window = parseWindow(line.windowText);
-  if (window && 'error' in window) return { ok: false, error: window.error };
+  if (window && 'error' in window) return { ok: false, error: window.error, fixes: [] };
   if (line.problems.category && !line.categoryId)
-    return { ok: false, error: line.problems.category };
-  if (line.problems.dock && !line.dockId) return { ok: false, error: line.problems.dock };
-  if (line.problems.zone && !line.zoneId) return { ok: false, error: line.problems.zone };
+    return { ok: false, error: line.problems.category, fixes: [] };
+  if (line.problems.dock && !line.dockId)
+    return { ok: false, error: line.problems.dock, fixes: [] };
+  if (line.problems.zone && !line.zoneId)
+    return { ok: false, error: line.problems.zone, fixes: [] };
   const date = window?.date || settings.date;
   const values: PassFormValues = {
     participant: 'vehicle',
@@ -408,6 +423,8 @@ export function batchDraft(
     date,
     startTime: '',
     endTime: '',
+    startAuto: false,
+    endAuto: false,
     windowFromTime: settings.passType === 'single' ? (window?.from ?? '') : '',
     windowToTime: settings.passType === 'single' ? (window?.to ?? '') : '',
     from: settings.from,
@@ -430,8 +447,22 @@ export function batchDraft(
     windowRequired: false,
     dockRequired: Boolean(line.categoryId && c.dockRequiredFor?.(line.categoryId)),
     fields: c.fields,
+    pastToleranceMin: c.pastToleranceMin,
+    singleMaxHours: c.singleMaxHours,
   });
-  if (!built.ok) return { ok: false, error: Object.values(built.errors)[0] ?? 'Проверьте срок.' };
+  if (!built.ok) {
+    // исправления окна переводятся в окно строки; исправления самого пропуска в пакете не нужны
+    const fixes: RowFix[] = [];
+    if (window && !('error' in window)) {
+      for (const fix of built.fixes) {
+        if (fix.id !== 'window_start' && fix.id !== 'window_end') continue;
+        const from = fix.apply.windowFromTime ?? fix.apply.windowFrom?.split('T')[1] ?? window.from;
+        const to = fix.apply.windowToTime ?? fix.apply.windowTo?.split('T')[1] ?? window.to;
+        fixes.push({ label: fix.label, patch: { windowText: `${from}–${to}` } });
+      }
+    }
+    return { ok: false, error: Object.values(built.errors)[0] ?? 'Проверьте срок.', fixes };
+  }
   const { tenantId: _tenant, ...draft } = built.body;
   return { ok: true, draft };
 }

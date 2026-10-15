@@ -18,11 +18,12 @@ import {
 import { Link } from '@tanstack/react-router';
 import { Ban, Inbox, Pencil, SlidersHorizontal, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useApi, useMe } from '../../lib/data';
+import { useApi, useApiPages, useMe } from '../../lib/data';
 import { PASS_STATUS_LABEL, PASS_TYPE_LABEL, passTitle } from '../../lib/pass-text';
 import { useDebounced } from '../../lib/use-debounced';
 import { useWideScreen } from '../../lib/use-media';
 import { LoadError } from '../common';
+import { ExportButton } from '../export-button';
 import { useCabinet } from './cabinet-context';
 import { CancelPassDialog } from './cancel-dialog';
 import { PassDetails } from './pass-details';
@@ -66,7 +67,7 @@ export function PassList({
   const [cancelling, setCancelling] = useState<PassView | null>(null);
   const [editing, setEditing] = useState<PassView | null>(null);
 
-  const params = new URLSearchParams({ limit: '200' });
+  const params = new URLSearchParams();
   if (tenant) params.set('tenantId', tenant.id);
   if (status) params.set('status', status);
   if (passType) params.set('passType', passType);
@@ -75,10 +76,12 @@ export function PassList({
     params.set('dateTo', date);
   }
   if (q) params.set('q', q);
-  const list = useApi<{ items: PassView[] }>(
+  // Фильтры и поиск — на сервере по всем пропускам; список порциями по 50 с «Показать ещё».
+  const list = useApiPages<PassView>(
     ctx ? `/sites/${ctx.site.id}/passes?${params.toString()}` : null,
+    (p) => p.id,
   );
-  const items = list.data?.items ?? [];
+  const items = list.items;
   const filtered = Boolean(status || passType || date || q);
 
   const cancelReason = (pass: PassView): string | null => {
@@ -163,6 +166,16 @@ export function PassList({
       </div>
     </Field>
   );
+  const exportButton = ctx ? (
+    <ExportButton
+      path={`/sites/${ctx.site.id}/passes/export`}
+      params={params}
+      fileLabel="пропуска"
+      disabledReason={
+        list.total === 0 ? 'По этому фильтру пропусков нет — выгружать нечего.' : undefined
+      }
+    />
+  ) : null;
   const searchField = (
     <Field label="Поиск" hint={wide ? 'Цифры номера или фамилия.' : undefined}>
       <Input
@@ -189,7 +202,16 @@ export function PassList({
       ) : (
         <div className="space-y-2" data-testid="filters-mobile">
           <div className="flex items-end gap-2">
-            <div className="min-w-0 flex-1">{searchField}</div>
+            <div className="min-w-0 flex-1">
+              <Input
+                aria-label="Поиск"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                inputMode="search"
+                autoComplete="off"
+                placeholder="Поиск: цифры номера"
+              />
+            </div>
             <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
               <Button
                 variant="outline"
@@ -208,6 +230,13 @@ export function PassList({
                 {statusField}
                 {typeField}
                 {dateField}
+                <div className="space-y-1 border-t pt-3">
+                  <p className="text-sm font-medium">Выгрузка</p>
+                  <p className="text-xs text-muted-foreground">
+                    Все пропуска по этим условиям, а не только показанные на экране.
+                  </p>
+                  {exportButton}
+                </div>
                 <div className="mt-auto flex gap-2">
                   <Button className="flex-1" onClick={() => setFiltersOpen(false)}>
                     Показать
@@ -219,8 +248,13 @@ export function PassList({
               </SheetContent>
             </Sheet>
           </div>
-          {chips.length > 0 ? (
-            <ul className="flex flex-wrap gap-1.5" aria-label="Включённые фильтры">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {ctx && !list.isLoading ? (
+              <p className="mr-1 text-xs text-muted-foreground" data-testid="found-total">
+                Найдено {list.total}
+              </p>
+            ) : null}
+            <ul className="contents" aria-label="Включённые фильтры">
               {chips.map((chip) => (
                 <li key={chip.key}>
                   <button
@@ -234,10 +268,18 @@ export function PassList({
                 </li>
               ))}
             </ul>
-          ) : null}
+          </div>
         </div>
       )}
 
+      {wide && ctx && !list.isLoading ? (
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <p className="pt-2 text-sm text-muted-foreground" data-testid="found-total">
+            Найдено {list.total}
+          </p>
+          {exportButton}
+        </div>
+      ) : null}
       {list.error ? <LoadError error={list.error} retry={() => void list.refetch()} /> : null}
       {list.isLoading ? (
         <p role="status" className="text-sm text-muted-foreground">
@@ -332,6 +374,19 @@ export function PassList({
           })}
         </ul>
       )}
+      {list.hasNextPage ? (
+        <div className="flex justify-center">
+          <Button
+            variant="outline"
+            size="lg"
+            disabled={list.isFetchingNextPage}
+            onClick={() => void list.fetchNextPage()}
+            data-testid="show-more"
+          >
+            Показать ещё ({list.rest})
+          </Button>
+        </div>
+      ) : null}
       <PassDetails pass={opened} onClose={() => setOpened(null)} />
       <CancelPassDialog pass={cancelling} onClose={() => setCancelling(null)} />
       <PassEditDialog pass={editing} onClose={() => setEditing(null)} />

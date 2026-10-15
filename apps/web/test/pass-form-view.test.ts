@@ -125,7 +125,10 @@ describe('что показывает форма пропуска (ADR-023)', ()
   });
 
   it('режимы полей: окно «по политике» берёт требование у политики; комментарий политики форма скрыть не может', () => {
-    const base = resolvePassForm({ tenant: { fields: { comment: 'hidden' } } });
+    const base = resolvePassForm({
+      site: { fields: { window: 'policy' } },
+      tenant: { fields: { comment: 'hidden' } },
+    });
     const policy = buildFormView({
       form: base,
       ctx,
@@ -135,13 +138,37 @@ describe('что показывает форма пропуска (ADR-023)', ()
     });
     expect(policy.fields.window).toBe('required');
     expect(policy.fields.comment).toBe('required');
+    // режим «по политике» без требования политики — необязательно
+    expect(
+      buildFormView({ form: base, ctx, enforced: true, windowRequiredByPolicy: false }).fields
+        .window,
+    ).toBe('optional');
     const free = buildFormView({
       form: resolvePassForm({ site: { fields: { window: 'optional' } } }),
       ctx,
       enforced: true,
-      windowRequiredByPolicy: true,
+      windowRequiredByPolicy: false,
     });
     expect(free.fields.window).toBe('optional');
     expect(free.fields.driverName).toBe('hidden');
+  });
+
+  it('окно скрыто по умолчанию; требование сервера (постоянный пропуск при политике окон) его открывает', () => {
+    const form = resolvePassForm({});
+    expect(buildFormView({ form, ctx, enforced: true }).fields.window).toBe('hidden');
+    expect(
+      buildFormView({ form, ctx, enforced: true, windowRequiredByPolicy: true }).fields.window,
+    ).toBe('required');
+  });
+
+  it('время начала «сейчас» — настройка уровня', () => {
+    expect(buildFormView({ form: resolvePassForm({}), ctx, enforced: true }).startNow).toBe(true);
+    expect(
+      buildFormView({
+        form: resolvePassForm({ tenant: { startNow: false } }),
+        ctx,
+        enforced: true,
+      }).startNow,
+    ).toBe(false);
   });
 });

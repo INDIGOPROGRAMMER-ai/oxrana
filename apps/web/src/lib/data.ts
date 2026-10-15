@@ -24,7 +24,7 @@ import type {
   ZoneViewSchema,
 } from '@oxrana/contracts';
 import { api } from '@oxrana/ui';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import type { z } from 'zod';
 import { loadMe } from './api';
@@ -77,6 +77,47 @@ export function useApi<T>(path: string | null) {
     queryFn: () => api<T>(path ?? ''),
     enabled: path !== null,
   });
+}
+
+/**
+ * Список порциями без потолка (7b.1): фильтры и поиск — на сервере по всем строкам, «Показать ещё»
+ * дозагружает следующую порцию, `total` — итог по фильтру («Найдено N»). Ключ начинается с `data`,
+ * поэтому события объекта обновляют уже загруженные порции без F5; повтор строки на стыке порций
+ * (список сдвинулся) отбрасывается по ключу.
+ */
+export function useApiPages<T>(path: string | null, keyOf: (item: T) => string, pageSize = 50) {
+  const query = useInfiniteQuery({
+    queryKey: ['data', path, 'pages', pageSize],
+    enabled: path !== null,
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      api<{ items: T[]; total: number }>(
+        `${path ?? ''}${(path ?? '').includes('?') ? '&' : '?'}limit=${pageSize}&offset=${pageParam}`,
+      ),
+    getNextPageParam: (last, all) => {
+      const loaded = all.reduce((n, page) => n + page.items.length, 0);
+      return loaded < last.total ? loaded : undefined;
+    },
+  });
+  const seen = new Set<string>();
+  const items: T[] = [];
+  for (const page of query.data?.pages ?? []) {
+    for (const item of page.items) {
+      const key = keyOf(item);
+      if (!seen.has(key)) {
+        seen.add(key);
+        items.push(item);
+      }
+    }
+  }
+  const total = query.data?.pages.at(-1)?.total ?? 0;
+  return {
+    ...query,
+    items,
+    total,
+    /** Сколько строк ещё не показано. */
+    rest: Math.max(0, total - items.length),
+  };
 }
 
 /** Изменение на сервере + обновление всех данных экранов. «Сохранено» показывают после этого. */

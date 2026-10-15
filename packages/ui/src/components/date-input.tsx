@@ -45,10 +45,40 @@ export function isoToRuDate(iso: string): string {
   return m ? `${m[3]}.${m[2]}.${m[1]}` : '';
 }
 
-/** Маска времени: цифры → `ЧЧ:ММ`. */
+/**
+ * Часть времени из цифр: «9» → «09», «930» → «09:30», «1200» → «12:00». Цифра, с которой час или
+ * минуты не могут начаться (3–9 для часа, 6–9 для минут), получает ведущий нуль. `used` — сколько
+ * цифр ушло на эту часть (остальные принадлежат следующему времени в интервале).
+ */
+function takeTime(digits: string): { text: string; used: number; complete: boolean } {
+  let text = '';
+  let used = 0;
+  const h1 = digits[0];
+  if (h1 === undefined) return { text, used, complete: false };
+  if (h1 > '2') {
+    text = `0${h1}`;
+    used = 1;
+  } else {
+    text = digits.slice(0, 2);
+    used = text.length;
+  }
+  if (text.length < 2) return { text, used, complete: false };
+  const m1 = digits[used];
+  if (m1 === undefined) return { text, used, complete: false };
+  if (m1 > '5') {
+    text += `:0${m1}`;
+    used += 1;
+    return { text, used, complete: true };
+  }
+  const m2 = digits[used + 1];
+  text += `:${m1}${m2 ?? ''}`;
+  used += m2 === undefined ? 1 : 2;
+  return { text, used, complete: m2 !== undefined };
+}
+
+/** Маска времени: только цифры, двоеточие подставляется само («1200» → «12:00»). */
 export function maskTime(text: string): string {
-  const digits = text.replace(/\D/g, '').slice(0, 4);
-  return [digits.slice(0, 2), digits.slice(2, 4)].filter(Boolean).join(':');
+  return takeTime(text.replace(/\D/g, '').slice(0, 4)).text;
 }
 
 /** `ЧЧ:ММ` → `ЧЧ:ММ` (проверено); `null` — не время суток. */
@@ -56,6 +86,27 @@ export function parseTime(text: string): string | null {
   const m = /^(\d{2}):(\d{2})$/.exec(text);
   if (!m) return null;
   return Number(m[1]) < 24 && Number(m[2]) < 60 ? text : null;
+}
+
+/** Тире между временами интервала: длинное «–», как его пишут в расписаниях. */
+export const RANGE_DASH = '–';
+
+/** Маска интервала: «12001400» → «12:00–14:00»; тире подставляется само. */
+export function maskTimeRange(text: string): string {
+  const digits = text.replace(/\D/g, '').slice(0, 8);
+  const first = takeTime(digits);
+  if (!first.complete) return first.text;
+  const second = takeTime(digits.slice(first.used));
+  return second.text === '' ? first.text : `${first.text}${RANGE_DASH}${second.text}`;
+}
+
+/** «12:00–14:00» (или с «-», «—») → границы; `null` — не интервал целиком. */
+export function parseTimeRange(text: string): { from: string; to: string } | null {
+  const m = /^(\d{2}:\d{2})\s*[-–—]\s*(\d{2}:\d{2})$/.exec(text.trim());
+  if (!m) return null;
+  const from = parseTime(m[1] ?? '');
+  const to = parseTime(m[2] ?? '');
+  return from && to ? { from, to } : null;
 }
 
 const MONTHS = [
@@ -342,6 +393,92 @@ export function TimeInput({
       {broken ? (
         <p id={hintId} className="mt-1 text-xs text-destructive">
           Время в формате ЧЧ:ММ, например 14:30
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export interface TimeRangeInputProps {
+  /** Начало и конец интервала `ЧЧ:ММ`; пустая строка — не задано. */
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+  onBlur?: (() => void) | undefined;
+  disabled?: boolean | undefined;
+  id?: string | undefined;
+  className?: string | undefined;
+  'aria-label'?: string | undefined;
+}
+
+const rangeText = (from: string, to: string): string =>
+  from && to ? `${from}${RANGE_DASH}${to}` : from ? `${from}${RANGE_DASH}` : '';
+
+/**
+ * Интервал времени одним полем: «12001400» → «12:00–14:00» (окно прибытия). Двоеточия и тире
+ * подставляются сами; пока интервал неполный, наружу уходит только то, что уже введено целиком.
+ */
+export function TimeRangeInput({
+  from,
+  to,
+  onChange,
+  onBlur,
+  disabled,
+  id,
+  className,
+  'aria-label': ariaLabel,
+}: TimeRangeInputProps) {
+  const field = useFieldState();
+  const [text, setText] = useState(rangeText(from, to));
+  const hintId = useId();
+  useEffect(() => {
+    const parsed = parseTimeRange(text);
+    const now = {
+      from: parsed?.from ?? parseTime(text.split(RANGE_DASH)[0] ?? '') ?? '',
+      to: parsed?.to ?? '',
+    };
+    if (now.from !== from || now.to !== to) setText(rangeText(from, to));
+  }, [from, to]);
+  const complete = parseTimeRange(text) !== null;
+  const parts = text.split(RANGE_DASH);
+  // ошибка видна, когда часть записана целиком, но это не время суток («25:00»)
+  const broken =
+    (parts[0]?.length === 5 && parseTime(parts[0]) === null) ||
+    (parts[1]?.length === 5 && parseTime(parts[1]) === null);
+  return (
+    <div className={className}>
+      <Input
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="ЧЧ:ММ–ЧЧ:ММ"
+        maxLength={11}
+        value={text}
+        id={id ?? field?.id}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        aria-invalid={broken || field?.invalid || undefined}
+        aria-describedby={broken ? hintId : field?.describedBy}
+        className="w-36"
+        onChange={(event) => {
+          const next = maskTimeRange(event.target.value);
+          setText(next);
+          const parsed = parseTimeRange(next);
+          if (parsed) onChange(parsed.from, parsed.to);
+          else {
+            const [a = '', b = ''] = next.split(RANGE_DASH);
+            onChange(parseTime(a) ?? '', parseTime(b) ?? '');
+          }
+        }}
+        onBlur={onBlur}
+      />
+      {broken ? (
+        <p id={hintId} className="mt-1 text-xs text-destructive">
+          Время в формате ЧЧ:ММ–ЧЧ:ММ, например 12:00–14:00
+        </p>
+      ) : text !== '' && !complete ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Введите окно целиком: 12001400 → 12:00–14:00
         </p>
       ) : null}
     </div>

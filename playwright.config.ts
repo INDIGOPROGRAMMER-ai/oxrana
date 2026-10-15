@@ -49,7 +49,7 @@ export default defineConfig({
     {
       name: 'chromium',
       // кабинет арендатора продолжает базу после чистого старта (ADR-022): отдельный проект ниже
-      testIgnore: /(cabinet|pass-form)\.spec\.ts/,
+      testIgnore: /(cabinet|pass-form|lists)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         ...(executablePath ? { launchOptions: { executablePath } } : {}),
@@ -73,6 +73,17 @@ export default defineConfig({
       name: 'pass-form',
       testMatch: /pass-form\.spec\.ts/,
       dependencies: ['cabinet'],
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(executablePath ? { launchOptions: { executablePath } } : {}),
+      },
+    },
+    {
+      // Этап 7b.1: списки без потолка, выгрузка, «Сейчас на территории», время цифрами, окно, вид пропуска
+      // кнопками, док только разовому, продление после въезда — на той же базе после `pass-form.spec.ts`.
+      name: 'lists',
+      testMatch: /lists\.spec\.ts/,
+      dependencies: ['pass-form'],
       use: {
         ...devices['Desktop Chrome'],
         ...(executablePath ? { launchOptions: { executablePath } } : {}),

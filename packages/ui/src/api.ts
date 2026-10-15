@@ -90,3 +90,44 @@ export function errorView(error: unknown): ErrorView {
     code: null,
   };
 }
+
+/** Имя файла из `Content-Disposition: attachment; filename*=UTF-8''…`. */
+function fileNameOf(header: string | null, fallback: string): string {
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header ?? '');
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1]);
+    } catch {
+      return fallback;
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header ?? '');
+  return plain?.[1] ?? fallback;
+}
+
+/**
+ * Скачать файл, который отдаёт API (выгрузка списков): запрос с cookie сессии, файл — через
+ * временную ссылку. Ошибка сервера приходит в том же виде, что у обычных запросов.
+ */
+export async function downloadFile(path: string, fallbackName: string): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, { credentials: 'same-origin' });
+  } catch {
+    throw new ApiError(0, { message: 'Нет связи с сервером. Проверьте сеть и повторите.' });
+  }
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as unknown;
+    throw new ApiError(res.status, data as Partial<ErrorBody>);
+  }
+  const name = fileNameOf(res.headers.get('content-disposition'), fallbackName);
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return name;
+}

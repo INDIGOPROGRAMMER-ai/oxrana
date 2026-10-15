@@ -13,6 +13,7 @@ import {
   type ErrorView,
   errorView,
   Field,
+  formatInZone,
   Input,
   Select,
   Textarea,
@@ -23,8 +24,9 @@ import { Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { z } from 'zod';
 import { api } from '../../lib/api';
-import { useRefresh } from '../../lib/data';
+import { useMe, useRefresh } from '../../lib/data';
 import { instantToLocal, localToIso } from '../../lib/dates';
+import { extensionLimitMs, extensionOutcome } from '../../lib/pass-extension';
 import { buildFormView } from '../../lib/pass-form-view';
 import { passTitle } from '../../lib/pass-text';
 import { useDebounced } from '../../lib/use-debounced';
@@ -92,6 +94,9 @@ export function PassEditDialog({ pass, onClose }: { pass: PassView | null; onClo
   const { tenant, ctx, passForm } = useCabinet();
   const refresh = useRefresh();
   const toast = useToast();
+  const { can } = useMe();
+  // есть право согласовать — продление сверх максимума согласуется тут же, тем же нажатием (Q-90)
+  const approvesSelf = can('pass.approve') && can('pass.change_request.decide');
   const timezone = ctx?.site.timezone ?? 'UTC';
   const initial = useMemo(() => (pass ? initialOf(pass, timezone) : null), [pass, timezone]);
   const [values, setValues] = useState<EditValues | null>(initial);
@@ -150,6 +155,12 @@ export function PassEditDialog({ pass, onClose }: { pass: PassView | null; onClo
     ['plate', 'categoryId', 'validFrom', 'validTo'].includes(k),
   );
   const viaRequest = pass?.status === 'approved' && hints?.approval?.mode !== 'allow';
+  // После въезда «действует до»: сокращение и продление в пределах максимума — сразу, сверх — заявкой (Q-85)
+  const outcome =
+    inside && pass && ctx && body.validTo !== undefined
+      ? extensionOutcome(pass, ctx.site, body.validTo)
+      : 'same';
+  const limitMs = inside && pass && ctx ? extensionLimitMs(pass, ctx.site) : null;
 
   async function save() {
     if (!pass || !values) return;
@@ -181,9 +192,11 @@ export function PassEditDialog({ pass, onClose }: { pass: PassView | null; onClo
       });
       await refresh();
       toast(
-        result.changeRequest
-          ? 'Заявка на изменение отправлена согласующему — до решения действует прежний пропуск'
-          : `Пропуск ${passTitle(pass)} изменён`,
+        result.changeRequest?.status === 'approved'
+          ? 'Срок продлён: заявка создана и согласована вами, в журнале обе записи'
+          : result.changeRequest
+            ? 'Заявка на изменение отправлена согласующему — до решения действует прежний пропуск'
+            : `Пропуск ${passTitle(pass)} изменён`,
       );
       onClose();
     } catch (raw) {
@@ -193,6 +206,12 @@ export function PassEditDialog({ pass, onClose }: { pass: PassView | null; onClo
     }
   }
 
+  const saveLabel =
+    inside && outcome === 'beyond'
+      ? approvesSelf
+        ? 'Продлить и согласовать'
+        : 'Отправить на согласование'
+      : 'Сохранить';
   const ready = pass !== null && values !== null && ctx !== undefined && view !== null;
   return (
     <Dialog open={pass !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
@@ -262,7 +281,15 @@ export function PassEditDialog({ pass, onClose }: { pass: PassView | null; onClo
             {pass.passType !== 'permanent' ? (
               <Field
                 label="Действует до"
-                hint={inside ? `Время объекта: ${ctx.site.timezoneLabel}` : undefined}
+                hint={
+                  inside
+                    ? `Время объекта: ${ctx.site.timezoneLabel}.${
+                        limitMs !== null
+                          ? ` Продлить сразу можно до ${formatInZone(new Date(limitMs).toISOString(), ctx.site.timezone)} — дальше заявкой согласующему.`
+                          : ''
+                      }`
+                    : undefined
+                }
               >
                 <DateTimeInput
                   value={values.validTo}
@@ -351,7 +378,18 @@ export function PassEditDialog({ pass, onClose }: { pass: PassView | null; onClo
           </div>
         )}
         {!inside && ready ? <PassHintsPanel hints={hints} loading={hintsQuery.isFetching} /> : null}
-        {viaRequest && substantive ? (
+        {inside && outcome === 'beyond' ? (
+          <Alert tone="warning" data-testid="edit-beyond-max">
+            {approvesSelf
+              ? 'Срок выходит за максимум, который можно оформить без согласования. У вас есть право согласовать: заявка будет создана и сразу согласована вами. Причина обязательна — она попадёт в журнал вместе с заявкой и согласованием.'
+              : 'Срок выходит за максимум, который можно оформить без согласования, — нужно согласование: заявка уйдёт согласующему. До решения действует прежний срок.'}
+          </Alert>
+        ) : inside && outcome === 'within' ? (
+          <Alert tone="info" data-testid="edit-within-max">
+            Продление в пределах максимума — применится сразу.
+          </Alert>
+        ) : null}
+        {!inside && viaRequest && substantive ? (
           <Alert tone="warning" data-testid="edit-via-request">
             Пропуск проходил согласование: изменение номера, типа и срока уйдёт согласующему
             заявкой. До решения действует прежний пропуск, комментарий изменится сразу.
@@ -368,7 +406,7 @@ export function PassEditDialog({ pass, onClose }: { pass: PassView | null; onClo
             title={blockers[0]?.text}
           >
             {busy ? <Loader2 aria-hidden className="animate-spin" /> : null}
-            Сохранить
+            {saveLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

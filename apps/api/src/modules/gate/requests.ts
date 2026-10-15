@@ -8,6 +8,7 @@ import { assertTenantAccess, type Scope } from '../../core/context';
 import { loadSite, loadTenant, notFound } from '../../core/loaders';
 import { assertRef } from '../../core/refs';
 import { AppError } from '../../errors';
+import { loadActorForm } from '../pass-form/service';
 import { createPass } from '../passes/service';
 import type { GateCtx } from './core';
 
@@ -181,6 +182,12 @@ export async function approveGateRequest(
   const validTo =
     body.validTo ?? new Date(now + settings.singlePassMaxHours * 3_600_000).toISOString();
   const nowIso = new Date(now).toISOString();
+  // Окно на весь срок ставит сервер, а не сотрудник: настройка формы «окно скрыто» ему не мешает.
+  const actorForm = await loadActorForm(s, tenant);
+  const form = {
+    ...actorForm,
+    form: { ...actorForm.form, fields: { ...actorForm.form.fields, window: 'optional' as const } },
+  };
   const created = await createPass(
     s,
     tenant,
@@ -196,7 +203,7 @@ export async function approveGateRequest(
       ...(request.participant === 'vehicle' ? { windowFrom: nowIso, windowTo: validTo } : {}),
       comment: body.comment ?? 'По запросу с поста',
     },
-    { via: 'gate', gateAccountId: request.createdByGateAccountId },
+    { via: 'gate', gateAccountId: request.createdByGateAccountId, form },
   );
   const [row = request] = await s.db
     .update(schema.gateRequests)

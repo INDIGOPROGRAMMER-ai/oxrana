@@ -44,8 +44,10 @@ export interface FormView {
   readonly dockRequired: boolean;
   /** Док обязателен, а у арендатора он один — подставлен. */
   readonly defaultDockId: string;
-  /** Окно требует политика, а форма — нет: окно будет на весь срок пропуска. */
+  /** Окончание разового пропуска по умолчанию — начало + столько часов. */
   readonly singleHours: number;
+  /** Время начала подставляется само: в поле сразу видно текущее время объекта. */
+  readonly startNow: boolean;
 }
 
 export function buildFormView(input: FormViewInput): FormView {
@@ -95,13 +97,17 @@ export function buildFormView(input: FormViewInput): FormView {
     dockRequired,
     defaultDockId: dockRequired && ctx.docks.length === 1 ? (ctx.docks[0]?.id ?? '') : '',
     singleHours: form.singleHours,
+    startNow: form.startNow,
   };
 }
 
 function effectiveMode(key: PassFormFieldKey, input: FormViewInput): FieldMode {
   const mode = input.form.fields[key];
   if (key === 'window') {
-    if (mode === 'policy') return input.windowRequiredByPolicy ? 'required' : 'optional';
+    // «Обязательно» делает окно и политика окон (у постоянного пропуска, когда окно скрыто: на весь
+    // срок его не поставить) — сервер сообщает об этом в подсказках.
+    if (input.windowRequiredByPolicy) return 'required';
+    if (mode === 'policy') return 'optional';
     return mode;
   }
   // Комментарий, который требует политика согласования, форма скрыть не может.

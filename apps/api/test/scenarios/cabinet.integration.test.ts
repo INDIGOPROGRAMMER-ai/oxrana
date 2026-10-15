@@ -10,6 +10,7 @@ import {
   seedDemo,
   startTestApp,
   type TestApp,
+  windowFollowsPolicy,
 } from '../support/harness';
 
 /**
@@ -41,6 +42,7 @@ const hints = (actor: typeof logist, body: Record<string, unknown>, tenant = dns
 beforeAll(async () => {
   await seedDemo();
   t = await startTestApp();
+  await windowFollowsPolicy(t);
 });
 afterAll(() => t.close());
 

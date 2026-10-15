@@ -3,6 +3,7 @@ import { schema } from '@oxrana/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  customActor,
   KEYS,
   NOON,
   ownerDb,
@@ -10,6 +11,7 @@ import {
   seedDemo,
   startTestApp,
   type TestApp,
+  windowFollowsPolicy,
 } from '../support/harness';
 import { at, categoryKey, dockKey, gateKey, tenantKey } from './gate-helpers';
 
@@ -85,6 +87,7 @@ async function enter(passId: string, plate: string | null, closed = false): Prom
 beforeAll(async () => {
   await seedDemo();
   t = await startTestApp();
+  await windowFollowsPolicy(t);
   await t.headersFor(logist);
 });
 beforeEach(() => t.clock.set(NOON));
@@ -180,18 +183,108 @@ describe('после въезда (визит открыт)', () => {
     expect(ok.json().pass.phase).toBe('inside');
   });
 
-  it('«действует до» не выходит за максимум разового пропуска', async () => {
+  it('Q-85: разовый — продление до максимума сразу, сверх максимума — заявкой, решает согласующий', async () => {
     const plate = nextPlate();
     const passId = await create(logist, single({ plate }));
     await enter(passId, plate.toUpperCase());
-    const res = await patch(logist, passId, {
-      validTo: iso(Date.parse(NOON) + 30 * HOUR),
-      reason: 'Слишком долго',
+    const start = (await view(passId)).validFrom;
+    // в пределах 24 ч от начала — сразу, без заявки
+    const within = await patch(logist, passId, {
+      validTo: iso(Date.parse(start) + 24 * HOUR),
+      reason: 'Разгрузка затянулась до утра',
     });
-    expect(error(res)).toMatchObject({ code: 'invalid_period', field: 'validTo' });
+    expect(within.statusCode, within.body).toBe(200);
+    expect(within.json().applied).toEqual(['validTo']);
+    expect(within.json().changeRequest).toBeNull();
+    // сверх максимума — заявка, пропуск остаётся прежним
+    const beyondTo = iso(Date.parse(start) + 30 * HOUR);
+    const beyond = await patch(logist, passId, {
+      validTo: beyondTo,
+      reason: 'Фура стоит под разгрузкой двое суток',
+    });
+    expect(beyond.statusCode, beyond.body).toBe(200);
+    expect(beyond.json().applied).toEqual([]);
+    expect(beyond.json().changeRequest).toMatchObject({ status: 'pending' });
+    expect((await view(passId)).validTo).toBe(iso(Date.parse(start) + 24 * HOUR));
+    // согласующий вправе утвердить срок сверх максимума
+    const decided = await t.as(admin, {
+      method: 'POST',
+      url: `/change-requests/${beyond.json().changeRequest.id}/approve`,
+      payload: {},
+    });
+    expect(decided.statusCode, decided.body).toBe(200);
+    expect((await view(passId)).validTo).toBe(beyondTo);
   });
 
-  it('согласованный многоразовый: продление после въезда — заявкой, сокращение — сразу', async () => {
+  it('Q-90: у правящего есть право согласовать — заявка создаётся и сразу согласуется им же, в аудите обе записи; причина обязательна', async () => {
+    const plate = nextPlate();
+    const passId = await create(admin, single({ plate }));
+    await enter(passId, plate.toUpperCase());
+    const start = (await view(passId)).validFrom;
+    const beyondTo = iso(Date.parse(start) + 36 * HOUR);
+    // без причины не пускает: согласование — на совести того, кто нажал
+    const noReason = await patch(admin, passId, { validTo: beyondTo });
+    expect(error(noReason).code).toBe('reason_required');
+    const res = await patch(admin, passId, { validTo: beyondTo, reason: 'Фура ждёт растаможки' });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().applied).toEqual(['validTo']);
+    expect(res.json().changeRequest).toMatchObject({
+      status: 'approved',
+      requestedBy: admin.id,
+      decidedBy: admin.id,
+    });
+    expect((await view(passId)).validTo).toBe(beyondTo);
+    const history = (await t.as(admin, { url: `/passes/${passId}/history` })).json().items as {
+      action: string;
+      reason: string | null;
+    }[];
+    expect(history.map((h) => h.action)).toEqual(
+      expect.arrayContaining(['change_request', 'update']),
+    );
+    const audit = await ownerDb()
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.entity, 'pass_change_request'));
+    expect(
+      audit.some((a) => a.action === 'approve' && a.entityId === res.json().changeRequest.id),
+    ).toBe(true);
+  });
+
+  it('Q-90: права согласовать нет — не отказ, а заявка на согласование (в том числе у правящего без права заявок)', async () => {
+    const editor = customActor(['pass.view_all_tenants', 'pass.view', 'pass.edit']);
+    const plate = nextPlate();
+    const passId = await create(admin, single({ plate }));
+    await enter(passId, plate.toUpperCase());
+    const start = (await view(passId)).validFrom;
+    const res = await patch(editor, passId, {
+      validTo: iso(Date.parse(start) + 36 * HOUR),
+      reason: 'Нужно продлить',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().applied).toEqual([]);
+    expect(res.json().changeRequest).toMatchObject({ status: 'pending' });
+    // в пределах максимума тот же человек правит сразу
+    const within = await patch(editor, passId, {
+      validTo: iso(Date.parse(start) + 20 * HOUR),
+      reason: 'Достаточно до утра',
+    });
+    expect(within.json().applied).toEqual(['validTo']);
+  });
+
+  it('Q-85: сокращение «действует до» после въезда — сразу', async () => {
+    const plate = nextPlate();
+    const passId = await create(logist, single({ plate }));
+    await enter(passId, plate.toUpperCase());
+    const start = (await view(passId)).validFrom;
+    const res = await patch(logist, passId, {
+      validTo: iso(Date.parse(start) + 2 * HOUR),
+      reason: 'Разгрузились быстрее',
+    });
+    expect(res.json().applied).toEqual(['validTo']);
+    expect(res.json().changeRequest).toBeNull();
+  });
+
+  it('Q-85: согласованный многоразовый — продление в пределах максимума сразу, сверх — заявкой', async () => {
     const plate = nextPlate();
     const passId = await create(admin, multi({ plate, validFrom: NOON }));
     await enter(passId, plate.toUpperCase());
@@ -200,8 +293,15 @@ describe('после въезда (визит открыт)', () => {
       reason: 'Нужно ещё два дня',
     });
     expect(longer.statusCode, longer.body).toBe(200);
-    expect(longer.json().applied).toEqual([]);
-    expect(longer.json().changeRequest).toMatchObject({ status: 'pending' });
+    expect(longer.json().applied).toEqual(['validTo']);
+    expect(longer.json().changeRequest).toBeNull();
+    const beyond = await patch(logist, passId, {
+      validTo: '2026-05-01T15:00:00.000Z',
+      reason: 'Контракт продлили на два месяца',
+    });
+    expect(beyond.statusCode, beyond.body).toBe(200);
+    expect(beyond.json().applied).toEqual([]);
+    expect(beyond.json().changeRequest).toMatchObject({ status: 'pending' });
     const shorter = await patch(logist, passId, {
       validTo: '2026-03-12T15:00:00.000Z',
       reason: 'Достаточно до среды',

@@ -1,4 +1,4 @@
-export { ApiError, api, type ErrorView, errorView } from './api';
+export { ApiError, api, downloadFile, type ErrorView, errorView } from './api';
 export { type BatchColumn, BatchInput } from './batch/batch-input';
 export { FileDrop } from './batch/file-drop';
 export {
@@ -30,10 +30,14 @@ export {
   isoToRuDate,
   maskDate,
   maskTime,
+  maskTimeRange,
   monthGrid,
   parseRuDate,
   parseTime,
+  parseTimeRange,
+  RANGE_DASH,
   TimeInput,
+  TimeRangeInput,
 } from './components/date-input';
 export {
   Dialog,
@@ -49,6 +53,7 @@ export { EmptyState } from './components/empty-state';
 export { Field, type FieldErrorLike, useFieldState } from './components/field';
 export { Checkbox, Input, Select, Switch, Textarea } from './components/inputs';
 export { PageHeader, Section } from './components/page';
+export { SegmentedChoice, type SegmentedOption } from './components/segmented-choice';
 export {
   Sheet,
   SheetClose,

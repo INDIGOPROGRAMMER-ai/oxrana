@@ -28,15 +28,18 @@ import {
   Input,
   Select,
   Skeleton,
+  Switch,
   useToast,
 } from '@oxrana/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, RotateCcw } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import { useApi, useRefresh } from '../../lib/data';
 import type { PassFormValues } from '../../lib/pass-form';
 import { buildFormView } from '../../lib/pass-form-view';
 import { PASS_TYPE_LABEL } from '../../lib/pass-text';
+import { endAfter, timeOf } from '../../lib/pass-time';
 import { PassFormFields } from '../cabinet/pass-form-fields';
 
 const LEVEL_TITLE: Record<PassFormLevel, string> = {
@@ -63,6 +66,13 @@ const WINDOW_MODES: WindowMode[] = ['policy', 'hidden', 'optional', 'required'];
 
 type Draft = Record<PassFormLevel, PassFormSettings>;
 
+/** Несохранённые правки: сотрудника — вместе с тем, чья это правка (при смене сотрудника не переносится). */
+interface Edits {
+  site?: PassFormSettings;
+  tenant?: PassFormSettings;
+  user?: { userId: string; settings: PassFormSettings };
+}
+
 const without = <T extends object, K extends keyof T>(obj: T, key: K): Omit<T, K> => {
   const { [key]: _removed, ...rest } = obj;
   return rest;
@@ -77,6 +87,7 @@ export function patchOf(saved: PassFormSettings, draft: PassFormSettings): PassF
     'passTypes',
     'defaultPassType',
     'singleHours',
+    'startNow',
   ] as const) {
     const a = JSON.stringify(saved[key] ?? null);
     const b = JSON.stringify(draft[key] ?? null);
@@ -115,25 +126,31 @@ export function PassFormEditorView({
   const cabinet = useApi<CabinetContext>(`/tenants/${tenantId}/cabinet`);
   const refresh = useRefresh();
   const toast = useToast();
+  const client = useQueryClient();
+  const editorPath = `/tenants/${tenantId}/pass-form/editor${userId ? `?userId=${userId}` : ''}`;
   const [level, setLevel] = useState<PassFormLevel>(startLevel);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  // Несохранённые правки по уровням. Черновик = правка уровня или то, что сохранено на сервере, —
+  // поэтому перезагрузка данных (после сохранения, по событию объекта) правку не затирает.
+  const [edits, setEdits] = useState<Edits>({});
   const [reason, setReason] = useState('');
   const [error, setError] = useState<ErrorView | null>(null);
   const [busy, setBusy] = useState(false);
 
   const saved = editor.data;
-  const savedKey = saved ? JSON.stringify(saved.layers) : '';
-  // Черновик заново берётся с сервера, когда сохранённое изменилось (сохранение, другой сотрудник).
-  useEffect(() => {
-    if (saved) {
-      setDraft({
-        site: saved.layers.site,
-        tenant: saved.layers.tenant,
-        user: saved.layers.user ?? {},
-      });
-      setError(null);
-    }
-  }, [savedKey]);
+  const draft = useMemo<Draft | null>(
+    () =>
+      saved
+        ? {
+            site: edits.site ?? saved.layers.site,
+            tenant: edits.tenant ?? saved.layers.tenant,
+            user:
+              edits.user && edits.user.userId === userId
+                ? edits.user.settings
+                : (saved.layers.user ?? {}),
+          }
+        : null,
+    [saved, edits, userId],
+  );
 
   // нельзя выбрать «Сотрудник», пока сотрудник не выбран
   const activeLevel: PassFormLevel = level === 'user' && !userId ? 'tenant' : level;
@@ -172,6 +189,8 @@ export function PassFormEditorView({
   }
   const ctx = cabinet.data;
   const canEdit = saved.canEdit[activeLevel];
+  // пока сохраняется и перезагружается — поля заблокированы, нажатие не потеряется
+  const editable = canEdit && !busy;
   const layer = draft[activeLevel];
   const savedLayer: PassFormSettings =
     activeLevel === 'user' ? (saved.layers.user ?? {}) : saved.layers[activeLevel];
@@ -190,7 +209,23 @@ export function PassFormEditorView({
         : { site: draft.site, tenant: above.tenant },
   );
 
-  const update = (next: PassFormSettings) => setDraft({ ...draft, [activeLevel]: next });
+  const savedOf = (l: PassFormLevel): PassFormSettings =>
+    l === 'user' ? (saved.layers.user ?? {}) : saved.layers[l];
+  const update = (next: PassFormSettings) => {
+    // правка, равная сохранённому, правкой не считается: сохранённое потом обновится само
+    const same = Object.keys(patchOf(savedOf(activeLevel), next)).length === 0;
+    setEdits((e) => {
+      if (activeLevel === 'user') {
+        const { user: _drop, ...rest } = e;
+        return same || !userId ? rest : { ...rest, user: { userId, settings: next } };
+      }
+      const { [activeLevel]: _drop, ...rest } = e;
+      return same ? rest : { ...rest, [activeLevel]: next };
+    });
+  };
+  const otherDirty = (['site', 'tenant', 'user'] as const).filter(
+    (l) => l !== activeLevel && Object.keys(patchOf(savedOf(l), draft[l])).length > 0,
+  );
   const dirty = Object.keys(patchOf(savedLayer, layer)).length > 0;
 
   const categories = ctx.categories.filter((c) => c.available);
@@ -213,9 +248,17 @@ export function PassFormEditorView({
           ? `/tenants/${tenantId}/pass-form`
           : `/tenants/${tenantId}/users/${userId}/pass-form`;
     try {
-      await api(url, {
+      const result = await api<{ settings: PassFormSettings }>(url, {
         method: 'PATCH',
         body: { ...patch, ...(reason.trim() ? { reason: reason.trim() } : {}) },
+      });
+      // состояние уровня — из ответа сохранения, не из последующей перезагрузки
+      client.setQueryData<PassFormEditor>(['data', editorPath], (old) =>
+        old ? { ...old, layers: { ...old.layers, [activeLevel]: result.settings } } : old,
+      );
+      setEdits((e) => {
+        const { [activeLevel]: _saved, ...rest } = e;
+        return rest;
       });
       await refresh();
       setReason('');
@@ -238,8 +281,16 @@ export function PassFormEditorView({
     personDocument: '',
     passType: view.defaultPassType ?? 'single',
     date: ctx.today,
-    startTime: '',
-    endTime: '',
+    startTime: resolved.startNow ? timeOf(Date.parse(ctx.now), ctx.site.timezone) : '',
+    endTime: resolved.startNow
+      ? endAfter(
+          timeOf(Date.parse(ctx.now), ctx.site.timezone),
+          resolved.singleHours,
+          saved.singlePassMaxHours,
+        ).time
+      : '',
+    startAuto: true,
+    endAuto: true,
     windowFromTime: '',
     windowToTime: '',
     from: ctx.today,
@@ -261,6 +312,7 @@ export function PassFormEditorView({
           <Field label="Сотрудник" hint="Предпросмотр справа — как форму увидит этот человек.">
             <Select
               value={userId ?? ''}
+              disabled={busy}
               onChange={(e) => {
                 onUserChange(e.target.value || null);
                 if (!e.target.value && level === 'user') setLevel('tenant');
@@ -293,7 +345,7 @@ export function PassFormEditorView({
                     size="sm"
                     variant={activeLevel === l ? 'default' : 'outline'}
                     aria-pressed={activeLevel === l}
-                    disabled={l === 'user' && !userId}
+                    disabled={(l === 'user' && !userId) || busy}
                     title={reasonOff ?? undefined}
                     onClick={() => setLevel(l)}
                   >
@@ -325,12 +377,12 @@ export function PassFormEditorView({
                   : PASS_FORM_SOURCE_LABELS[resolved.sources.categoryIds]
               }
               overridden={Boolean(layer.categoryIds)}
-              disabled={!canEdit}
+              disabled={!editable}
               onReset={() => update(without(layer, 'categoryIds'))}
             >
               <ChipSelect
                 label="Типы транспорта"
-                disabled={!canEdit}
+                disabled={!editable}
                 options={categories.map((c) => ({ value: c.id, label: c.name }))}
                 value={layer.categoryIds ?? inherited.categoryIds ?? categories.map((c) => c.id)}
                 onChange={(next) => {
@@ -352,12 +404,12 @@ export function PassFormEditorView({
                     : 'не задан: берётся тип арендатора или единственный'
               }
               overridden={Boolean(layer.defaultCategoryId)}
-              disabled={!canEdit}
+              disabled={!editable}
               onReset={() => update(without(layer, 'defaultCategoryId'))}
             >
               <Select
                 aria-label="Тип транспорта по умолчанию"
-                disabled={!canEdit}
+                disabled={!editable}
                 value={layer.defaultCategoryId ?? ''}
                 onChange={(e) =>
                   update(
@@ -387,12 +439,12 @@ export function PassFormEditorView({
                   : PASS_FORM_SOURCE_LABELS[resolved.sources.passTypes]
               }
               overridden={Boolean(layer.passTypes)}
-              disabled={!canEdit}
+              disabled={!editable}
               onReset={() => update(without(layer, 'passTypes'))}
             >
               <ChipSelect
                 label="Виды пропусков"
-                disabled={!canEdit}
+                disabled={!editable}
                 options={ALL_TYPES.map((t) => ({
                   value: t,
                   label: PASS_TYPE_LABEL[t],
@@ -420,12 +472,12 @@ export function PassFormEditorView({
                   : PASS_FORM_SOURCE_LABELS[resolved.sources.defaultPassType]
               }
               overridden={Boolean(layer.defaultPassType)}
-              disabled={!canEdit}
+              disabled={!editable}
               onReset={() => update(without(layer, 'defaultPassType'))}
             >
               <Select
                 aria-label="Вид пропуска по умолчанию"
-                disabled={!canEdit}
+                disabled={!editable}
                 value={layer.defaultPassType ?? inherited.defaultPassType}
                 onChange={(e) => update({ ...layer, defaultPassType: e.target.value as PassType })}
               >
@@ -453,7 +505,7 @@ export function PassFormEditorView({
                   title={PASS_FORM_FIELD_LABELS[key]}
                   source={own ? 'задано на этом уровне' : effectiveSource(key)}
                   overridden={own !== undefined}
-                  disabled={!canEdit}
+                  disabled={!editable}
                   onReset={() => {
                     const fields = without(layer.fields ?? {}, key);
                     update(
@@ -465,7 +517,7 @@ export function PassFormEditorView({
                 >
                   <Select
                     aria-label={`Поле «${PASS_FORM_FIELD_LABELS[key]}»`}
-                    disabled={!canEdit}
+                    disabled={!editable}
                     value={own ?? inherited.fields[key]}
                     onChange={(e) =>
                       update({
@@ -482,8 +534,10 @@ export function PassFormEditorView({
                   </Select>
                   {key === 'window' ? (
                     <p className="text-xs text-muted-foreground">
-                      «Необязательно» и «Скрыто» снимают требование политики окон прибытия для этой
-                      формы: если окно не указано, пропуск действует весь срок.
+                      По умолчанию окно скрыто: включайте его там, где есть расписание доков. Если
+                      политика окон прибытия требует окно, а в форме оно «Необязательно» или
+                      «Скрыто», пропуск действует весь срок. У постоянного пропуска окно, которое
+                      требует политика, остаётся обязательным.
                     </p>
                   ) : null}
                   {key === 'comment' ? (
@@ -510,7 +564,7 @@ export function PassFormEditorView({
                   : PASS_FORM_SOURCE_LABELS[resolved.sources.singleHours]
               }
               overridden={layer.singleHours !== undefined}
-              disabled={!canEdit}
+              disabled={!editable}
               onReset={() => update(without(layer, 'singleHours'))}
             >
               <Input
@@ -518,7 +572,7 @@ export function PassFormEditorView({
                 min={1}
                 max={saved.singlePassMaxHours}
                 aria-label="Часов до окончания разового пропуска"
-                disabled={!canEdit}
+                disabled={!editable}
                 className="w-28"
                 value={layer.singleHours ?? inherited.singleHours}
                 onChange={(e) => {
@@ -528,9 +582,31 @@ export function PassFormEditorView({
               />
               <p className="text-xs text-muted-foreground">
                 Не больше максимума разового пропуска на объекте — {saved.singlePassMaxHours} ч.
-                Начало по умолчанию — «сейчас».
+                Окончание подставляется в поле само, как только появилось время начала.
               </p>
             </Setting>
+            <div className="pt-3">
+              <Setting
+                title="Время начала — «сейчас» по времени объекта"
+                source={
+                  layer.startNow !== undefined
+                    ? 'задано на этом уровне'
+                    : PASS_FORM_SOURCE_LABELS[resolved.sources.startNow]
+                }
+                overridden={layer.startNow !== undefined}
+                disabled={!editable}
+                onReset={() => update(without(layer, 'startNow'))}
+              >
+                <Switch
+                  aria-label="Подставлять время начала автоматически"
+                  disabled={!editable}
+                  checked={layer.startNow ?? inherited.startNow}
+                  onChange={(e) => update({ ...layer, startNow: e.target.checked })}
+                  label="Подставлять автоматически"
+                  hint="Включено: в поле «с» сразу видно текущее время объекта. Выключено: поле пустое, пропуск начинается «сейчас», если время не указать."
+                />
+              </Setting>
+            </div>
           </CardContent>
         </Card>
 
@@ -544,7 +620,7 @@ export function PassFormEditorView({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               maxLength={500}
-              disabled={!canEdit}
+              disabled={!editable}
               placeholder="необязательно"
             />
           </Field>
@@ -553,6 +629,13 @@ export function PassFormEditorView({
             Сохранить уровень «{LEVEL_TITLE[activeLevel]}»
           </Button>
         </div>
+        {otherDirty.length > 0 ? (
+          <p className="text-xs text-warning" data-testid="other-dirty">
+            Есть несохранённые правки на других уровнях:{' '}
+            {otherDirty.map((l) => `«${LEVEL_TITLE[l]}»`).join(', ')}. Они не потеряются — сохраните
+            каждый уровень отдельно.
+          </p>
+        ) : null}
       </div>
 
       <aside className="space-y-2 lg:sticky lg:top-4 lg:self-start" data-testid="form-preview">

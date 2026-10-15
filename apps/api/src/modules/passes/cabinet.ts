@@ -3,6 +3,7 @@ import {
   PassBatchResultSchema,
   type PassFormFieldKey,
   PassRepeatSchema,
+  SiteSettingsSchema,
   TenantParamsSchema,
   TenantTodaySchema,
 } from '@oxrana/contracts';
@@ -51,6 +52,7 @@ export function registerCabinetRoutes(app: FastifyInstance): void {
         const { rules } = await s.ctx.deps.ruleSets.get(s.db, s.organizationId, site.id);
         const now = ctx.now();
         const tz = site.timezone;
+        const siteSettings = SiteSettingsSchema.parse(site.settings);
         const available = new Set(availableCategories(rules, tenant.id, now, tz).map((c) => c.id));
         const purposes = await s.db
           .select({ id: schema.visitPurposes.id, name: schema.visitPurposes.name })
@@ -79,6 +81,9 @@ export function registerCabinetRoutes(app: FastifyInstance): void {
             name: site.name,
             timezone: tz,
             timezoneLabel: siteTimeLabel(site, now),
+            pastStartToleranceMin: siteSettings.pastStartToleranceMin,
+            singlePassMaxHours: siteSettings.singlePassMaxHours,
+            multiPassMaxDays: siteSettings.multiPassMaxDays,
           },
           categories: rules.categories.map((c) => ({
             id: c.id,

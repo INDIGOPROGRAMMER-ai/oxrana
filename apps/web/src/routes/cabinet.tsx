@@ -7,6 +7,7 @@ import {
   ListChecks,
   LogOut,
   type LucideIcon,
+  MapPin,
   Plus,
   Radio,
   SlidersHorizontal,
@@ -64,6 +65,8 @@ function CabinetLayout() {
 interface NavEntry {
   readonly href: string;
   readonly label: string;
+  /** Короткая подпись для нижнего меню телефона (360 px). */
+  readonly short?: string;
   readonly icon: LucideIcon;
 }
 
@@ -81,6 +84,9 @@ function Shell() {
     ...(can('pass.view') ? [{ href: '/cabinet/passes', label: 'Пропуска', icon: ListChecks }] : []),
     ...(canCreate ? [{ href: '/cabinet/passes/new', label: 'Новый пропуск', icon: Plus }] : []),
     ...(canCreate ? [{ href: '/cabinet/passes/batch', label: 'Несколько', icon: Table2 }] : []),
+    ...(can('pass.view')
+      ? [{ href: '/cabinet/inside', label: 'На территории', short: 'Внутри', icon: MapPin }]
+      : []),
     ...(can('pass.view') ? [{ href: '/cabinet/fleet', label: 'Автопарк', icon: Truck }] : []),
     ...(can('pass_form.manage_users') || can('pass_form.manage')
       ? [{ href: '/cabinet/pass-form', label: 'Настройка формы', icon: SlidersHorizontal }]
@@ -195,7 +201,7 @@ function Shell() {
             )}
           >
             <n.icon aria-hidden className="size-5" />
-            {n.label}
+            {n.short ?? n.label}
           </A>
         ))}
       </nav>

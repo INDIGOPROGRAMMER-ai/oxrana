@@ -8,10 +8,13 @@ import {
   isoToRuDate,
   maskDate,
   maskTime,
+  maskTimeRange,
   monthGrid,
   parseRuDate,
   parseTime,
+  parseTimeRange,
   TimeInput,
+  TimeRangeInput,
 } from '../src';
 
 describe('маски даты и времени', () => {
@@ -46,6 +49,30 @@ describe('маски даты и времени', () => {
     expect(parseTime('24:00')).toBeNull();
     expect(parseTime('12:60')).toBeNull();
     expect(parseTime('1:30')).toBeNull();
+  });
+  it('время вводится только цифрами: двоеточие само, цифра, с которой час не начинается, получает нуль', () => {
+    expect(maskTime('1200')).toBe('12:00');
+    expect(maskTime('9')).toBe('09');
+    expect(maskTime('930')).toBe('09:30');
+    expect(maskTime('0930')).toBe('09:30');
+    expect(maskTime('127')).toBe('12:07');
+    expect(maskTime('12:00')).toBe('12:00');
+    expect(maskTime('12-00')).toBe('12:00');
+    expect(maskTime('1')).toBe('1');
+    expect(maskTime('')).toBe('');
+  });
+  it('интервал: «12001400» → «12:00–14:00», тире подставляется само', () => {
+    expect(maskTimeRange('1200')).toBe('12:00');
+    expect(maskTimeRange('12001')).toBe('12:00–1');
+    expect(maskTimeRange('12001400')).toBe('12:00–14:00');
+    expect(maskTimeRange('9001400')).toBe('09:00–14:00');
+    expect(maskTimeRange('900930')).toBe('09:00–09:30');
+    expect(maskTimeRange('12:00-14:00')).toBe('12:00–14:00');
+    expect(maskTimeRange('1200140099')).toBe('12:00–14:00');
+    expect(parseTimeRange('12:00–14:00')).toEqual({ from: '12:00', to: '14:00' });
+    expect(parseTimeRange('12:00-14:00')).toEqual({ from: '12:00', to: '14:00' });
+    expect(parseTimeRange('12:00–25:00')).toBeNull();
+    expect(parseTimeRange('12:00')).toBeNull();
   });
   it('сетка месяца начинается с понедельника', () => {
     const weeks = monthGrid(2026, 9); // октябрь 2026: 1 октября — четверг
@@ -145,5 +172,64 @@ describe('TimeInput и DateTimeInput', () => {
     await user.clear(screen.getByLabelText('Время'));
     await user.type(screen.getByLabelText('Время'), '0900');
     expect(screen.getByTestId('value')).toHaveTextContent('2026-10-13T09:00');
+  });
+});
+
+function RangeHarness() {
+  const [range, setRange] = useState({ from: '', to: '' });
+  return (
+    <div>
+      <TimeRangeInput
+        aria-label="Окно"
+        from={range.from}
+        to={range.to}
+        onChange={(from, to) => setRange({ from, to })}
+      />
+      <output data-testid="range">{`${range.from}|${range.to}`}</output>
+    </div>
+  );
+}
+
+describe('TimeRangeInput', () => {
+  it('набор «12001400» даёт «12:00–14:00» и значения обеих границ', async () => {
+    const user = userEvent.setup();
+    render(<RangeHarness />);
+    const input = screen.getByLabelText('Окно');
+    await user.type(input, '12001400');
+    expect(input).toHaveValue('12:00–14:00');
+    expect(screen.getByTestId('range')).toHaveTextContent('12:00|14:00');
+  });
+
+  it('пока интервал неполный, наружу уходит только готовая первая граница', async () => {
+    const user = userEvent.setup();
+    render(<RangeHarness />);
+    const input = screen.getByLabelText('Окно');
+    await user.type(input, '1200');
+    expect(screen.getByTestId('range')).toHaveTextContent('12:00|');
+    await user.clear(input);
+    expect(screen.getByTestId('range')).toHaveTextContent('|');
+  });
+});
+
+describe('TimeInput: набор цифр', () => {
+  it('«1200» даёт «12:00», «930» — «09:30»', async () => {
+    const user = userEvent.setup();
+    function One() {
+      const [v, setV] = useState('');
+      return (
+        <div>
+          <TimeInput aria-label="Время" value={v} onChange={setV} />
+          <output data-testid="v">{v}</output>
+        </div>
+      );
+    }
+    render(<One />);
+    const input = screen.getByLabelText('Время');
+    await user.type(input, '1200');
+    expect(input).toHaveValue('12:00');
+    expect(screen.getByTestId('v')).toHaveTextContent('12:00');
+    await user.clear(input);
+    await user.type(input, '930');
+    expect(input).toHaveValue('09:30');
   });
 });

@@ -18,6 +18,13 @@ describe('редактор формы: что уходит на сервер', (
     });
   });
 
+  it('«Время начала — сейчас»: включение, выключение и сброс идут отдельным ключом', () => {
+    expect(patchOf({}, { startNow: false })).toEqual({ startNow: false });
+    expect(patchOf({ startNow: false }, { startNow: true })).toEqual({ startNow: true });
+    expect(patchOf({ startNow: false }, {})).toEqual({ startNow: null });
+    expect(patchOf({ startNow: true }, { startNow: true })).toEqual({});
+  });
+
   it('ничего не менялось — пустое изменение', () => {
     const same = { fields: { brand: 'hidden' as const }, categoryIds: ['a'] };
     expect(patchOf(same, { ...same })).toEqual({});

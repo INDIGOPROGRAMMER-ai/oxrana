@@ -13,6 +13,8 @@ import {
   Field,
   FileDrop,
   Input,
+  maskTimeRange,
+  SegmentedChoice,
   Select,
   Textarea,
 } from '@oxrana/ui';
@@ -28,6 +30,7 @@ import {
   batchDraft,
   parseBatchRows,
   parseWindow,
+  type RowFix,
 } from '../../lib/pass-batch';
 import { buildFormView } from '../../lib/pass-form-view';
 import { PASS_TYPE_LABEL } from '../../lib/pass-text';
@@ -183,7 +186,8 @@ export function PassBatch() {
     const drafts: Record<string, unknown>[] = [];
     const rows: { line: number; value: BatchRow }[] = [];
     const errors = new Map<number, string>();
-    if (!ctx || !view) return { rows, drafts, errors };
+    const fixes = new Map<number, RowFix[]>();
+    if (!ctx || !view) return { rows, drafts, errors, fixes };
     const nowMs = serverNow();
     for (const row of lines) {
       if (!row.value) continue;
@@ -194,15 +198,18 @@ export function PassBatch() {
         fields: view.fields,
         dockRequiredFor: needsDock,
         defaultZoneId: view.defaultZoneId,
+        pastToleranceMin: ctx.site.pastStartToleranceMin,
+        singleMaxHours: ctx.site.singlePassMaxHours,
       });
       if (built.ok) {
         rows.push({ line: row.line, value: row.value });
         drafts.push(built.draft);
       } else {
         errors.set(row.line, built.error);
+        if (built.fixes.length > 0) fixes.set(row.line, built.fixes);
       }
     }
-    return { rows, drafts, errors };
+    return { rows, drafts, errors, fixes };
     // eslint-disable-next-line
   }, [
     lines,
@@ -276,6 +283,8 @@ export function PassBatch() {
           fields: view.fields,
           dockRequiredFor: needsDock,
           defaultZoneId: view.defaultZoneId,
+          pastToleranceMin: ctx.site.pastStartToleranceMin,
+          singleMaxHours: ctx.site.singlePassMaxHours,
         });
         if (built.ok) sent.push({ line: row.line, draft: built.draft });
       }
@@ -331,27 +340,30 @@ export function PassBatch() {
               </span>
             </p>
           ) : (
-            <Field label="Вид пропуска" required>
-              <Select
-                value={effective.passType}
-                onChange={(e) => setSettings({ ...settings, passType: e.target.value as PassType })}
-              >
-                {passTypes.length === 0 ? (
-                  <option value={effective.passType}>Загрузка…</option>
-                ) : null}
-                {passTypes.map((t) => (
-                  <option key={t} value={t}>
-                    {typeLabel(t)}
-                  </option>
-                ))}
-              </Select>
+            <Field label="Вид пропуска" required className="min-w-0">
+              {passTypes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Загрузка…</p>
+              ) : (
+                <SegmentedChoice
+                  aria-label="Вид пропуска"
+                  value={effective.passType}
+                  onChange={(t) => setSettings({ ...settings, passType: t })}
+                  options={passTypes.map((t) => ({ value: t, label: PASS_TYPE_LABEL[t] }))}
+                />
+              )}
+              <p className="text-xs text-muted-foreground">
+                {hints.data?.passTypes.find((p) => p.passType === effective.passType)?.mode ===
+                'on_request'
+                  ? 'Уйдёт на согласование.'
+                  : 'Без согласования.'}
+              </p>
             </Field>
           )}
           {single ? (
             <Field
               label="Дата приезда"
               required
-              hint={`Время объекта: ${ctx.site.timezoneLabel}. Без окна пропуск действует с «сейчас» ${view.singleHours} ч.`}
+              hint={`Время объекта: ${ctx.site.timezoneLabel}. Сегодня без времени пропуск действует с «сейчас» ${view.singleHours} ч, на будущую дату — весь день до 23:59.`}
             >
               <DateInput
                 value={settings.date}
@@ -469,6 +481,7 @@ export function PassBatch() {
                 view={view}
                 needsDock={needsDock}
                 showWindow={view.fields.window !== 'hidden'}
+                fixes={prepared.fixes.get(row.line)}
                 onChange={(patch) => update(row.line, patch)}
               />
             ))}
@@ -635,6 +648,7 @@ function BatchRowCard({
   view,
   needsDock,
   showWindow,
+  fixes,
   onChange,
 }: {
   row: Line;
@@ -643,6 +657,8 @@ function BatchRowCard({
   view: NonNullable<ReturnType<typeof buildFormView>>;
   needsDock: (categoryId: string) => boolean;
   showWindow: boolean;
+  /** Исправления ошибки окна одним нажатием («Начать окно с 13:50»). */
+  fixes: RowFix[] | undefined;
   onChange: (patch: Partial<BatchRow>) => void;
 }) {
   const value = row.value;
@@ -743,9 +759,16 @@ function BatchRowCard({
               <Input
                 aria-label={`Окно, строка ${row.line}`}
                 value={value.windowText}
-                placeholder="12:00-14:00"
+                placeholder="ЧЧ:ММ–ЧЧ:ММ"
                 inputMode="numeric"
-                onChange={(e) => onChange({ windowText: e.target.value })}
+                // цифры и разделители превращаются в «12:00–14:00»; свободный текст («с 12 до 14») не трогаем
+                onChange={(e) =>
+                  onChange({
+                    windowText: /^[\d\s:.\-–—]*$/.test(e.target.value)
+                      ? maskTimeRange(e.target.value)
+                      : e.target.value,
+                  })
+                }
                 className={`h-9 ${windowBad ? 'border-destructive' : ''}`}
               />
             </Field>
@@ -763,6 +786,15 @@ function BatchRowCard({
         >
           {remark}
         </p>
+      ) : null}
+      {error && fixes && fixes.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-2" data-testid="row-fixes">
+          {fixes.map((fix) => (
+            <Button key={fix.label} size="sm" variant="outline" onClick={() => onChange(fix.patch)}>
+              {fix.label}
+            </Button>
+          ))}
+        </div>
       ) : null}
     </li>
   );
