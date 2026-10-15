@@ -70,18 +70,6 @@
     ],
     "categories": [
       {
-        "id": "811d550b-09e5-59e8-8a61-1dc16a38caad",
-        "presetCode": "semi",
-        "name": "фура",
-        "dockEligible": true
-      },
-      {
-        "id": "ae93890c-cca6-5331-b581-a3fc5f721132",
-        "presetCode": "truck_5t",
-        "name": "грузовой свыше 5 т",
-        "dockEligible": true
-      },
-      {
         "id": "ceb06fb8-7ab3-5445-9b31-fc780d133298",
         "presetCode": "car",
         "name": "легковой",
@@ -91,6 +79,18 @@
         "id": "d420cc64-d57e-5f53-bcc3-79d450043a09",
         "presetCode": "light_truck",
         "name": "малотоннажный",
+        "dockEligible": true
+      },
+      {
+        "id": "811d550b-09e5-59e8-8a61-1dc16a38caad",
+        "presetCode": "semi",
+        "name": "фура",
+        "dockEligible": true
+      },
+      {
+        "id": "ae93890c-cca6-5331-b581-a3fc5f721132",
+        "presetCode": "truck_5t",
+        "name": "грузовой свыше 5 т",
         "dockEligible": true
       },
       {
