@@ -310,7 +310,8 @@ test('админка: страница «Пропуска» по всем аре
   await expect(page.getByTestId('pass-row').first()).toBeVisible();
   await expect(page.getByTestId('pass-tenant').first()).toContainText('Арендатор: Бета');
   await page.getByLabel('Поиск').fill('');
-  await expect(page.getByTestId('found-total')).toContainText('Найдено');
+  // поиск сбрасывается с задержкой: ждём, пока итог перестанет быть итогом поиска «777»
+  await expect(page.getByTestId('found-total')).not.toHaveText('Найдено 1');
   const total = Number(
     (await page.getByTestId('found-total').textContent())?.replace(/\D/g, '') ?? 0,
   );
