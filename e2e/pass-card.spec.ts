@@ -106,14 +106,22 @@ function siteDay(shiftDays: number) {
  * строку, поэтому Playwright сам по элементу внутри строки не кликнет — «перехвачено».
  */
 async function clickRowBlank(page: Page, row: ReturnType<Page['locator']>) {
-  await row.scrollIntoViewIfNeeded();
-  const box = await row.boundingBox();
-  expect(box).not.toBeNull();
-  await page.mouse.click(
-    (box?.x ?? 0) + (box?.width ?? 0) / 2,
-    (box?.y ?? 0) + (box?.height ?? 0) / 2,
-  );
+  const card = page.getByTestId('pass-card');
+  // список может ещё перестраиваться после поиска: повторяем щелчок, пока карточка не откроется
+  await expect(async () => {
+    await row.scrollIntoViewIfNeeded();
+    const box = await row.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.click(
+      (box?.x ?? 0) + (box?.width ?? 0) / 2,
+      (box?.y ?? 0) + (box?.height ?? 0) / 2,
+    );
+    await expect(card).toBeVisible({ timeout: 3000 });
+  }).toPass({ timeout: 20_000 });
 }
+
+/** Номер второго пропуска: в «Сейчас на территории» он может быть записан кириллицей или нормализован. */
+const PLATE_B = /[СC]702[СC]{2}174/;
 
 let admin: Awaited<ReturnType<typeof loginAs>>;
 let logist: Awaited<ReturnType<typeof loginAs>>;
@@ -245,7 +253,7 @@ test('кнопки в строке работают как раньше и ка�
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   // клавиатура: фокус на номер строки, Enter открывает; фокус виден (кольцо вокруг строки)
-  const open = row.getByRole('button', { name: 'C701CC174' });
+  const open = row.getByRole('button', { name: 'C701CC174', exact: true });
   await open.focus();
   await expect(open).toBeFocused();
   await page.keyboard.press('Enter');
@@ -271,7 +279,7 @@ test('«Сейчас на территории»: админка (оба реж�
   const page = admin.page;
   // админка → «Пропуска» → «Сейчас на территории»
   await page.goto(`${WEB_URL}/admin/passes?view=inside`);
-  const row = page.getByTestId('inside-row').filter({ hasText: 'C702CC174' });
+  const row = page.getByTestId('inside-row').filter({ hasText: PLATE_B });
   await expect(row).toHaveCount(1);
   await clickRowBlank(page, row);
   const card = page.getByTestId('pass-card');
@@ -287,9 +295,9 @@ test('«Сейчас на территории»: админка (оба реж�
 
   // вкладка «На территории» в карточке арендатора
   await page.goto(`${WEB_URL}/admin/tenants/${alphaId}?tab=inside`);
-  const tenantRow = page.getByTestId('inside-row').filter({ hasText: 'C702CC174' });
+  const tenantRow = page.getByTestId('inside-row').filter({ hasText: PLATE_B });
   await expect(tenantRow).toHaveCount(1);
-  await tenantRow.getByRole('button', { name: 'C702CC174' }).click();
+  await tenantRow.getByRole('button', { name: PLATE_B }).click();
   await expect(card).toBeVisible();
   await expect(page).toHaveURL(/tab=inside/);
   await expect(page).toHaveURL(/pass=/);
@@ -301,8 +309,8 @@ test('«Сейчас на территории»: админка (оба реж�
   await mine.goto(`${WEB_URL}/cabinet/inside`);
   await mine
     .getByTestId('inside-row')
-    .filter({ hasText: 'C702CC174' })
-    .getByRole('button', { name: 'C702CC174' })
+    .filter({ hasText: PLATE_B })
+    .getByRole('button', { name: PLATE_B })
     .click();
   const myCard = mine.getByTestId('pass-card');
   await expect(myCard).toBeVisible();
@@ -313,7 +321,7 @@ test('«Сейчас на территории»: админка (оба реж�
   await mine
     .getByTestId('pass-row')
     .filter({ hasText: 'C701CC174' })
-    .getByRole('button', { name: 'C701CC174' })
+    .getByRole('button', { name: 'C701CC174', exact: true })
     .click();
   await expect(myCard.getByTestId('history-entry')).toHaveCount(4);
   // арендатор видит КПП и время, но не служебное
