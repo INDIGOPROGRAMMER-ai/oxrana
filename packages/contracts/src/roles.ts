@@ -55,6 +55,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       'pass.view_all_tenants',
       'pass.approve',
       'pass.change_request.decide',
+      'pass.history.view',
       'report.view',
       'occupancy.view',
       'profile.manage_own',
@@ -86,6 +87,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       'pass.cancel',
       'pass.cancel_own',
       'pass.change_request.create',
+      'pass.history.view',
       'fleet.manage',
       'pass_form.manage_users',
       'tenant_user.manage',
@@ -107,6 +109,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       'pass.create.permanent',
       'pass.cancel_own',
       'pass.change_request.create',
+      'pass.history.view',
       'occupancy.view', // лимиты своей компании на главной кабинета (Q-77)
       'profile.manage_own',
     ],
@@ -115,7 +118,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     code: 'tenant_viewer',
     name: 'Арендатор — наблюдатель',
     scope: 'tenant',
-    permissions: ['pass.view', 'occupancy.view', 'profile.manage_own'],
+    permissions: ['pass.view', 'pass.history.view', 'occupancy.view', 'profile.manage_own'],
   },
 ];
 

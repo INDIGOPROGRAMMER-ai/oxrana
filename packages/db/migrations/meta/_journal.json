@@ -106,6 +106,13 @@
       "when": 1792054298754,
       "tag": "0014_fleet_dock_comment",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792479921880,
+      "tag": "0015_pass_history_role_templates_sync",
+      "breakpoints": true
     }
   ]
 }

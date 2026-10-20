@@ -29,6 +29,7 @@ export const PERMISSIONS = [
   'pass.approve',
   'pass.change_request.create',
   'pass.change_request.decide',
+  'pass.history.view', // история пропуска: изменения и отметки КПП (7b.3); учётке КПП не выдаётся никогда
   'fleet.manage', // автопарк арендатора: добавление, правка, удаление (этап 7a)
   'pass_form.manage', // форма пропуска: уровни «объект» и «арендатор» (этап 7b)
   'pass_form.manage_users', // форма пропуска сотрудников своей компании (этап 7b)
@@ -83,6 +84,7 @@ export const PERMISSION_LABELS: Record<PermissionCode, string> = {
   'pass.approve': 'Согласование пропусков',
   'pass.change_request.create': 'Заявки на изменение пропуска',
   'pass.change_request.decide': 'Решение по заявкам на изменение',
+  'pass.history.view': 'История пропуска: изменения и отметки КПП',
   'fleet.manage': 'Автопарк: постоянные машины компании',
   'pass_form.manage': 'Форма пропуска: настройка для объекта и арендаторов',
   'pass_form.manage_users': 'Форма пропуска: настройка для сотрудников своей компании',
@@ -115,6 +117,14 @@ export const GATE_POST_ONLY_PERMISSIONS = [
   'gate.refuse',
   'gate.undo',
   'gate.passage',
+] as const satisfies readonly PermissionCode[];
+
+/**
+ * Права, которые учётка КПП не получает никогда, даже если их добавили в её роль (ADR-007, 7b.3):
+ * актор поста собирается без них, редактор ролей показывает их неактивными у ролей области «КПП».
+ */
+export const NEVER_FOR_GATE_ACCOUNT_PERMISSIONS = [
+  'pass.history.view',
 ] as const satisfies readonly PermissionCode[];
 
 /**
@@ -162,6 +172,7 @@ export const PERMISSION_GROUPS: readonly {
       'pass.approve',
       'pass.change_request.create',
       'pass.change_request.decide',
+      'pass.history.view',
       'fleet.manage',
       'pass_form.manage',
       'pass_form.manage_users',

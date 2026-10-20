@@ -3,6 +3,7 @@ import * as contracts from '../src';
 import {
   ExceptionMatchSchema,
   GATE_POST_ONLY_PERMISSIONS,
+  NEVER_FOR_GATE_ACCOUNT_PERMISSIONS,
   PERMISSIONS,
   ROLE_TEMPLATES,
   roleTemplate,
@@ -63,6 +64,24 @@ describe('права и шаблоны ролей (ADR-007)', () => {
     const admin = new Set<string>(roleTemplate('site_admin').permissions);
     for (const p of GATE_POST_ONLY_PERMISSIONS) expect(admin.has(p), p).toBe(false);
     expect(admin.has('pass.edit')).toBe(true);
+  });
+
+  it('история пропуска (7b.3): у шаблонов области «КПП» права нет, у остальных пропускных ролей есть', () => {
+    for (const template of ROLE_TEMPLATES.filter((t) => t.scope === 'gate')) {
+      for (const p of NEVER_FOR_GATE_ACCOUNT_PERMISSIONS) {
+        expect(template.permissions, template.code).not.toContain(p);
+      }
+    }
+    for (const code of [
+      'org_owner',
+      'site_admin',
+      'approver',
+      'tenant_manager',
+      'tenant_requester',
+      'tenant_viewer',
+    ]) {
+      expect(roleTemplate(code).permissions, code).toContain('pass.history.view');
+    }
   });
 
   it('пост КПП впускает, но не правит пропуска; старший смены — пост + исключение', () => {

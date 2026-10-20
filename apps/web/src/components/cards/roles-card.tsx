@@ -1,4 +1,5 @@
 import {
+  NEVER_FOR_GATE_ACCOUNT_PERMISSIONS,
   PERMISSION_GROUPS,
   PERMISSIONS,
   type PermissionViewSchema,
@@ -147,15 +148,23 @@ function RoleEditor({
             {group.codes.map((code) => {
               const held = mine.has(code);
               const on = granted.has(code);
+              // роли области «КПП»: право учётке поста не выдаётся никогда (ADR-007), переключатель неактивен
+              const gateBlocked =
+                role.forGate &&
+                (NEVER_FOR_GATE_ACCOUNT_PERMISSIONS as readonly string[]).includes(code);
               return (
                 <Checkbox
                   key={code}
                   label={labels.get(code) ?? code}
                   hint={
-                    !held && !readOnly ? 'Нельзя выдать: этого права нет у вас самих.' : undefined
+                    gateBlocked
+                      ? 'Недоступно для ролей КПП: историю пропуска видят сотрудники и арендаторы, не пост охраны.'
+                      : !held && !readOnly
+                        ? 'Нельзя выдать: этого права нет у вас самих.'
+                        : undefined
                   }
-                  checked={on}
-                  disabled={readOnly || (!held && !on)}
+                  checked={on && !gateBlocked}
+                  disabled={readOnly || gateBlocked || (!held && !on)}
                   onChange={(e) => {
                     const next = new Set(granted);
                     if (e.target.checked) next.add(code);

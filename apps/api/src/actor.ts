@@ -1,3 +1,5 @@
+import { NEVER_FOR_GATE_ACCOUNT_PERMISSIONS } from '@oxrana/contracts';
+
 /**
  * Кто делает запрос (ADR-007, ADR-018). Пользователя определяет cookie-сессия, устройство поста —
  * токен устройства (`auth/resolve.ts`); права — из назначений ролей в текущей организации.
@@ -95,7 +97,19 @@ export function actorFromGrants(base: {
   sessionId?: string | null;
 }): Actor {
   const staff = base.grants.filter((g) => g.tenantId === null);
-  const grants = staff.length > 0 ? staff : base.grants;
+  const own = staff.length > 0 ? staff : base.grants;
+  // Учётка КПП не получает часть прав никогда, даже если их добавили в её роль (ADR-007, 7b.3).
+  const grants =
+    base.kind === 'gate_account'
+      ? own.map((g) => ({
+          ...g,
+          permissions: new Set(
+            [...g.permissions].filter(
+              (p) => !(NEVER_FOR_GATE_ACCOUNT_PERMISSIONS as readonly string[]).includes(p),
+            ),
+          ),
+        }))
+      : own;
   const permissions = new Set<string>();
   for (const g of grants) for (const p of g.permissions) permissions.add(p);
   const tenantUser = staff.length === 0 && base.kind === 'user';

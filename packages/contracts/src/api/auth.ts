@@ -194,6 +194,8 @@ export const RoleViewSchema = z.object({
   permissions: z.array(z.string()),
   isTemplate: z.boolean(),
   templateCode: z.string().nullable(),
+  /** Роль области «КПП»: права вроде «История пропуска» ей не выдаются (ADR-007). */
+  forGate: z.boolean(),
 });
 
 const PermissionCodeSchema = z.enum(PERMISSIONS);

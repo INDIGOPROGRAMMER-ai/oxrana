@@ -7,10 +7,13 @@ import {
   InvitationCreateSchema,
   InvitationListQuerySchema,
   InvitationViewSchema,
+  NEVER_FOR_GATE_ACCOUNT_PERMISSIONS,
   OneTimeLinkSchema,
   PERMISSION_LABELS,
   PERMISSIONS,
+  type PermissionCode,
   PermissionViewSchema,
+  ROLE_TEMPLATES,
   RoleCreateSchema,
   RolePatchSchema,
   RoleViewSchema,
@@ -183,6 +186,26 @@ function assertCanEditRole(ctx: Ctx, role: RoleRow): void {
   }
 }
 
+/**
+ * Роль области «КПП» (шаблоны «Пост КПП» и «Старший смены») или роль, назначенная учётке КПП, не
+ * может содержать права, которых учётка КПП не получает никогда (ADR-007, 7b.3).
+ */
+async function assertGateRoleAllowed(
+  s: Scope,
+  role: RoleRow,
+  permissions: readonly string[],
+): Promise<void> {
+  const forbidden = permissions.filter((p) =>
+    (NEVER_FOR_GATE_ACCOUNT_PERMISSIONS as readonly string[]).includes(p),
+  );
+  if (forbidden.length === 0) return;
+  if (!isGateRole(role, await roleIdsOfGateAccounts(s, [role.id]))) return;
+  throw new AppError('validation_failed', {
+    field: 'permissions',
+    message: `Роль «${role.name}» относится к КПП: право «${forbidden.map((p) => PERMISSION_LABELS[p as PermissionCode]).join('», «')}» учётке КПП не выдаётся никогда — история пропуска доступна сотрудникам и арендаторам.`,
+  });
+}
+
 function invitationStatus(
   row: InvitationRow,
   now: number,
@@ -208,13 +231,37 @@ function invitationView(row: InvitationRow, roleName: string, now: number) {
   };
 }
 
-function roleView(row: RoleRow) {
+/** Роли, назначенные учёткам КПП. */
+async function roleIdsOfGateAccounts(s: Scope, roleIds: readonly string[]): Promise<Set<string>> {
+  if (roleIds.length === 0) return new Set();
+  const rows = await s.db
+    .selectDistinct({ roleId: schema.gateAccounts.roleId })
+    .from(schema.gateAccounts)
+    .where(
+      and(
+        eq(schema.gateAccounts.organizationId, s.organizationId),
+        inArray(schema.gateAccounts.roleId, [...roleIds]),
+      ),
+    );
+  return new Set(rows.map((r) => r.roleId));
+}
+
+/** Роль области «КПП»: шаблон «Пост КПП» / «Старший смены» либо назначена учётке КПП. */
+function isGateRole(row: RoleRow, usedByGateAccounts: ReadonlySet<string>): boolean {
+  return (
+    ROLE_TEMPLATES.find((t) => t.code === row.templateCode)?.scope === 'gate' ||
+    usedByGateAccounts.has(row.id)
+  );
+}
+
+function roleView(row: RoleRow, forGate: boolean) {
   return {
     id: row.id,
     name: row.name,
     permissions: [...row.permissions],
     isTemplate: row.isTemplate,
     templateCode: row.templateCode,
+    forGate,
   };
 }
 
@@ -723,7 +770,11 @@ export function registerUserRoutes(app: FastifyInstance): void {
             and(eq(schema.roles.organizationId, s.organizationId), isNull(schema.roles.deletedAt)),
           )
           .orderBy(asc(schema.roles.name));
-        return { items: rows.map(roleView) };
+        const gate = await roleIdsOfGateAccounts(
+          s,
+          rows.map((r) => r.id),
+        );
+        return { items: rows.map((r) => roleView(r, isGateRole(r, gate))) };
       });
     },
   );
@@ -762,7 +813,7 @@ export function registerUserRoutes(app: FastifyInstance): void {
             permissions: { from: null, to: row.permissions },
           },
         });
-        return roleView(row);
+        return roleView(row, false);
       });
       return reply.status(201).send(view);
     },
@@ -792,8 +843,14 @@ export function registerUserRoutes(app: FastifyInstance): void {
         }
         const current = { name: role.name, permissions: [...role.permissions].sort() };
         const fields = changedFields(current, next);
-        if (fields.length === 0) return roleView(role);
+        const gate = await roleIdsOfGateAccounts(s, [role.id]);
+        if (fields.length === 0) return roleView(role, isGateRole(role, gate));
         if (request.body.permissions) {
+          await assertGateRoleAllowed(
+            s,
+            role,
+            request.body.permissions.filter((p) => !role.permissions.includes(p)),
+          );
           assertCanGrantPermissions(
             ctx,
             request.body.permissions.filter((p) => !role.permissions.includes(p)),
@@ -814,7 +871,7 @@ export function registerUserRoutes(app: FastifyInstance): void {
             fields.map((f) => [f, { from: current[f as keyof typeof current], to: next[f] }]),
           ),
         });
-        return roleView(row);
+        return roleView(row, isGateRole(row, gate));
       });
     },
   );
