@@ -101,6 +101,20 @@ function siteDay(shiftDays: number) {
   };
 }
 
+/**
+ * Щелчок мышью по пустому месту строки (середина карточки строки): кнопка-номер растянута на всю
+ * строку, поэтому Playwright сам по элементу внутри строки не кликнет — «перехвачено».
+ */
+async function clickRowBlank(page: Page, row: ReturnType<Page['locator']>) {
+  await row.scrollIntoViewIfNeeded();
+  const box = await row.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(
+    (box?.x ?? 0) + (box?.width ?? 0) / 2,
+    (box?.y ?? 0) + (box?.height ?? 0) / 2,
+  );
+}
+
 let admin: Awaited<ReturnType<typeof loginAs>>;
 let logist: Awaited<ReturnType<typeof loginAs>>;
 let siteId = '';
@@ -160,6 +174,10 @@ test('подготовка: два пропуска Альфы; у одного 
            ${minutesOut === null ? 'null' : "'button'"}
     from passes p join gates g on g.site_id = p.site_id and g.name = '${gate}'
     where p.id = '${pass}'`;
+  // оформление и правка были раньше въезда: сдвигаем записи аудита назад на два часа
+  sql(
+    `update audit_log set at = at - interval '2 hours' where entity_id in ('${passA}', '${passB}')`,
+  );
   sql(visit(passA, 30, 10));
   sql(visit(passB, 40, null));
 });
@@ -172,7 +190,7 @@ test('админка «Пропуска»: клик по строке откры
   const row = page.getByTestId('pass-row').filter({ hasText: 'C701CC174' });
   await expect(row).toHaveCount(1);
   // клик не по номеру, а по пустому месту строки: открывается вся строка
-  await row.getByTestId('pass-tenant').click();
+  await clickRowBlank(page, row);
   const card = page.getByTestId('pass-card');
   await expect(card).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`pass=${passA}`));
@@ -255,7 +273,7 @@ test('«Сейчас на территории»: админка (оба реж�
   await page.goto(`${WEB_URL}/admin/passes?view=inside`);
   const row = page.getByTestId('inside-row').filter({ hasText: 'C702CC174' });
   await expect(row).toHaveCount(1);
-  await row.getByTestId('inside-tenant').click();
+  await clickRowBlank(page, row);
   const card = page.getByTestId('pass-card');
   await expect(card).toBeVisible();
   await expect(card.getByTestId('pass-presence')).toContainText(`На территории с`);
