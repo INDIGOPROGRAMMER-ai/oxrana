@@ -81,10 +81,11 @@ export function PassForm({ fleetVehicle }: { fleetVehicle?: FleetVehicle | undef
     to: '',
     windowFrom: '',
     windowTo: '',
-    dockId: '',
+    // док и комментарий по умолчанию машины автопарка подставляются в пропуск на неё
+    dockId: fleetVehicle?.dockId ?? '',
     destinationZoneId: '',
     purposeId: '',
-    comment: '',
+    comment: fleetVehicle?.comment ?? '',
   };
   const [values, setValues] = useState<PassFormValues>(initial);
   const [fixes, setFixes] = useState<PassFormFix[]>([]);

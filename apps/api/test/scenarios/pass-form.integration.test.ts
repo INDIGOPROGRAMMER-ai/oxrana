@@ -576,6 +576,30 @@ describe('время начала «сейчас» — настройка уро
   });
 });
 
+describe('кнопка «Повторить вчера» — настройка объекта и арендатора (7b.2)', () => {
+  it('по умолчанию выключена; объект и арендатор включают, «сбросить» возвращает; сотруднику — отказ', async () => {
+    await resetForm();
+    const off = await mine(logist);
+    expect(off.form.repeatYesterday).toBe(false);
+    expect(off.form.sources.repeatYesterday).toBe('default');
+    expect((await setSite({ repeatYesterday: true })).statusCode).toBe(200);
+    const bySite = await mine(logist);
+    expect(bySite.form.repeatYesterday).toBe(true);
+    expect(bySite.form.sources.repeatYesterday).toBe('site');
+    await setTenant({ repeatYesterday: false });
+    expect((await mine(logist)).form.repeatYesterday).toBe(false);
+    await setTenant({ repeatYesterday: null });
+    expect((await mine(logist)).form.repeatYesterday).toBe(true);
+    await setSite({ repeatYesterday: null });
+    expect((await mine(logist)).form.sources.repeatYesterday).toBe('default');
+
+    const user = await setUser(staffA.id, { repeatYesterday: true });
+    expect(user.statusCode).toBe(400);
+    expect(error(user).field).toBe('repeatYesterday');
+    expect(error(user).message).toContain('Арендатор');
+  });
+});
+
 describe('права на настройку', () => {
   it('объект и арендатор — администратор; сотрудник — ещё и ответственный своей компании, не чужой', async () => {
     await resetForm();

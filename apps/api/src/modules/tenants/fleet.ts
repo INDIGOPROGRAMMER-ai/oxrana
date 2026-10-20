@@ -14,8 +14,11 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { runBatch } from '../../core/batch';
 import { ctxOf } from '../../core/context';
 import { registerResource } from '../../core/crud';
+import { loadTenant } from '../../core/loaders';
 import { assertRef } from '../../core/refs';
 import { AppError } from '../../errors';
+import { assertFleetFormAllows, loadActorForm } from '../pass-form/service';
+import { tenantDocks } from '../passes/validate';
 import { tenantRowScope } from './scope';
 
 /**
@@ -37,7 +40,7 @@ export function registerFleetRoutes(app: FastifyInstance): void {
     patchSchema: FleetVehiclePatchSchema,
     viewSchema: FleetVehicleViewSchema,
     event: 'tenant.changed',
-    labels: { categoryId: 'category' },
+    labels: { categoryId: 'category', dockId: 'dock' },
     toView: (r) => ({
       id: r.id,
       tenantId: r.tenantId,
@@ -48,8 +51,10 @@ export function registerFleetRoutes(app: FastifyInstance): void {
       brand: (r.brand as string | null) ?? null,
       driverName: (r.driverName as string | null) ?? null,
       driverPhone: (r.driverPhone as string | null) ?? null,
+      dockId: (r.dockId as string | null) ?? null,
+      comment: (r.comment as string | null) ?? null,
     }),
-    prepare: async (s, input) => {
+    prepare: async (s, input, existing, scope) => {
       const {
         plate,
         plateCountry: hint,
@@ -75,6 +80,22 @@ export function registerFleetRoutes(app: FastifyInstance): void {
         field: 'categoryId',
         title: 'Тип транспорта',
       });
+      if (scope.tenantId) {
+        const tenant = await loadTenant(s, scope.tenantId);
+        // поля машины — по той же настройке формы, что и пропуск (пользователь арендатора)
+        const { form, enforced } = await loadActorForm(s, tenant);
+        if (enforced) assertFleetFormAllows(form, rest, existing === null);
+        if (typeof rest.dockId === 'string') {
+          const { rules } = await s.ctx.deps.ruleSets.get(s.db, s.organizationId, tenant.siteId);
+          if (!tenantDocks(rules, tenant.id).some((d) => d.id === rest.dockId)) {
+            throw new AppError('dock_not_assigned', {
+              field: 'dockId',
+              message:
+                'Этот док не закреплён за арендатором. Выберите док из списка арендатора (Арендаторы → Доки).',
+            });
+          }
+        }
+      }
       return out;
     },
     onConflict: () =>

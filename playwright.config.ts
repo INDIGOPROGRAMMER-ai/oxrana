@@ -49,7 +49,7 @@ export default defineConfig({
     {
       name: 'chromium',
       // кабинет арендатора продолжает базу после чистого старта (ADR-022): отдельный проект ниже
-      testIgnore: /(cabinet|pass-form|lists)\.spec\.ts/,
+      testIgnore: /(cabinet|pass-form|lists|batch-admin)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         ...(executablePath ? { launchOptions: { executablePath } } : {}),
@@ -84,6 +84,17 @@ export default defineConfig({
       name: 'lists',
       testMatch: /lists\.spec\.ts/,
       dependencies: ['pass-form'],
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(executablePath ? { launchOptions: { executablePath } } : {}),
+      },
+    },
+    {
+      // Этап 7b.2: «Повторить вчера» по настройке, колонки пакета из формы, несколько номеров в строке, свой срок
+      // у строки пакета, страница «Пропуска» в админке — на той же базе после `lists.spec.ts`.
+      name: 'batch-admin',
+      testMatch: /batch-admin\.spec\.ts/,
+      dependencies: ['lists'],
       use: {
         ...devices['Desktop Chrome'],
         ...(executablePath ? { launchOptions: { executablePath } } : {}),

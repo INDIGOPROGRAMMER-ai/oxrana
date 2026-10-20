@@ -46,6 +46,23 @@ export const CabinetContextSchema = z.object({
 });
 export type CabinetContext = z.infer<typeof CabinetContextSchema>;
 
+/**
+ * Справочники для списка пропусков **по всем арендаторам** объекта (админка, 7b.2): пояс объекта,
+ * типы, места, цели, все доки (с арендатором) и арендаторы, чьи пропуска актор видит. Названия в
+ * списке и карточке берутся отсюда, без контекста одного арендатора.
+ */
+export const SitePassContextSchema = z.object({
+  site: CabinetContextSchema.shape.site,
+  categories: z.array(z.object({ id: IdSchema, name: z.string(), dockEligible: z.boolean() })),
+  zones: CabinetContextSchema.shape.zones,
+  purposes: CabinetContextSchema.shape.purposes,
+  docks: z.array(z.object({ id: IdSchema, number: z.string(), tenantId: IdSchema.nullable() })),
+  tenants: z.array(z.object({ id: IdSchema, name: z.string() })),
+  today: LocalDateSchema,
+  now: InstantSchema,
+});
+export type SitePassContext = z.infer<typeof SitePassContextSchema>;
+
 /** Сводка главной: «сегодня» по местным суткам объекта. */
 export const TenantTodaySchema = z.object({
   date: LocalDateSchema,
@@ -66,6 +83,7 @@ export const TenantTodaySchema = z.object({
 const brand = z.string().trim().max(100);
 const driverName = z.string().trim().max(200);
 const driverPhone = z.string().trim().max(30);
+const comment = z.string().trim().max(2000);
 
 export const FleetVehicleViewSchema = z.object({
   id: IdSchema,
@@ -77,6 +95,9 @@ export const FleetVehicleViewSchema = z.object({
   brand: z.string().nullable(),
   driverName: z.string().nullable(),
   driverPhone: z.string().nullable(),
+  /** Док и комментарий по умолчанию для машины: подставляются в пропуск на неё (7b.2). */
+  dockId: IdSchema.nullable(),
+  comment: z.string().nullable(),
 });
 
 /** Номер — как ввели: сервер нормализует сам (A10). */
@@ -87,6 +108,8 @@ export const FleetVehicleCreateSchema = z.strictObject({
   brand: brand.nullable().optional(),
   driverName: driverName.nullable().optional(),
   driverPhone: driverPhone.nullable().optional(),
+  dockId: IdSchema.nullable().optional(),
+  comment: comment.nullable().optional(),
 });
 export const FleetVehiclePatchSchema = FleetVehicleCreateSchema.partial();
 /** Строка пакета: пустой номер — ошибка этой строки (с полем), а не всей пачки. */

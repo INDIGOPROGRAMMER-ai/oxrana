@@ -3,6 +3,8 @@ import {
   PassBatchResultSchema,
   type PassFormFieldKey,
   PassRepeatSchema,
+  SiteParamsSchema,
+  SitePassContextSchema,
   SiteSettingsSchema,
   TenantParamsSchema,
   TenantTodaySchema,
@@ -18,6 +20,7 @@ import { siteTimeLabel } from '../org/sites';
 import { loadActorForm } from '../pass-form/service';
 import { createBatch } from './batch';
 import { availableCategories } from './hints';
+import { visibleTenants } from './listing';
 import { tenantDocks } from './validate';
 
 /**
@@ -96,6 +99,78 @@ export function registerCabinetRoutes(app: FastifyInstance): void {
             .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
           purposes,
           docks: tenantDocks(rules, tenant.id).map((d) => ({ id: d.id, number: d.number })),
+          today: localDate(now, tz),
+          now: new Date(now).toISOString(),
+        };
+      });
+    },
+  );
+
+  typed.get(
+    '/sites/:siteId/passes/context',
+    {
+      config: { permission: VIEW },
+      schema: {
+        tags,
+        summary:
+          'Справочники списка пропусков по всем арендаторам: пояс объекта, типы, места, цели, доки, арендаторы',
+        params: SiteParamsSchema,
+        response: { 200: SitePassContextSchema },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      return ctx.tx(async (s) => {
+        const site = await loadSite(s, request.params.siteId);
+        const { rules } = await s.ctx.deps.ruleSets.get(s.db, s.organizationId, site.id);
+        const now = ctx.now();
+        const tz = site.timezone;
+        const siteSettings = SiteSettingsSchema.parse(site.settings);
+        const seen = visibleTenants(ctx, undefined);
+        const tenants = await s.db
+          .select({ id: schema.tenants.id, name: schema.tenants.shortName })
+          .from(schema.tenants)
+          .where(
+            and(
+              eq(schema.tenants.organizationId, s.organizationId),
+              eq(schema.tenants.siteId, site.id),
+              isNull(schema.tenants.deletedAt),
+              seen === null ? undefined : inArray(schema.tenants.id, seen),
+            ),
+          )
+          .orderBy(asc(schema.tenants.shortName));
+        const purposes = await s.db
+          .select({ id: schema.visitPurposes.id, name: schema.visitPurposes.name })
+          .from(schema.visitPurposes)
+          .where(
+            and(
+              eq(schema.visitPurposes.organizationId, s.organizationId),
+              eq(schema.visitPurposes.siteId, site.id),
+              isNull(schema.visitPurposes.deletedAt),
+            ),
+          )
+          .orderBy(asc(schema.visitPurposes.sort), asc(schema.visitPurposes.name));
+        return {
+          site: {
+            id: site.id,
+            name: site.name,
+            timezone: tz,
+            timezoneLabel: siteTimeLabel(site, now),
+            pastStartToleranceMin: siteSettings.pastStartToleranceMin,
+            singlePassMaxHours: siteSettings.singlePassMaxHours,
+            multiPassMaxDays: siteSettings.multiPassMaxDays,
+          },
+          categories: rules.categories.map((c) => ({
+            id: c.id,
+            name: c.name,
+            dockEligible: c.dockEligible,
+          })),
+          zones: rules.zones
+            .map((z) => ({ id: z.id, name: z.name }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+          purposes,
+          docks: rules.docks.map((d) => ({ id: d.id, number: d.number, tenantId: d.tenantId })),
+          tenants,
           today: localDate(now, tz),
           now: new Date(now).toISOString(),
         };

@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applySeed, DEMO_SEED } from '../seed';
 import { buildRuleSetFixture, fixturePath, type RuleSetFixture } from '../seed/fixture';
-import { createDb, createPool } from '../src';
+import { createDb, createPool, schema } from '../src';
 import { loadRuleSet } from '../src/queries/ruleset';
 
 /**
@@ -64,5 +65,39 @@ describe('фикстура RuleSet демо-объекта', () => {
         asOf: new Date(),
       }),
     ).rejects.toThrow(/не найден/);
+  });
+});
+
+describe('порядок типов транспорта', () => {
+  it('в срезе — порядок справочника (sort), а не порядок идентификаторов', async () => {
+    const organizationId = fromDb.keys.organizationId;
+    const siteId = fromDb.keys.siteId;
+    const before = await db
+      .select({ id: schema.vehicleCategories.id, sort: schema.vehicleCategories.sort })
+      .from(schema.vehicleCategories)
+      .where(eq(schema.vehicleCategories.organizationId, organizationId));
+    const ids = (
+      await loadRuleSet(db, { organizationId, siteId, asOf: new Date() })
+    ).rules.categories.map((c) => c.id);
+    expect(ids.length).toBeGreaterThan(1);
+    const reversed = [...ids].reverse();
+    try {
+      // справочник перестроен: порядок типов обратный
+      for (const [index, id] of reversed.entries()) {
+        await db
+          .update(schema.vehicleCategories)
+          .set({ sort: (index + 1) * 10 })
+          .where(eq(schema.vehicleCategories.id, id));
+      }
+      const { rules } = await loadRuleSet(db, { organizationId, siteId, asOf: new Date() });
+      expect(rules.categories.map((c) => c.id)).toEqual(reversed);
+    } finally {
+      for (const row of before) {
+        await db
+          .update(schema.vehicleCategories)
+          .set({ sort: row.sort })
+          .where(eq(schema.vehicleCategories.id, row.id));
+      }
+    }
   });
 });

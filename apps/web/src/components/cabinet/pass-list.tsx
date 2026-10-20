@@ -24,7 +24,7 @@ import { useDebounced } from '../../lib/use-debounced';
 import { useWideScreen } from '../../lib/use-media';
 import { LoadError } from '../common';
 import { ExportButton } from '../export-button';
-import { useCabinet } from './cabinet-context';
+import { CabinetProvider, useCabinet } from './cabinet-context';
 import { CancelPassDialog } from './cancel-dialog';
 import { PassDetails } from './pass-details';
 import { PassEditDialog } from './pass-edit';
@@ -53,7 +53,11 @@ export function PassList({
   openId?: string | undefined;
 }) {
   const { me, can } = useMe();
-  const { tenant, ctx } = useCabinet();
+  const { tenant, ctx, allTenants } = useCabinet();
+  // страница «Пропуска» админки: все арендаторы объекта, фильтр и название арендатора в строке (7b.2)
+  const admin = allTenants !== null;
+  const [tenantFilter, setTenantFilter] = useState('');
+  const tenantName = (id: string) => allTenants?.find((t) => t.id === id)?.name ?? '—';
   const [status, setStatus] = useState<PassStatusCode | ''>(initialStatus ?? '');
   const [passType, setPassType] = useState<PassType | ''>('');
   const [date, setDate] = useState('');
@@ -68,7 +72,8 @@ export function PassList({
   const [editing, setEditing] = useState<PassView | null>(null);
 
   const params = new URLSearchParams();
-  if (tenant) params.set('tenantId', tenant.id);
+  if (admin ? tenantFilter : tenant?.id)
+    params.set('tenantId', admin ? tenantFilter : (tenant?.id ?? ''));
   if (status) params.set('status', status);
   if (passType) params.set('passType', passType);
   if (date) {
@@ -82,7 +87,7 @@ export function PassList({
     (p) => p.id,
   );
   const items = list.items;
-  const filtered = Boolean(status || passType || date || q);
+  const filtered = Boolean(status || passType || date || q || tenantFilter);
 
   const cancelReason = (pass: PassView): string | null => {
     if (can('pass.cancel')) return null;
@@ -109,12 +114,22 @@ export function PassList({
   const wide = useWideScreen();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const resetAll = () => {
+    setTenantFilter('');
     setStatus('');
     setPassType('');
     setDate('');
     setQuery('');
   };
   const chips = [
+    ...(tenantFilter
+      ? [
+          {
+            key: 'tenant',
+            label: `Арендатор: ${tenantName(tenantFilter)}`,
+            clear: () => setTenantFilter(''),
+          },
+        ]
+      : []),
     ...(status
       ? [{ key: 'status', label: PASS_STATUS_LABEL[status], clear: () => setStatus('') }]
       : []),
@@ -127,6 +142,22 @@ export function PassList({
   ];
   const activeCount = chips.length;
 
+  const tenantField = admin ? (
+    <Field label="Арендатор">
+      <Select
+        aria-label="Арендатор"
+        value={tenantFilter}
+        onChange={(e) => setTenantFilter(e.target.value)}
+      >
+        <option value="">Все арендаторы</option>
+        {(allTenants ?? []).map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  ) : null;
   const statusField = (
     <Field label="Статус">
       <Select value={status} onChange={(e) => setStatus(e.target.value as PassStatusCode | '')}>
@@ -166,16 +197,18 @@ export function PassList({
       </div>
     </Field>
   );
-  const exportButton = ctx ? (
-    <ExportButton
-      path={`/sites/${ctx.site.id}/passes/export`}
-      params={params}
-      fileLabel="пропуска"
-      disabledReason={
-        list.total === 0 ? 'По этому фильтру пропусков нет — выгружать нечего.' : undefined
-      }
-    />
-  ) : null;
+  const exportButton = (variant: 'menu' | 'panel') =>
+    ctx ? (
+      <ExportButton
+        variant={variant}
+        path={`/sites/${ctx.site.id}/passes/export`}
+        params={params}
+        fileLabel="пропуска"
+        disabledReason={
+          list.total === 0 ? 'По этому фильтру пропусков нет — выгружать нечего.' : undefined
+        }
+      />
+    ) : null;
   const searchField = (
     <Field label="Поиск" hint={wide ? 'Цифры номера или фамилия.' : undefined}>
       <Input
@@ -192,11 +225,20 @@ export function PassList({
     <div className="space-y-4">
       {wide ? (
         <Card>
-          <CardContent className="grid gap-3 pt-5 sm:grid-cols-2 lg:grid-cols-4">
-            {statusField}
-            {typeField}
-            {dateField}
-            {searchField}
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="min-w-60 flex-1">{searchField}</div>
+              {/* «Выгрузить в Excel» — рядом с поиском: все строки по фильтру */}
+              <div className="pt-[1.375rem]">{exportButton('menu')}</div>
+            </div>
+            <div
+              className={`grid gap-3 sm:grid-cols-2 ${admin ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}
+            >
+              {tenantField}
+              {statusField}
+              {typeField}
+              {dateField}
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -227,6 +269,7 @@ export function PassList({
                 <SheetDescription className="sr-only">
                   Статус, тип пропуска и день, в который он действует.
                 </SheetDescription>
+                {tenantField}
                 {statusField}
                 {typeField}
                 {dateField}
@@ -235,7 +278,7 @@ export function PassList({
                   <p className="text-xs text-muted-foreground">
                     Все пропуска по этим условиям, а не только показанные на экране.
                   </p>
-                  {exportButton}
+                  {exportButton('panel')}
                 </div>
                 <div className="mt-auto flex gap-2">
                   <Button className="flex-1" onClick={() => setFiltersOpen(false)}>
@@ -273,12 +316,9 @@ export function PassList({
       )}
 
       {wide && ctx && !list.isLoading ? (
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <p className="pt-2 text-sm text-muted-foreground" data-testid="found-total">
-            Найдено {list.total}
-          </p>
-          {exportButton}
-        </div>
+        <p className="text-sm text-muted-foreground" data-testid="found-total">
+          Найдено {list.total}
+        </p>
       ) : null}
       {list.error ? <LoadError error={list.error} retry={() => void list.refetch()} /> : null}
       {list.isLoading ? (
@@ -299,7 +339,7 @@ export function PassList({
               <Button variant="outline" onClick={resetAll}>
                 Сбросить фильтры
               </Button>
-            ) : (
+            ) : admin ? undefined : (
               <Button asChild>
                 <Link to="/cabinet/passes/new">Оформить пропуск</Link>
               </Button>
@@ -322,6 +362,12 @@ export function PassList({
                       >
                         {passTitle(pass)}
                       </button>
+                      {admin ? (
+                        <p className="text-sm font-medium" data-testid="pass-tenant">
+                          <span className="text-muted-foreground">Арендатор: </span>
+                          {tenantName(pass.tenantId)}
+                        </p>
+                      ) : null}
                       <p className="text-sm text-muted-foreground">
                         {PASS_TYPE_LABEL[pass.passType]}
                         {categoryName(pass.categoryId) ? ` · ${categoryName(pass.categoryId)}` : ''}
@@ -389,7 +435,17 @@ export function PassList({
       ) : null}
       <PassDetails pass={opened} onClose={() => setOpened(null)} />
       <CancelPassDialog pass={cancelling} onClose={() => setCancelling(null)} />
-      <PassEditDialog pass={editing} onClose={() => setEditing(null)} />
+      {admin && editing ? (
+        // правка чужого пропуска: форма и справочники — этого арендатора, а не «всего объекта»
+        <CabinetProvider
+          key={editing.tenantId}
+          forcedTenant={{ id: editing.tenantId, name: tenantName(editing.tenantId) }}
+        >
+          <PassEditDialog pass={editing} onClose={() => setEditing(null)} />
+        </CabinetProvider>
+      ) : (
+        <PassEditDialog pass={editing} onClose={() => setEditing(null)} />
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { schema } from '@oxrana/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  customActor,
   KEYS,
   NOON,
   ownerDb,
@@ -24,6 +25,7 @@ const dns = id(KEYS.tenants, 'dns');
 const other = id(KEYS.tenants, 'x5') || Object.values(KEYS.tenants).find((v) => v !== dns) || '';
 const semi = id(KEYS.categories, 'semi');
 const car = id(KEYS.categories, 'car');
+const dock12 = id(KEYS.docks, '12');
 const at = (hhmm: string, day = '2026-03-10') => new Date(`${day}T${hhmm}:00+05:00`).toISOString();
 const error = (res: { json(): unknown }) => ErrorBodySchema.parse(res.json());
 
@@ -304,6 +306,33 @@ describe('подсказки формы до сохранения (POST /tenants
   });
 });
 
+describe('справочники списка пропусков по всему объекту (7b.2)', () => {
+  const admin = roleActor('site_admin');
+
+  it('администратор: все арендаторы, все доки с арендатором, пояс объекта; тип в порядке справочника', async () => {
+    const res = await t.as(admin, { url: `/sites/${KEYS.siteId}/passes/context` });
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json();
+    expect(body.site.timezoneLabel).toBe('Челябинск, UTC+5');
+    expect(body.today).toBe('2026-03-10');
+    expect(body.tenants.map((x: { id: string }) => x.id)).toEqual(
+      expect.arrayContaining([dns, other]),
+    );
+    expect(body.docks.some((d: { tenantId: string | null }) => d.tenantId === dns)).toBe(true);
+    expect(body.docks.some((d: { tenantId: string | null }) => d.tenantId === other)).toBe(true);
+    expect(body.categories.length).toBeGreaterThan(1);
+  });
+
+  it('арендатор видит только свои компании; без права на пропуска — 403', async () => {
+    const mine = await t.as(logist, { url: `/sites/${KEYS.siteId}/passes/context` });
+    expect(mine.statusCode, mine.body).toBe(200);
+    expect(mine.json().tenants.map((x: { id: string }) => x.id)).toEqual([dns]);
+    const nobody = customActor(['profile.manage_own'], {});
+    const denied = await t.as(nobody, { url: `/sites/${KEYS.siteId}/passes/context` });
+    expect(denied.statusCode).toBe(403);
+  });
+});
+
 describe('автопарк', () => {
   const plate = nextPlate();
   let vehicleId = '';
@@ -312,7 +341,7 @@ describe('автопарк', () => {
     const res = await t.as(logist, {
       method: 'POST',
       url: `/tenants/${dns}/fleet`,
-      payload: { plate: ` ${plate} `, categoryId: semi, brand: 'MAN', driverName: 'Тестов Т. Т.' },
+      payload: { plate: ` ${plate} `, categoryId: semi, brand: 'MAN', comment: 'Тестов Т. Т.' },
     });
     expect(res.statusCode, res.body).toBe(201);
     vehicleId = res.json().id;
@@ -341,17 +370,17 @@ describe('автопарк', () => {
     const res = await t.as(logist, {
       method: 'PATCH',
       url: `/fleet/${vehicleId}`,
-      payload: { driverName: 'Другой Д. Д.' },
+      payload: { comment: 'Другой Д. Д.' },
     });
     expect(res.statusCode, res.body).toBe(200);
-    expect(res.json()).toMatchObject({ driverName: 'Другой Д. Д.', brand: 'MAN' });
+    expect(res.json()).toMatchObject({ comment: 'Другой Д. Д.', brand: 'MAN' });
     const audit = await ownerDb()
       .select()
       .from(schema.auditLog)
       .where(eq(schema.auditLog.entityId, vehicleId));
     expect(audit.map((a) => a.action)).toEqual(['create', 'update']);
     expect(audit[1]?.diff).toMatchObject({
-      driverName: { from: 'Тестов Т. Т.', to: 'Другой Д. Д.' },
+      comment: { from: 'Тестов Т. Т.', to: 'Другой Д. Д.' },
     });
 
     const denied = await t.as(requester, {
@@ -371,7 +400,7 @@ describe('автопарк', () => {
     const rows = [
       { plate: nextPlate(), categoryId: car },
       { plate: plate, categoryId: car },
-      { plate: nextPlate(), categoryId: car, driverName: 'Пакетов П. П.' },
+      { plate: nextPlate(), categoryId: car, comment: 'Пакетов П. П.' },
       { plate: '   ', categoryId: car },
     ];
     const preview = await t.as(logist, {
@@ -410,6 +439,81 @@ describe('автопарк', () => {
       payload: { plate, categoryId: semi },
     });
     expect(again.statusCode, again.body).toBe(201);
+  });
+});
+
+describe('автопарк по настройке формы (7b.2)', () => {
+  const admin = roleActor('site_admin');
+  const setTenantForm = (fields: Record<string, string | null>) =>
+    t.as(admin, {
+      method: 'PATCH',
+      url: `/tenants/${dns}/pass-form`,
+      payload: { fields },
+    });
+  const add = (extra: Record<string, unknown>) =>
+    t.as(logist, {
+      method: 'POST',
+      url: `/tenants/${dns}/fleet`,
+      payload: { plate: nextPlate(), categoryId: car, ...extra },
+    });
+
+  it('скрытое поле формы машина не принимает (ФИО и телефон скрыты по умолчанию), обязательное — требует', async () => {
+    const hidden = await add({ driverName: 'Иванов И. И.' });
+    expect(hidden.statusCode).toBe(422);
+    expect(error(hidden)).toMatchObject({ code: 'field_hidden', field: 'driverName' });
+    expect(error(hidden).message).toContain('отключено в настройке формы');
+    expect((await add({ driverPhone: '+7 900 000-00-00' })).statusCode).toBe(422);
+
+    try {
+      await setTenantForm({ driverName: 'required', comment: 'hidden' });
+      const missing = await add({});
+      expect(missing.statusCode).toBe(422);
+      expect(error(missing)).toMatchObject({ code: 'field_required', field: 'driverName' });
+      expect((await add({ driverName: 'Иванов И. И.' })).statusCode).toBe(201);
+      // комментарий скрыт — значения не принимаются
+      const commentHidden = await add({ driverName: 'Петров П. П.', comment: 'срочно' });
+      expect(error(commentHidden)).toMatchObject({ code: 'field_hidden', field: 'comment' });
+    } finally {
+      await setTenantForm({ driverName: null, comment: null });
+    }
+    expect((await add({ driverName: null })).statusCode).toBe(201);
+  });
+
+  it('пакетом — так же: предпросмотр называет поле, а не молча отбрасывает', async () => {
+    const preview = await t.as(logist, {
+      method: 'POST',
+      url: `/tenants/${dns}/fleet/batch`,
+      payload: {
+        items: [
+          { plate: nextPlate(), categoryId: car, brand: 'Kia' },
+          { plate: nextPlate(), categoryId: car, driverPhone: '+7 900 000-00-00' },
+        ],
+        dryRun: true,
+      },
+    });
+    expect(preview.statusCode, preview.body).toBe(200);
+    expect(preview.json()).toMatchObject({ total: 2, created: 1 });
+    expect(preview.json().errors[0]).toMatchObject({
+      row: 2,
+      field: 'driverPhone',
+      code: 'field_hidden',
+    });
+  });
+
+  it('док и комментарий по умолчанию: хранятся у машины; чужой док — отказ', async () => {
+    const ok = await add({ dockId: dock12, comment: 'Возит стекло' });
+    expect(ok.statusCode, ok.body).toBe(201);
+    expect(ok.json()).toMatchObject({ dockId: dock12, comment: 'Возит стекло' });
+    const foreign = await add({ dockId: id(KEYS.docks, '40') });
+    expect(foreign.statusCode).toBe(422);
+    expect(error(foreign)).toMatchObject({ code: 'dock_not_assigned', field: 'dockId' });
+    // правка: убрать док — null
+    const cleared = await t.as(logist, {
+      method: 'PATCH',
+      url: `/fleet/${ok.json().id}`,
+      payload: { dockId: null },
+    });
+    expect(cleared.json()).toMatchObject({ dockId: null, comment: 'Возит стекло' });
   });
 });
 

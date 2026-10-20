@@ -207,10 +207,10 @@ test('выгрузка: CSV и XLSX содержат все 120 строк по 
   // на экране только первая порция
   await expect(page.getByTestId('pass-row')).toHaveCount(50);
 
-  await page.getByLabel('Формат файла').selectOption('csv');
+  await page.getByTestId('export-button').click();
   const [csvDownload] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByTestId('export-button').click(),
+    page.getByRole('menuitem', { name: 'CSV' }).click(),
   ]);
   expect(csvDownload.suggestedFilename()).toMatch(/\.csv$/);
   const csv = readFileSync(await csvDownload.path(), 'utf8').replace(/^﻿/, '');
@@ -230,10 +230,10 @@ test('выгрузка: CSV и XLSX содержат все 120 строк по 
   expect(lines.filter((l) => l.startsWith('Н') && l.includes(PLATE_TAG))).toHaveLength(120);
   expect(lines[1]).toContain('Белова');
 
-  await page.getByLabel('Формат файла').selectOption('xlsx');
+  await page.getByTestId('export-button').click();
   const [xlsxDownload] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByTestId('export-button').click(),
+    page.getByRole('menuitem', { name: 'Excel (.xlsx)' }).click(),
   ]);
   expect(xlsxDownload.suggestedFilename()).toMatch(/\.xlsx$/);
   const table = xlsxToTable(new Uint8Array(readFileSync(await xlsxDownload.path())));
@@ -283,10 +283,10 @@ test('«Сейчас на территории» совпадает с видж�
   await expect(page.getByTestId('inside-row')).toHaveCount(5);
 
   // выгрузка: все строки по фильтру
-  await page.getByLabel('Формат файла').selectOption('csv');
+  await page.getByTestId('export-button').click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByTestId('export-button').click(),
+    page.getByRole('menuitem', { name: 'CSV' }).click(),
   ]);
   const csv = readFileSync(await download.path(), 'utf8').replace(/^﻿/, '');
   const lines = csv.trim().split('\r\n');

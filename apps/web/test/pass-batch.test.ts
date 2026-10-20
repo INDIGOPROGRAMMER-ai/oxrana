@@ -1,4 +1,13 @@
+import { resolvePassForm } from '@oxrana/contracts';
 import { describe, expect, it } from 'vitest';
+import {
+  type BatchColumnInput,
+  columnsLabel,
+  fleetBatchLayout,
+  passBatchLayout,
+  placeholderOf,
+  templateTitles,
+} from '../src/lib/batch-columns';
 import {
   type BatchCatalog,
   type BatchRow,
@@ -10,6 +19,7 @@ import {
   parseWindow,
   stem,
 } from '../src/lib/pass-batch';
+import type { EffectiveFields } from '../src/lib/pass-form';
 
 const catalog: BatchCatalog = {
   categories: [
@@ -30,7 +40,21 @@ const catalog: BatchCatalog = {
   defaultCategoryId: 'car',
 };
 
-const rowsOf = (text: string, cat = catalog) => parseBatchRows(text, cat).rows;
+const OPEN: EffectiveFields = {
+  brand: 'optional',
+  driverName: 'optional',
+  driverPhone: 'hidden',
+  window: 'optional',
+  destination: 'optional',
+  purpose: 'optional',
+  comment: 'optional',
+};
+const layoutOf = (fields: Partial<EffectiveFields> = {}, extra: Partial<BatchColumnInput> = {}) =>
+  passBatchLayout({ fields: { ...OPEN, ...fields }, hasDocks: true, zoneChoice: false, ...extra });
+/** Раскладка «Номер · Тип · Марка · Водитель · Окно · Комментарий · Док» — телефон скрыт. */
+const legacy = layoutOf();
+
+const rowsOf = (text: string, cat = catalog) => parseBatchRows(text, cat, legacy).rows;
 
 describe('окно прибытия из ячейки таблицы', () => {
   it.each([
@@ -98,7 +122,7 @@ describe('разбор таблицы пропусков (08_ «Пакетный
       'В456НР174\t\tKia',
       'О777ОО174\tЛЕГКОВЫЕ',
     ].join('\n');
-    const imported = parseBatchRows(text, catalog);
+    const imported = parseBatchRows(text, catalog, legacy);
     expect(imported.headerFound).toBe(true);
     const rows = imported.rows;
     expect(rows.map((r) => r.line)).toEqual([2, 3, 4]);
@@ -124,6 +148,7 @@ describe('разбор таблицы пропусков (08_ «Пакетный
         '\n',
       ),
       catalog,
+      legacy,
     );
     expect(imported.headerFound).toBe(true);
     expect(imported.rows[0]?.value).toMatchObject({
@@ -135,7 +160,7 @@ describe('разбор таблицы пропусков (08_ «Пакетный
   });
 
   it('первая строка с номером — это данные, а не заголовок', () => {
-    const imported = parseBatchRows('А123ВС174\tТип\tфура', catalog);
+    const imported = parseBatchRows('А123ВС174\tТип\tфура', catalog, legacy);
     expect(imported.headerFound).toBe(false);
     expect(imported.rows).toHaveLength(1);
   });
@@ -186,15 +211,11 @@ describe('разбор таблицы пропусков (08_ «Пакетный
   });
 
   it('колонки, отключённые формой, игнорируются — и об этом сообщается', () => {
-    const imported = parseBatchRows('А123ВС174\tфура\tVolvo\tИванов И. И.\t12:00-14:00', catalog, {
-      brand: 'optional',
-      driverName: 'hidden',
-      driverPhone: 'hidden',
-      window: 'hidden',
-      destination: 'optional',
-      purpose: 'optional',
-      comment: 'optional',
-    });
+    const imported = parseBatchRows(
+      'Номер\tТип\tМарка\tВодитель\tОкно\nА123ВС174\tфура\tVolvo\tИванов И. И.\t12:00-14:00',
+      catalog,
+      layoutOf({ driverName: 'hidden', window: 'hidden' }),
+    );
     expect([...imported.ignoredColumns].sort()).toEqual(['Водитель', 'Окно']);
     expect(imported.rows[0]?.value).toMatchObject({
       brand: 'Volvo',
@@ -204,9 +225,9 @@ describe('разбор таблицы пропусков (08_ «Пакетный
   });
 
   it('место назначения из колонки сопоставляется со справочником', () => {
-    const imported = parseBatchRows('Номер\tТип\tМесто\nА123ВС174\tфура\tсклад а', catalog);
+    const imported = parseBatchRows('Номер\tТип\tМесто\nА123ВС174\tфура\tсклад а', catalog, legacy);
     expect(imported.rows[0]?.value?.zoneId).toBe('z1');
-    const bad = parseBatchRows('Номер\tТип\tМесто\nА123ВС174\tфура\tгараж', catalog);
+    const bad = parseBatchRows('Номер\tТип\tМесто\nА123ВС174\tфура\tгараж', catalog, legacy);
     expect(bad.rows[0]?.value?.problems.zone).toContain('не найдено');
   });
 });
@@ -215,6 +236,8 @@ describe('строка пачки → тело для сервера', () => {
   const settings: BatchSettings = {
     passType: 'single',
     date: '2026-03-10',
+    start: '',
+    end: '',
     from: '2026-03-10',
     to: '',
     comment: '',
@@ -297,6 +320,8 @@ describe('строка пачки → тело для сервера', () => {
     const multi: BatchSettings = {
       passType: 'multi',
       date: '',
+      start: '',
+      end: '',
       from: '2026-03-10',
       to: '2026-03-14',
       comment: 'Ревизия',
@@ -310,6 +335,8 @@ describe('строка пачки → тело для сервера', () => {
     const multi: BatchSettings = {
       passType: 'multi',
       date: '',
+      start: '',
+      end: '',
       from: '2026-03-10',
       to: '2026-03-14',
       comment: 'Ревизия',
@@ -334,5 +361,127 @@ describe('вставка автопарка', () => {
     expect(rows[1]?.error).toContain('уже встречается выше');
     expect(rows[2]?.value?.categoryId).toBe('car');
     expect(rows[3]?.error).toContain('подходит к нескольким типам');
+  });
+});
+
+describe('колонки пакета строятся из настройки формы (7b.2)', () => {
+  const formFields = (layers = {}) => resolvePassForm(layers).fields as unknown as EffectiveFields;
+  const input = (fields: EffectiveFields, extra: Partial<BatchColumnInput> = {}) => ({
+    fields,
+    hasDocks: true,
+    zoneChoice: false,
+    ...extra,
+  });
+  const titles = (layout: { columns: readonly { title: string }[] }) =>
+    layout.columns.map((c) => c.title);
+
+  it('по умолчанию ФИО, телефон и окно скрыты — их нет в колонках пакета пропусков', () => {
+    const layout = passBatchLayout(input(formFields()));
+    expect(titles(layout)).toEqual([
+      'Номер',
+      'Тип',
+      'Марка',
+      'Комментарий',
+      'Док',
+      'Дата',
+      'С',
+      'По',
+    ]);
+    // шаблон для Excel и подпись «Колонки: …» — из того же списка
+    expect(templateTitles(layout.columns)).toEqual(titles(layout));
+    expect(columnsLabel(layout.columns)).toBe(
+      'Колонки: Номер · Тип · Марка · Комментарий · Док · Дата · С · По (обязательные: Номер, Тип).',
+    );
+    expect(placeholderOf(layout.columns, '15.10.2026').split('\n')[0]?.split('\t')).toHaveLength(8);
+  });
+
+  it('обязательное поле — обязательная колонка; включённые поля появляются в своём месте', () => {
+    const layout = passBatchLayout(
+      input(
+        formFields({
+          site: { fields: { driverName: 'required', driverPhone: 'optional', window: 'optional' } },
+          tenant: { fields: { comment: 'required', brand: 'hidden' } },
+        }),
+      ),
+    );
+    expect(titles(layout)).toEqual([
+      'Номер',
+      'Тип',
+      'Водитель',
+      'Телефон',
+      'Окно',
+      'Комментарий',
+      'Док',
+      'Дата',
+      'С',
+      'По',
+    ]);
+    expect(layout.columns.filter((c) => c.required).map((c) => c.title)).toEqual([
+      'Номер',
+      'Тип',
+      'Водитель',
+      'Комментарий',
+    ]);
+    expect(columnsLabel(layout.columns)).toContain(
+      'обязательные: Номер, Тип, Водитель, Комментарий',
+    );
+  });
+
+  it('док — колонка только если у арендатора есть доки; место — только когда его надо выбирать', () => {
+    const fields = formFields();
+    expect(titles(passBatchLayout(input(fields, { hasDocks: false })))).not.toContain('Док');
+    expect(titles(passBatchLayout(input(fields, { zoneChoice: true })))).toContain(
+      'Место назначения',
+    );
+    expect(titles(passBatchLayout(input(fields)))).not.toContain('Место назначения');
+  });
+
+  it('скрытая колонка не принимается: значение из файла с заголовком не попадает в пропуск', () => {
+    const layout = passBatchLayout(input(formFields()));
+    const imported = parseBatchRows(
+      'Номер\tТип\tВодитель\tТелефон\nА123ВС174\tфура\tИванов\t+7 900 000-00-00',
+      catalog,
+      layout,
+    );
+    expect(imported.ignoredColumns).toEqual(['Водитель', 'Телефон']);
+    expect(imported.rows[0]?.value).toMatchObject({ driverName: '', driverPhone: '' });
+  });
+
+  it('порядок колонок без заголовка — по настройке: четвёртая ячейка — комментарий, если водитель скрыт', () => {
+    const layout = passBatchLayout(input(formFields()));
+    const row = parseBatchRows('А123ВС174\tфура\tVolvo\tсрочно\t12', catalog, layout).rows[0];
+    expect(row?.value).toMatchObject({ brand: 'Volvo', comment: 'срочно', dockId: 'd12' });
+  });
+
+  it('автопарк: колонки — из той же настройки; комментарий и док — по умолчанию для машины', () => {
+    const layout = fleetBatchLayout(input(formFields()));
+    expect(titles(layout)).toEqual(['Номер', 'Тип', 'Марка', 'Комментарий', 'Док']);
+    const rows = parseFleetRows('А123ВС174\tфура\tVolvo\tвозит стекло\t12', catalog, layout);
+    expect(rows[0]?.value).toMatchObject({
+      brand: 'Volvo',
+      comment: 'возит стекло',
+      dockId: 'd12',
+      dockNumber: '12',
+      driverName: '',
+    });
+    // скрытая колонка с заголовком не принимается
+    const hidden = parseFleetRows('Номер\tТип\tВодитель\nА123ВС174\tфура\tИванов', catalog, layout);
+    expect(hidden[0]?.value?.driverName).toBe('');
+  });
+
+  it('автопарк: обязательная колонка пуста — ошибка строки с названием; чужой док — ошибка', () => {
+    const layout = fleetBatchLayout(
+      input(formFields({ site: { fields: { driverName: 'required', driverPhone: 'optional' } } })),
+    );
+    const rows = parseFleetRows(
+      ['А123ВС174\tфура\tVolvo\t\t', 'В456НР174\tфура\tKia\tИванов\t'].join('\n'),
+      catalog,
+      layout,
+    );
+    expect(rows[0]?.error).toContain('«Водитель»');
+    expect(rows[1]?.value?.driverName).toBe('Иванов');
+    const plain = fleetBatchLayout(input(formFields()));
+    const bad = parseFleetRows('С789ТУ174\tфура\tMAN\t\t99', catalog, plain);
+    expect(bad[0]?.error).toContain('не закреплён за вашей компанией');
   });
 });

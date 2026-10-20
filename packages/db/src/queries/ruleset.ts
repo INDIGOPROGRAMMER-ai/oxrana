@@ -125,7 +125,8 @@ export async function loadRuleSet(
         isNull(schema.vehicleCategories.deletedAt),
       ),
     )
-    .orderBy(asc(schema.vehicleCategories.id));
+    // порядок справочника (`sort`, как в настройках объекта): формы, предпросмотр и пакет берут его отсюда
+    .orderBy(asc(schema.vehicleCategories.sort), asc(schema.vehicleCategories.id));
   const overridden = new Set(
     categoryRows.filter((c) => c.siteId !== null && c.presetCode !== null).map((c) => c.presetCode),
   );

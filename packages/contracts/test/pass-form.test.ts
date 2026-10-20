@@ -37,6 +37,23 @@ describe('настройка формы пропуска по уровням (э
     expect(applyPassFormPatch({}, { startNow: false })).toEqual({ startNow: false });
   });
 
+  it('«Повторить вчера»: по умолчанию выключено; объект и арендатор переопределяют, сотрудник — нет', () => {
+    expect(PASS_FORM_DEFAULTS.repeatYesterday).toBe(false);
+    expect(resolvePassForm({}).repeatYesterday).toBe(false);
+    expect(resolvePassForm({ site: { repeatYesterday: true } }).repeatYesterday).toBe(true);
+    const tenant = resolvePassForm({
+      site: { repeatYesterday: true },
+      tenant: { repeatYesterday: false },
+    });
+    expect(tenant.repeatYesterday).toBe(false);
+    expect(tenant.sources.repeatYesterday).toBe('tenant');
+    // значение уровня сотрудника не действует
+    const user = resolvePassForm({ user: { repeatYesterday: true } });
+    expect(user.repeatYesterday).toBe(false);
+    expect(user.sources.repeatYesterday).toBe('default');
+    expect(applyPassFormPatch({ repeatYesterday: true }, { repeatYesterday: null })).toEqual({});
+  });
+
   it('нижний уровень переопределяет верхний по каждому ключу; источник указан', () => {
     const form = resolvePassForm({
       site: { fields: { driverName: 'optional', brand: 'required' }, singleHours: 12 },

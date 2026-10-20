@@ -167,17 +167,17 @@ test('автопарк: добавить машину, пропуск из ав�
   await expect(dialog.getByText('A123BC174')).toBeVisible();
   await dialog.getByLabel('Тип транспорта').selectOption({ label: 'фура' });
   await dialog.getByLabel('Марка').fill('Volvo FH');
-  await dialog.getByLabel('Водитель', { exact: true }).fill('Иванов И. И.');
+  // ФИО и телефон водителя скрыты настройкой формы по умолчанию — полей в форме машины нет (7b.2)
+  await expect(dialog.getByLabel('Водитель', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByLabel('Телефон водителя')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Добавить в автопарк' }).click();
   await expect(dialog).toBeHidden();
   const row = page.getByTestId('fleet-row');
   await expect(row).toContainText('A123BC174');
   await expect(row).toContainText('Volvo FH');
 
-  // «Повторить вчерашний день»: вчера пропусков не было — сказано словами
-  await page.getByRole('button', { name: 'Повторить вчерашний день' }).click();
-  await expect(page.getByTestId('repeat-preview')).toContainText('повторять нечего');
-  await page.keyboard.press('Escape');
+  // «Повторить вчера» по умолчанию скрыта настройкой формы (7b.2): кнопки нет; включение — в `batch-admin.spec.ts`
+  await expect(page.getByRole('button', { name: 'Повторить вчерашний день' })).toHaveCount(0);
 
   // из автопарка — в один клик: форма уже заполнена
   await row.getByRole('link', { name: 'Оформить пропуск' }).click();

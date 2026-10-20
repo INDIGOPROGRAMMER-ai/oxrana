@@ -43,6 +43,7 @@ function flatten(settings: PassFormSettings): Record<string, unknown> {
     defaultPassType: settings.defaultPassType ?? null,
     singleHours: settings.singleHours ?? null,
     startNow: settings.startNow ?? null,
+    repeatYesterday: settings.repeatYesterday ?? null,
   };
   for (const [key, value] of Object.entries(settings.fields ?? {})) out[`fields.${key}`] = value;
   return out;
@@ -125,6 +126,13 @@ async function assertSettingsValid(
     throw new AppError('category_unavailable', {
       field: 'defaultCategoryId',
       message: 'Тип транспорта по умолчанию должен быть среди доступных.',
+    });
+  }
+  if (t.level === 'user' && settings.repeatYesterday !== undefined) {
+    throw new AppError('validation_failed', {
+      field: 'repeatYesterday',
+      message:
+        'Кнопка «Повторить вчера» задаётся для объекта или всей компании, а не для сотрудника. Включите её на уровне «Арендатор» или «Объект».',
     });
   }
   if (
