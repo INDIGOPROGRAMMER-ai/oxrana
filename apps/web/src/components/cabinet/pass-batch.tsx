@@ -16,6 +16,7 @@ import {
   FileDrop,
   formatLocalDate,
   Input,
+  isoToRuDate,
   maskTimeRange,
   SegmentedChoice,
   Select,
@@ -802,8 +803,8 @@ function BatchRowCard({
       ].join(' · ');
   const own = value
     ? ownTime(passType, value, todayIso)
-    : { date: '', start: '', end: '', from: '', to: '', error: null };
-  const ownAny = Boolean(own.date || own.start || own.end || own.from || own.to);
+    : { date: '', start: '', end: '', endDate: '', from: '', to: '', error: null };
+  const ownAny = Boolean(own.date || own.start || own.end || own.endDate || own.from || own.to);
   const windowParsed = value ? parseWindow(value.windowText) : null;
   const windowBad = windowParsed !== null && 'error' in windowParsed;
   const typeOptions =
@@ -925,16 +926,37 @@ function BatchRowCard({
                   <TimeInput
                     aria-label={`С, строка ${row.line}`}
                     value={own.start}
-                    onChange={(v) => onChange({ fromText: v })}
+                    // дата, пришедшая в ячейке «С» вместе со временем, не теряется при правке времени
+                    onChange={(v) =>
+                      onChange({
+                        fromText: v,
+                        ...(value.dateText.trim() === '' && own.date ? { dateText: own.date } : {}),
+                      })
+                    }
                   />
                 </Field>
                 <Field label="По">
                   <TimeInput
                     aria-label={`По, строка ${row.line}`}
                     value={own.end}
-                    onChange={(v) => onChange({ toText: v })}
+                    onChange={(v) =>
+                      onChange({ toText: own.endDate ? `${isoToRuDate(own.endDate)} ${v}` : v })
+                    }
                   />
                 </Field>
+                {own.endDate ? (
+                  // конец в другой день, указанный в «По» явно: правится здесь, пустая дата — «день начала»
+                  <Field label="День конца">
+                    <DateInput
+                      aria-label={`День конца, строка ${row.line}`}
+                      value={own.endDate}
+                      todayIso={todayIso}
+                      onChange={(v) =>
+                        onChange({ toText: v ? `${isoToRuDate(v)} ${own.end}` : own.end })
+                      }
+                    />
+                  </Field>
+                ) : null}
               </>
             ) : (
               <>

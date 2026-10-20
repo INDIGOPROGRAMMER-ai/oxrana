@@ -154,15 +154,22 @@ const columnName = (index: number): string => {
   return name;
 };
 
-/** Книга `.xlsx` с одним листом из текстовых ячеек — для тестов и будущей выгрузки (этап 7c). */
-export function buildXlsx(table: readonly (readonly string[])[], sheetName = 'Лист1'): Uint8Array {
+/**
+ * Книга `.xlsx` с одним листом — для тестов и будущей выгрузки (этап 7c). Строка записывается
+ * текстовой ячейкой, число — числовой (как Excel хранит даты и время: `46311.33`).
+ */
+export function buildXlsx(
+  table: readonly (readonly (string | number)[])[],
+  sheetName = 'Лист1',
+): Uint8Array {
   const sheetRows = table
     .map(
       (row, r) =>
         `<row r="${r + 1}">${row
-          .map(
-            (cell, c) =>
-              `<c r="${columnName(c)}${r + 1}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(cell)}</t></is></c>`,
+          .map((cell, c) =>
+            typeof cell === 'number'
+              ? `<c r="${columnName(c)}${r + 1}"><v>${cell}</v></c>`
+              : `<c r="${columnName(c)}${r + 1}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(cell)}</t></is></c>`,
           )
           .join('')}</row>`,
     )

@@ -53,6 +53,19 @@ describe('чтение .xlsx для пакетного ввода', () => {
     expect(xlsxToTable(buildXlsx(table))).toEqual(table);
   });
 
+  it('число в ячейке (дата-время Excel) читается числом как есть, строка — строкой', () => {
+    const table = xlsxToTable(
+      buildXlsx([
+        ['С', 'По'],
+        [46311.3333333333, '17.10.2026 09:00'],
+      ]),
+    );
+    expect(table).toEqual([
+      ['С', 'По'],
+      ['46311.3333333333', '17.10.2026 09:00'],
+    ]);
+  });
+
   it('не книга Excel — понятная ошибка', () => {
     expect(() => xlsxToTable(strToU8('просто текст'))).toThrow(/не книга Excel/);
   });

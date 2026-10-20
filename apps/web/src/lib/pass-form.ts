@@ -24,6 +24,11 @@ export interface PassFormValues {
    * ставит сервер по своим часам — к моменту нажатия «Создать» прошло время, а допуск «в прошлом» короткий.
    */
   startAuto: boolean;
+  /**
+   * Разовый: день окончания, если он указан явно (пакет: «17.10.2026 09:00» в «По»). Пусто — день
+   * окончания определяется началом: тот же или следующий, если время окончания не позже начала.
+   */
+  endDate?: string | undefined;
   /** Окончание подставлено само (начало + N часов) и следует за началом, пока его не правили. */
   endAuto: boolean;
   /** Окно прибытия разового пропуска: время в пределах даты приезда. */
@@ -263,7 +268,7 @@ export function buildPassBody(values: PassFormValues, c: BuildContext): BuildRes
       if (values.endTime) {
         if (!(startAuto && values.endAuto)) {
           validTo = localToInstant(
-            nextDay ? addDays(values.date, 1) : values.date,
+            values.endDate || (nextDay ? addDays(values.date, 1) : values.date),
             values.endTime,
             c.timezone,
           );

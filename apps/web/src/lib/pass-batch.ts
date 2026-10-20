@@ -411,6 +411,7 @@ export function timeEnvOf(c: BatchBuildContext): TimeEnv {
     startNow: c.startNow ?? true,
     singleHours: c.singleHours ?? 23,
     singleMaxHours: c.singleMaxHours ?? 24,
+    pastToleranceMin: c.pastToleranceMin,
   };
 }
 
@@ -447,6 +448,10 @@ function spanText(
 
 const hhmm = (ms: number, timezone: string) => timeOf(ms, timezone);
 
+/** `15.10.2026 13:44` — день и время в поясе объекта. */
+const stampFull = (ms: number, timezone: string) =>
+  formatInZone(new Date(ms).toISOString(), timezone);
+
 /**
  * Проверки срока разового пропуска со своими исправлениями: начало уже прошло и выходит за допуск;
  * срок длиннее максимума объекта. Ошибка называет время, кнопка исправляет только эту строку.
@@ -472,13 +477,23 @@ function singleSpanProblem(
   }
   if (t.startTime && t.endTime && !t.endAuto) {
     const startMs = t.startAuto ? c.nowMs : toMs(date, t.startTime);
-    const nextDay = t.endTime <= t.startTime;
-    const endMs = toMs(nextDay ? addDays(date, 1) : date, t.endTime);
-    if (endMs - startMs > max * 3_600_000) {
-      const latest = hhmm(startMs + max * 3_600_000, tz);
+    const nextDay = t.endDate === '' && t.endTime <= t.startTime;
+    const endDay = t.endDate || (nextDay ? addDays(date, 1) : date);
+    const endMs = toMs(endDay, t.endTime);
+    // конец с явной датой не подменяется «завтра»: раньше начала — ошибка (CLAUDE.md п. 8)
+    if (t.endDate !== '' && endMs <= startMs) {
       return {
-        error: `Пропуск ${hhmm(startMs, tz)}–${t.endTime}${nextDay ? ' (завтра)' : ''} действует дольше максимума объекта — ${max} ч.`,
-        fixes: [{ label: `Закончить в ${latest}`, patch: { toText: latest } }],
+        error: `Конец ${stampFull(endMs, tz)} раньше начала (${stampFull(startMs, tz)}). Проверьте дату в «По».`,
+        fixes: [],
+      };
+    }
+    if (endMs - startMs > max * 3_600_000) {
+      const latestMs = startMs + max * 3_600_000;
+      const latest = hhmm(latestMs, tz);
+      const patchText = t.endDate === '' ? latest : stampFull(latestMs, tz);
+      return {
+        error: `Пропуск ${t.endDate === '' ? `${hhmm(startMs, tz)}–${t.endTime}${nextDay ? ' (завтра)' : ''}` : `${stampFull(startMs, tz)} → ${stampFull(endMs, tz)}`} действует дольше максимума объекта — ${max} ч.`,
+        fixes: [{ label: `Закончить в ${latest}`, patch: { toText: patchText } }],
       };
     }
   }
@@ -530,6 +545,7 @@ export function batchDraft(
     endTime: startFromWindow && t.endAuto ? '' : t.endTime,
     startAuto: startFromWindow ? false : t.startAuto,
     endAuto: startFromWindow ? false : t.endAuto,
+    endDate: single ? t.endDate : '',
     windowFromTime: single ? (window?.from ?? '') : '',
     windowToTime: single ? (window?.to ?? '') : '',
     from: t.from,

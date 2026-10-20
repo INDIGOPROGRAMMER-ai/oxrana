@@ -236,3 +236,175 @@ describe('пакет: у каждой строки свой срок, итог �
     expect(b.ok && b.span).toBe('15.10 13:44 → 20.10 23:59');
   });
 });
+
+describe('7b.3: «По» с датой, дата-время Excel числом, «ДД.ММ» без года', () => {
+  const catalog: BatchCatalog = {
+    categories: [{ id: 'car', name: 'легковой', dockEligible: false }],
+    docks: [],
+    defaultCategoryId: 'car',
+  };
+  const settings: BatchSettings = {
+    passType: 'single',
+    date: TODAY,
+    start: '',
+    end: '',
+    from: TODAY,
+    to: '',
+    comment: '',
+  };
+  const context = {
+    timezone: 'Asia/Yekaterinburg',
+    today: TODAY,
+    nowMs: NOW,
+    pastToleranceMin: 5,
+    singleMaxHours: 24,
+  };
+  const draft = (cells: string, ctx: Partial<typeof context> = {}) => {
+    const [row] = parseBatchRows(`Номер\tТип\tДата\tС\tПо\n${cells}`, catalog).rows.flatMap((r) =>
+      r.value ? [r.value] : [],
+    );
+    return batchDraft(row as BatchRow, settings, { ...context, ...ctx });
+  };
+
+  describe('2.1 конец по дате и времени', () => {
+    it('«С» 16.10 08:00, «По» 17.10 09:00: дата не теряется — срок 25 ч длиннее максимума, ошибка с кнопкой', () => {
+      const built = draft('А111АА174\tлегковой\t\t16.10.2026 08:00\t17.10.2026 09:00');
+      if (built.ok) throw new Error('ожидалась ошибка, а пропуск ушёл бы на 1 час');
+      expect(built.error).toContain('действует дольше максимума объекта — 24 ч');
+      expect(built.error).toContain('16.10.2026 08:00');
+      expect(built.error).toContain('17.10.2026 09:00');
+      expect(built.fixes).toEqual([
+        { label: 'Закончить в 08:00', patch: { toText: '17.10.2026 08:00' } },
+      ]);
+    });
+
+    it('в пределах максимума объекта конец следующего дня берётся из ячейки', () => {
+      const built = draft('А111АА174\tлегковой\t\t16.10.2026 08:00\t17.10.2026 06:00');
+      expect(built.ok && built.span).toBe('16.10 08:00 → 17.10 06:00');
+      const longer = draft('А111АА174\tлегковой\t\t16.10.2026 08:00\t17.10.2026 09:00', {
+        singleMaxHours: 48,
+      });
+      expect(longer.ok && longer.span).toBe('16.10 08:00 → 17.10 09:00');
+    });
+
+    it('дата указана явно, а конец раньше начала — ошибка, а не «завтра»', () => {
+      const built = draft('А111АА174\tлегковой\t\t16.10.2026 10:00\t16.10.2026 09:00');
+      if (built.ok) throw new Error('ожидалась ошибка');
+      expect(built.error).toContain('раньше начала');
+      expect(built.error).not.toContain('завтра');
+      const earlierDay = draft('А111АА174\tлегковой\t\t16.10.2026 10:00\t15.10.2026 18:00');
+      expect(earlierDay.ok).toBe(false);
+    });
+
+    it('без даты в «По» поведение прежнее: 22:00 → 06:00 — это следующая ночь', () => {
+      const built = draft('А111АА174\tлегковой\t15.10.2026\t22:00\t06:00');
+      expect(built.ok && built.span).toBe('15.10 22:00 → 16.10 06:00');
+    });
+
+    it('дата конца без времени — ошибка строки, а не молчаливое «начало + N часов»', () => {
+      const built = draft('А111АА174\tлегковой\t\t16.10.2026 08:00\t17.10.2026');
+      expect(built).toMatchObject({ ok: false, error: expect.stringContaining('без времени') });
+    });
+
+    it('rowTime отдаёт день конца; в предпросмотре он правится отдельно', () => {
+      const t = rowTime(
+        'single',
+        { dateText: '', fromText: '16.10.2026 08:00', toText: '17.10.2026 06:00' },
+        common,
+        env,
+      );
+      expect(t).toMatchObject({
+        date: '2026-10-16',
+        startTime: '08:00',
+        endTime: '06:00',
+        endDate: '2026-10-17',
+      });
+      expect(rowTime('single', blank, common, env).endDate).toBe('');
+    });
+  });
+
+  describe('2.2 дата-время Excel одним числом', () => {
+    it('46311.33: целая часть — дата, дробная — время', () => {
+      expect(splitStamp('46311.33')).toEqual({ date: '2026-10-16', time: '07:55' });
+      expect(splitStamp('46311,3333333333')).toEqual({ date: '2026-10-16', time: '08:00' });
+      expect(splitStamp('46311')).toEqual({ date: '46311', time: '' });
+      // без пяти полночь, округлённая до минуты, — это уже следующий день
+      expect(splitStamp('46311.99999')).toEqual({ date: '2026-10-17', time: '00:00' });
+    });
+
+    it('в «С» и «По» разового: дата и время берутся оба', () => {
+      const own = ownTime(
+        'single',
+        { dateText: '', fromText: '46311.3333333333', toText: '46311.75' },
+        TODAY,
+      );
+      expect(own).toMatchObject({
+        date: '2026-10-16',
+        start: '08:00',
+        end: '18:00',
+        endDate: '2026-10-16',
+        error: null,
+      });
+    });
+
+    it('строка из файла: пропуск 16.10 08:00 → 17.10 06:00', () => {
+      const built = draft('А111АА174\tлегковой\t\t46311.3333333333\t46312.25');
+      expect(built.ok && built.span).toBe('16.10 08:00 → 17.10 06:00');
+    });
+
+    it('многоразовый: число с датой и временем даёт дату', () => {
+      const multi = { ...settings, passType: 'multi' as const, to: '2026-10-20' };
+      const [row] = parseBatchRows(
+        'Номер\tТип\tДата\tС\tПо\nА111АА174\tлегковой\t\t46311.5\t46313.25',
+        catalog,
+      ).rows.flatMap((r) => (r.value ? [r.value] : []));
+      const built = batchDraft(row as BatchRow, multi, context);
+      expect(built.ok && built.span).toBe('16.10 00:00 → 18.10 23:59');
+    });
+  });
+
+  describe('2.3 «ДД.ММ» без года', () => {
+    const NEW_YEAR_EVE = '2026-12-31';
+    it('31.12 вводят «02.01» — это 2 января следующего года', () => {
+      expect(parseDateCell('02.01', NEW_YEAR_EVE)).toEqual({ value: '2027-01-02' });
+      expect(parseDateCell('2.1', NEW_YEAR_EVE)).toEqual({ value: '2027-01-02' });
+      expect(parseDateCell('31.12', NEW_YEAR_EVE)).toEqual({ value: '2026-12-31' });
+    });
+
+    it('сегодня и будущие дни этого года остаются в этом году, прошедшие — в следующем', () => {
+      expect(parseDateCell('15.10', TODAY)).toEqual({ value: '2026-10-15' });
+      expect(parseDateCell('16.10', TODAY)).toEqual({ value: '2026-10-16' });
+      expect(parseDateCell('14.10', TODAY)).toEqual({ value: '2027-10-14' });
+    });
+
+    it('допуск объекта: сразу после полуночи «вчера» ещё не прошло', () => {
+      const grace = { minutesIntoDay: 3, toleranceMin: 5 };
+      expect(parseDateCell('14.10', TODAY, grace)).toEqual({ value: '2026-10-14' });
+      expect(parseDateCell('14.10', TODAY, { minutesIntoDay: 6, toleranceMin: 5 })).toEqual({
+        value: '2027-10-14',
+      });
+      expect(parseDateCell('13.10', TODAY, grace)).toEqual({ value: '2027-10-13' });
+    });
+
+    it('несуществующий день — ошибка, а не молчаливая подмена', () => {
+      expect(parseDateCell('31.02', TODAY)).toMatchObject({ error: expect.any(String) });
+    });
+
+    it('в ячейке «Дата» разового: строка 31.12 с датой «02.01» уходит на 02.01 следующего года', () => {
+      const ctx = {
+        timezone: 'Asia/Yekaterinburg',
+        today: NEW_YEAR_EVE,
+        nowMs: Date.parse('2026-12-31T08:44:00Z'),
+        pastToleranceMin: 5,
+        singleMaxHours: 24,
+      };
+      const [row] = parseBatchRows(
+        'Номер\tТип\tДата\tС\tПо\nА111АА174\tлегковой\t02.01\t09:00\t18:00',
+        catalog,
+      ).rows.flatMap((r) => (r.value ? [r.value] : []));
+      const built = batchDraft(row as BatchRow, { ...settings, date: NEW_YEAR_EVE }, ctx);
+      expect(built.ok && built.span).toBe('02.01 09:00 → 02.01 18:00');
+      if (built.ok) expect(built.draft.validFrom).toBe('2027-01-02T09:00:00.000+05:00');
+    });
+  });
+});

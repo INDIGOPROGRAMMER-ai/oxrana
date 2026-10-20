@@ -1,5 +1,5 @@
 import { maskDate, maskTime, parseRuDate, parseTime } from '@oxrana/ui';
-import { endAfter, timeOf } from './pass-time';
+import { endAfter, minutesOfTime, timeOf } from './pass-time';
 
 /**
  * Время строки пакета (7b.2): у каждой машины свой срок. Ячейки «Дата», «С», «По» приходят из Excel
@@ -27,12 +27,38 @@ function excelTime(fraction: number): string {
 
 const SERIAL = /^\d{5}(?:[.,]\d+)?$/;
 const FRACTION = /^0[.,]\d+$/;
+/** Дата-время Excel одним числом: целая часть — день, дробная — время суток (`46311.33`). */
+const SERIAL_STAMP = /^\d{5}[.,]\d+$/;
+
+/** Число Excel с датой и временем → день и время суток (минуты округляются; полночь переносит день). */
+function excelStamp(serial: number): { date: string; time: string } {
+  const total = Math.round(serial * 1440);
+  const day = Math.floor(total / 1440);
+  const minutes = total - day * 1440;
+  return { date: excelDate(day), time: `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}` };
+}
+
+/** Допуск объекта для даты без года: сколько минут назад ещё считается «сегодня» (`pastToleranceMin`). */
+export interface YearGrace {
+  readonly minutesIntoDay: number;
+  readonly toleranceMin: number;
+}
+
+function yesterdayOf(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
 
 /**
  * Дата из ячейки: `15.10.2026`, `15.10.26`, `15.10` (год — текущий), `2026-10-15`, число Excel.
  * `todayIso` — сегодняшняя дата объекта (год для записи без года).
  */
-export function parseDateCell(text: string, todayIso: string): CellResult<string> {
+export function parseDateCell(
+  text: string,
+  todayIso: string,
+  grace?: YearGrace,
+): CellResult<string> {
   const raw = text.trim();
   if (raw === '') return null;
   if (SERIAL.test(raw)) {
@@ -41,9 +67,20 @@ export function parseDateCell(text: string, todayIso: string): CellResult<string
   }
   const short = /^(\d{1,2})[./](\d{1,2})$/.exec(raw);
   if (short) {
-    const year = todayIso.slice(0, 4);
-    const iso = parseRuDate(`${pad(Number(short[1]))}.${pad(Number(short[2]))}.${year}`);
-    if (iso) return { value: iso };
+    // без года: этот год, а если день уже прошёл (с учётом допуска объекта) — следующий
+    const year = Number(todayIso.slice(0, 4));
+    const day = `${pad(Number(short[1]))}.${pad(Number(short[2]))}`;
+    const thisYear = parseRuDate(`${day}.${year}`);
+    if (thisYear) {
+      const stillToday =
+        grace !== undefined &&
+        thisYear === yesterdayOf(todayIso) &&
+        grace.minutesIntoDay < grace.toleranceMin;
+      if (thisYear >= todayIso || stillToday) return { value: thisYear };
+      const next = parseRuDate(`${day}.${year + 1}`);
+      // 29.02 в високосный год: следующего 29.02 нет — дата не распознана, а не молча 01.03
+      if (next) return { value: next };
+    }
   }
   const twoDigitYear = /^(\d{1,2})[./](\d{1,2})[./](\d{2})$/.exec(raw);
   const normalized = twoDigitYear
@@ -76,9 +113,24 @@ export function parseTimeCell(text: string): CellResult<string> {
   return { error: `Время «${raw}» не распознано. Пишите так: 13:44.` };
 }
 
-/** Ячейка «С» может содержать и дату, и время («15.10.2026 13:44»): разделить. */
+/**
+ * Ячейка «С» или «По» может содержать и дату, и время: «15.10.2026 13:44», только дату
+ * («15.10.2026»), число Excel с датой и временем («46311.33» — целая часть день, дробная время),
+ * число-дату («46311») или только время. Возвращает куски текста для `parseDateCell`/`parseTimeCell`.
+ */
 export function splitStamp(text: string): { date: string; time: string } {
   const raw = text.trim();
+  if (SERIAL_STAMP.test(raw)) {
+    const serial = Number(raw.replace(',', '.'));
+    if (serial >= 20_000 && serial <= 80_000) return excelStamp(serial);
+  }
+  if (/^\d{5}$/.test(raw) && Number(raw) >= 20_000 && Number(raw) <= 80_000) {
+    return { date: raw, time: '' };
+  }
+  // только полная дата (с годом): «13.44» остаётся временем, «15.10» без года — тоже временем-ошибкой
+  if (/^(\d{1,2}[./]\d{1,2}[./]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})$/.test(raw)) {
+    return { date: raw, time: '' };
+  }
   const m = /^(\S+)\s+(\d{1,2}[:.]\d{2}(?::\d{2})?)$/.exec(raw);
   return m ? { date: m[1] ?? '', time: m[2] ?? '' } : { date: '', time: raw };
 }
@@ -111,6 +163,16 @@ export interface TimeEnv {
   readonly startNow: boolean;
   readonly singleHours: number;
   readonly singleMaxHours: number;
+  /** Допуск «начало в прошлом», мин: даты без года и «вчера» сразу после полуночи (7b.3). */
+  readonly pastToleranceMin?: number | undefined;
+}
+
+/** Допуск для даты без года из окружения расчёта. */
+export function graceOf(env: TimeEnv): YearGrace {
+  return {
+    minutesIntoDay: minutesOfTime(timeOf(env.nowMs, env.timezone)),
+    toleranceMin: env.pastToleranceMin ?? 0,
+  };
 }
 
 /** Итоговое время строки, как его понимает форма пропуска (`PassFormValues`), и откуда оно взято. */
@@ -120,6 +182,8 @@ export interface RowTime {
   readonly endTime: string;
   readonly startAuto: boolean;
   readonly endAuto: boolean;
+  /** Конец разового с датой, указанной явно (`ДД.ММ.ГГГГ ЧЧ:ММ` в «По»); `''` — день определяется началом. */
+  readonly endDate: string;
   readonly from: string;
   readonly to: string;
   /** Что в строке своё (не общее): подпись «время общее» в предпросмотре. */
@@ -133,19 +197,24 @@ export interface OwnTime {
   readonly date: string;
   readonly start: string;
   readonly end: string;
+  /** Дата конца, если она указана в «По» явно (разовый). */
+  readonly endDate: string;
   readonly from: string;
   readonly to: string;
   readonly error: string | null;
 }
 
 /**
- * Что в строке своё. Разовый: «Дата», «С» и «По» — время (в «С» может стоять и дата со временем).
- * Многоразовый и постоянный: «С» и «По» — даты, а если «С» пуста, годится «Дата».
+ * Что в строке своё. Разовый: «Дата», «С» и «По» — время; в «С» и «По» может стоять и дата со
+ * временем («17.10.2026 09:00», число Excel «46311.33»): дата «По» — день конца. Многоразовый и
+ * постоянный: «С» и «По» — даты, а если «С» пуста, годится «Дата». Дата без года — этот год, а если
+ * день уже прошёл (с учётом допуска `grace`), то следующий.
  */
 export function ownTime(
   passType: 'single' | 'multi' | 'permanent',
   row: RowTimeText,
   todayIso: string,
+  grace?: YearGrace,
 ): OwnTime {
   let error: string | null = null;
   const take = <T>(result: CellResult<T>): T | '' => {
@@ -161,20 +230,29 @@ export function ownTime(
       date: '',
       start: '',
       end: '',
-      from: take(parseDateCell(splitStamp(fromCell).date || fromCell, todayIso)),
-      to: take(parseDateCell(splitStamp(row.toText).date || row.toText, todayIso)),
+      endDate: '',
+      from: take(parseDateCell(splitStamp(fromCell).date || fromCell, todayIso, grace)),
+      to: take(parseDateCell(splitStamp(row.toText).date || row.toText, todayIso, grace)),
       error,
     };
   }
-  const stamp = splitStamp(row.fromText);
-  return {
-    date: take(parseDateCell(row.dateText.trim() !== '' ? row.dateText : stamp.date, todayIso)),
-    start: take(parseTimeCell(stamp.time)),
-    end: take(parseTimeCell(splitStamp(row.toText).time)),
+  const from = splitStamp(row.fromText);
+  const to = splitStamp(row.toText);
+  const out = {
+    date: take(
+      parseDateCell(row.dateText.trim() !== '' ? row.dateText : from.date, todayIso, grace),
+    ),
+    start: take(parseTimeCell(from.time)),
+    end: take(parseTimeCell(to.time)),
+    endDate: take(parseDateCell(to.date, todayIso, grace)),
     from: '',
     to: '',
-    error,
   };
+  // дата конца без времени молча превратилась бы в «начало + N часов»
+  if (out.endDate !== '' && out.end === '' && error === null) {
+    error = `В «По» указана дата без времени. Пишите так: ${todayRu(out.endDate)} 18:00.`;
+  }
+  return { ...out, error };
 }
 
 /**
@@ -187,7 +265,7 @@ export function rowTime(
   common: CommonTime,
   env: TimeEnv,
 ): RowTime {
-  const mine = ownTime(passType, row, env.todayIso);
+  const mine = ownTime(passType, row, env.todayIso, graceOf(env));
   const own = row.dateText.trim() !== '' || row.fromText.trim() !== '' || row.toText.trim() !== '';
   if (passType !== 'single') {
     return {
@@ -196,6 +274,7 @@ export function rowTime(
       endTime: '',
       startAuto: false,
       endAuto: false,
+      endDate: '',
       from: mine.from || common.from,
       to: mine.to || common.to,
       own,
@@ -217,6 +296,7 @@ export function rowTime(
     endTime,
     startAuto,
     endAuto,
+    endDate: mine.endDate,
     from: '',
     to: '',
     own,
