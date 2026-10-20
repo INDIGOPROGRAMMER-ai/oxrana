@@ -169,7 +169,10 @@ export function registerCabinetRoutes(app: FastifyInstance): void {
             .map((z) => ({ id: z.id, name: z.name }))
             .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
           purposes,
-          docks: rules.docks.map((d) => ({ id: d.id, number: d.number, tenantId: d.tenantId })),
+          // доки арендаторов, которых пользователь не видит, в справочник не попадают (7b.3)
+          docks: rules.docks
+            .filter((d) => seen === null || d.tenantId === null || seen.includes(d.tenantId))
+            .map((d) => ({ id: d.id, number: d.number, tenantId: d.tenantId })),
           tenants,
           today: localDate(now, tz),
           now: new Date(now).toISOString(),

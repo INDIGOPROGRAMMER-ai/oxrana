@@ -111,10 +111,12 @@ describe('до въезда', () => {
     expect(res.json().applied.sort()).toEqual(['comment', 'destinationZoneId', 'plate', 'validTo']);
     expect(res.json().pass).toMatchObject({ phase: 'before', comment: 'Поменяли машину' });
     const history = (await t.as(logist, { url: `/passes/${passId}/history` })).json().items;
-    const update = history.find((e: { action: string }) => e.action === 'update');
+    const update = history.find((e: { kind: string }) => e.kind === 'updated');
     expect(update).toMatchObject({
       reason: 'Водитель сообщил новый номер',
-      diff: { comment: { from: null, to: 'Поменяли машину' } },
+      changes: expect.arrayContaining([
+        { field: 'comment', label: 'Комментарий', type: 'text', from: null, to: 'Поменяли машину' },
+      ]),
     });
   });
 
@@ -235,11 +237,11 @@ describe('после въезда (визит открыт)', () => {
     });
     expect((await view(passId)).validTo).toBe(beyondTo);
     const history = (await t.as(admin, { url: `/passes/${passId}/history` })).json().items as {
-      action: string;
+      kind: string;
       reason: string | null;
     }[];
-    expect(history.map((h) => h.action)).toEqual(
-      expect.arrayContaining(['change_request', 'update']),
+    expect(history.map((h) => h.kind)).toEqual(
+      expect.arrayContaining(['change_requested', 'updated', 'change_approved']),
     );
     const audit = await ownerDb()
       .select()

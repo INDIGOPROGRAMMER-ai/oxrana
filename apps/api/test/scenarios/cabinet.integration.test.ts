@@ -327,6 +327,10 @@ describe('справочники списка пропусков по всему
     const mine = await t.as(logist, { url: `/sites/${KEYS.siteId}/passes/context` });
     expect(mine.statusCode, mine.body).toBe(200);
     expect(mine.json().tenants.map((x: { id: string }) => x.id)).toEqual([dns]);
+    // доки чужих арендаторов в справочник не попадают (7b.3)
+    const docks = mine.json().docks as { tenantId: string | null }[];
+    expect(docks.length).toBeGreaterThan(0);
+    expect(docks.every((d) => d.tenantId === null || d.tenantId === dns)).toBe(true);
     const nobody = customActor(['profile.manage_own'], {});
     const denied = await t.as(nobody, { url: `/sites/${KEYS.siteId}/passes/context` });
     expect(denied.statusCode).toBe(403);

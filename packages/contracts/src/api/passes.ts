@@ -273,14 +273,119 @@ export const PassHintsSchema = z.object({
   notices: z.array(PassNoticeSchema),
 });
 
+/** Группы ленты пропуска: «Изменения» (кто что менял и согласовал) и «КПП» (отметки и решения охраны). */
+export const PASS_HISTORY_GROUPS = ['changes', 'gate'] as const;
+export const PassHistoryGroupSchema = z.enum(PASS_HISTORY_GROUPS);
+export type PassHistoryGroup = (typeof PASS_HISTORY_GROUPS)[number];
+
+export const PASS_HISTORY_KINDS = [
+  'created',
+  'updated',
+  'approved',
+  'rejected',
+  'cancelled',
+  'escalated',
+  'change_requested',
+  'change_approved',
+  'change_rejected',
+  'check_in',
+  'check_out',
+  'undo',
+  'denied',
+  'wrong_gate',
+  'wait',
+  'redirected',
+  'refused',
+  'queued',
+  'left_queue',
+  'passage',
+  'override_requested',
+  'override_decided',
+  'other',
+] as const;
+export const PassHistoryKindSchema = z.enum(PASS_HISTORY_KINDS);
+export type PassHistoryKind = (typeof PASS_HISTORY_KINDS)[number];
+
+/** Одно изменённое поле: человеческое название и значения; время (`time`) — ISO, показывает веб в поясе объекта. */
+export const PassHistoryChangeSchema = z.object({
+  field: z.string(),
+  label: z.string(),
+  type: z.enum(['text', 'time']),
+  from: z.string().nullable(),
+  to: z.string().nullable(),
+});
+
+/** Кто: сотрудник (ФИО, роль), учётка поста (название КПП — только администратору) или система. */
+export const PassHistoryActorSchema = z.object({
+  kind: z.enum(['user', 'gate', 'system']),
+  name: z.string(),
+  role: z.string().nullable(),
+});
+
+/**
+ * Строка единой ленты пропуска (7b.3, ADR-023): собирается на сервере из журнала аудита и журналов КПП.
+ * Название КПП — снимок на момент события. Поле `staff` получает только администратор объекта.
+ */
 export const PassHistoryEntrySchema = z.object({
+  id: z.string(),
   at: InstantSchema,
-  action: z.string(),
-  actorType: z.string(),
-  /** «Иванов И. И.» или «КПП: пост въезда» — кто именно (A9). */
-  actorName: z.string().nullable(),
-  diff: z.record(z.string(), z.unknown()).nullable(),
+  group: PassHistoryGroupSchema,
+  kind: PassHistoryKindSchema,
+  title: z.string(),
+  /** КПП, на котором это произошло. */
+  place: z.string().nullable(),
+  actor: PassHistoryActorSchema.nullable(),
   reason: z.string().nullable(),
+  changes: z.array(PassHistoryChangeSchema),
+  notes: z.array(z.string()),
+  /** Офлайн-отметка: время на устройстве поста (в `at` — время, записанное в визит). */
+  offline: z.boolean(),
+  deviceAt: InstantSchema.nullable(),
+  /** Служебное: устройство, причины вердикта (trace), данные исключения. Арендатору не отдаётся. */
+  staff: z
+    .object({
+      device: z.string().nullable(),
+      details: z.array(z.string()),
+    })
+    .nullable(),
+});
+export type PassHistoryEntry = z.infer<typeof PassHistoryEntrySchema>;
+
+export const PassHistoryQuerySchema = z.strictObject({
+  group: z.enum(['all', 'changes', 'gate']).default('all'),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export const PassHistoryListSchema = z.object({
+  /** Новые сверху. */
+  items: z.array(PassHistoryEntrySchema),
+  /** Строк по фильтру группы (для «Показать ещё»). */
+  total: z.int(),
+});
+
+/** Находится ли сейчас на территории: «На территории с 14:05 (<КПП>)» / «Последний выезд …». */
+export const PassPresenceSchema = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('inside'), since: InstantSchema, gate: z.string().nullable() }),
+  z.object({ state: z.literal('left'), at: InstantSchema, gate: z.string().nullable() }),
+  z.object({ state: z.literal('none') }),
+]);
+
+/** Данные карточки пропуска (7b.3): пропуск, арендатор, кто оформил и согласовал, где сейчас. */
+export const PassCardSchema = z.object({
+  pass: PassViewSchema,
+  tenantName: z.string(),
+  /** Сотрудник или «Пост <название КПП>» (пропуск оформлен с поста). */
+  createdByName: z.string().nullable(),
+  approvedByName: z.string().nullable(),
+  presence: PassPresenceSchema,
+  /** Названия справочников по ссылкам пропуска (карточка открывается без контекста компании). */
+  names: z.object({
+    category: z.string().nullable(),
+    dock: z.string().nullable(),
+    zone: z.string().nullable(),
+    purpose: z.string().nullable(),
+  }),
 });
 
 export const VisitViewSchema = z.object({

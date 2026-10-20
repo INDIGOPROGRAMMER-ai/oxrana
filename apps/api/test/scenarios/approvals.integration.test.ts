@@ -102,10 +102,8 @@ describe('сценарий 24: согласование пропусков', () 
       },
     });
     const history = (await t.as(dnsLogist, { url: `/passes/${passId}/history` })).json().items;
-    expect(history.map((h: { action: string }) => h.action)).toEqual([
-      'create',
-      'approve_with_changes',
-    ]);
+    expect(history.map((h: { kind: string }) => h.kind).reverse()).toEqual(['created', 'approved']);
+    expect(history[0]).toMatchObject({ title: 'Согласован с изменениями' });
 
     const again = await t.as(approver, {
       method: 'POST',

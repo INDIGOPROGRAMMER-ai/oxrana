@@ -12,13 +12,15 @@ import {
   PassApproveSchema,
   PassBatchResultSchema,
   PassBatchSchema,
+  PassCardSchema,
   PassCreatedSchema,
   PassCreateSchema,
   PassExportQuerySchema,
   PassHintsQuerySchema,
   PassHintsRequestSchema,
   PassHintsSchema,
-  PassHistoryEntrySchema,
+  PassHistoryListSchema,
+  PassHistoryQuerySchema,
   PassListQuerySchema,
   PassListSchema,
   PassPatchResultSchema,
@@ -36,12 +38,14 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { ctxOf, requirePermission, type Scope } from '../../core/context';
+import { ctxOf, requirePermission } from '../../core/context';
 import { loadSite, loadTenant } from '../../core/loaders';
 import { approvePass, creatorNames, rejectPass } from './approvals';
 import { createBatch } from './batch';
 import { registerCabinetRoutes } from './cabinet';
+import { passNames, passPeople, passPresence } from './card';
 import { passHints } from './hints';
+import { passHistory } from './history';
 import {
   exportInside,
   exportPasses,
@@ -62,6 +66,7 @@ import {
 import { passView, visitView } from './views';
 
 const VIEW = ['pass.view', 'pass.view_all_tenants'] as const;
+const HISTORY = 'pass.history.view';
 const CREATE = ['pass.create.single', 'pass.create.multi', 'pass.create.permanent'] as const;
 const EDIT = ['pass.edit', 'pass.change_request.create'] as const;
 const iso = (d: Date | null) => (d === null ? null : d.toISOString());
@@ -79,42 +84,6 @@ function changeRequestView(row: typeof schema.passChangeRequests.$inferSelect) {
     decisionNote: row.decisionNote,
     createdAt: row.createdAt.toISOString(),
   };
-}
-
-async function actorNames(
-  s: Scope,
-  rows: { actorUserId: string | null; actorGateAccountId: string | null }[],
-) {
-  const userIds = [
-    ...new Set(rows.map((r) => r.actorUserId).filter((v): v is string => v !== null)),
-  ];
-  const accountIds = [
-    ...new Set(rows.map((r) => r.actorGateAccountId).filter((v): v is string => v !== null)),
-  ];
-  const names = new Map<string, string>();
-  if (userIds.length > 0) {
-    for (const u of await s.db
-      .select({ id: schema.users.id, name: schema.users.fullName })
-      .from(schema.users)
-      .where(inArray(schema.users.id, userIds))) {
-      names.set(u.id, u.name);
-    }
-  }
-  if (accountIds.length > 0) {
-    for (const a of await s.db
-      .select({ id: schema.gateAccounts.id, name: schema.gates.name })
-      .from(schema.gateAccounts)
-      .innerJoin(schema.gates, eq(schema.gates.id, schema.gateAccounts.gateId))
-      .where(
-        and(
-          eq(schema.gateAccounts.organizationId, s.organizationId),
-          inArray(schema.gateAccounts.id, accountIds),
-        ),
-      )) {
-      names.set(a.id, `Пост ${a.name}`);
-    }
-  }
-  return names;
 }
 
 export function registerPassesModule(app: FastifyInstance): void {
@@ -469,12 +438,14 @@ export function registerPassesModule(app: FastifyInstance): void {
   typed.get(
     '/passes/:id/history',
     {
-      config: { permission: VIEW },
+      config: { permission: HISTORY },
       schema: {
         tags,
-        summary: 'История пропуска: «было → стало», кто и почему',
+        summary:
+          'Лента пропуска: изменения, согласование и отметки КПП одним списком (новые сверху); нужно право «История пропуска»',
         params: IdParamsSchema,
-        response: { 200: z.object({ items: z.array(PassHistoryEntrySchema) }) },
+        querystring: PassHistoryQuerySchema,
+        response: { 200: PassHistoryListSchema },
       },
     },
     async (request) => {
@@ -482,27 +453,35 @@ export function registerPassesModule(app: FastifyInstance): void {
       return ctx.tx(async (s) => {
         const { pass } = await loadPass(s, request.params.id);
         assertCanView(s, pass.tenantId);
-        const rows = await s.db
-          .select()
-          .from(schema.auditLog)
-          .where(
-            and(
-              eq(schema.auditLog.organizationId, s.organizationId),
-              eq(schema.auditLog.entity, 'pass'),
-              eq(schema.auditLog.entityId, pass.id),
-            ),
-          )
-          .orderBy(asc(schema.auditLog.id));
-        const names = await actorNames(s, rows);
+        return passHistory(s, pass, request.query);
+      });
+    },
+  );
+
+  typed.get(
+    '/passes/:id/card',
+    {
+      config: { permission: VIEW },
+      schema: {
+        tags,
+        summary:
+          'Данные карточки пропуска: арендатор, кто оформил и согласовал, находится ли на территории (без истории)',
+        params: IdParamsSchema,
+        response: { 200: PassCardSchema },
+      },
+    },
+    async (request) => {
+      const ctx = ctxOf(request);
+      return ctx.tx(async (s) => {
+        const { pass, tenant } = await loadPass(s, request.params.id);
+        assertCanView(s, pass.tenantId);
+        const open = await openVisitPassIds(s, [pass.id]);
         return {
-          items: rows.map((r) => ({
-            at: r.at.toISOString(),
-            action: r.action,
-            actorType: r.actorType,
-            actorName: names.get(r.actorUserId ?? r.actorGateAccountId ?? '') ?? null,
-            diff: (r.diff as Record<string, unknown> | null) ?? null,
-            reason: r.reason,
-          })),
+          pass: passView(pass, ctx.now(), open.has(pass.id)),
+          tenantName: tenant.shortName,
+          ...(await passPeople(s, pass)),
+          presence: await passPresence(s, pass.id),
+          names: await passNames(s, pass),
         };
       });
     },
@@ -511,10 +490,10 @@ export function registerPassesModule(app: FastifyInstance): void {
   typed.get(
     '/passes/:id/change-requests',
     {
-      config: { permission: VIEW },
+      config: { permission: HISTORY },
       schema: {
         tags,
-        summary: 'Заявки на изменение пропуска',
+        summary: 'Заявки на изменение пропуска (нужно право «История пропуска»)',
         params: IdParamsSchema,
         response: { 200: z.object({ items: z.array(ChangeRequestViewSchema) }) },
       },

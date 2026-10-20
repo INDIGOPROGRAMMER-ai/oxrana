@@ -247,12 +247,14 @@ describe('правка пропуска', () => {
       expect(res.statusCode).toBe(200);
       expect(res.json().pass.plateNorm).toBe('H999MC174');
       const history = await t.as(dnsLogist, { url: `/passes/${passId}/history` });
-      const update = history.json().items.find((e: { action: string }) => e.action === 'update');
+      const update = history.json().items.find((e: { kind: string }) => e.kind === 'updated');
       expect(update).toMatchObject({
         reason: 'Опечатка в номере, водитель на воротах',
-        actorName: 'Тестовый site_admin',
-        diff: { plateNorm: { from: before.plateNorm, to: 'H999MC174' } },
+        actor: { kind: 'user', name: 'Тестовый site_admin' },
+        changes: [{ field: 'plateRaw', label: 'Номер', from: before.plateRaw, to: 'Н999МС174' }],
       });
+      // технические поля («нормализованный номер») в ленте не показываются
+      expect(update.changes.map((c: { field: string }) => c.field)).not.toContain('plateNorm');
     } finally {
       t.clock.set(NOON);
     }
@@ -305,10 +307,11 @@ describe('правка пропуска', () => {
       });
 
       const history = (await t.as(dnsRequester, { url: `/passes/${passId}/history` })).json().items;
-      expect(history.map((e: { action: string }) => e.action)).toEqual([
-        'create',
-        'change_request',
-        'update',
+      expect(history.map((e: { kind: string }) => e.kind).reverse()).toEqual([
+        'created',
+        'change_requested',
+        'updated',
+        'change_approved',
       ]);
       const again = await t.as(approver, {
         method: 'POST',
