@@ -3,9 +3,13 @@ import { parseTenantTab, TenantPage, type TenantTab } from '../components/tenant
 
 export const Route = createFileRoute('/admin/tenants/$tenantId/')({
   // вкладка — в адресе: `?tab=contract`; пусто или незнакомое значение — «Общее»
-  validateSearch: (search: Record<string, unknown>): { tab?: TenantTab } => {
+  validateSearch: (search: Record<string, unknown>): { tab?: TenantTab; pass?: string } => {
     const tab = parseTenantTab(search.tab);
-    return tab ? { tab } : {};
+    return {
+      ...(tab ? { tab } : {}),
+      // открытая карточка пропуска на вкладке «На территории»
+      ...(typeof search.pass === 'string' ? { pass: search.pass } : {}),
+    };
   },
   component: TenantIndexPage,
 });

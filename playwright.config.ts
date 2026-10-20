@@ -49,7 +49,7 @@ export default defineConfig({
     {
       name: 'chromium',
       // кабинет арендатора продолжает базу после чистого старта (ADR-022): отдельный проект ниже
-      testIgnore: /(cabinet|pass-form|lists|batch-admin)\.spec\.ts/,
+      testIgnore: /(cabinet|pass-form|lists|batch-admin|pass-card)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         ...(executablePath ? { launchOptions: { executablePath } } : {}),
@@ -95,6 +95,17 @@ export default defineConfig({
       name: 'batch-admin',
       testMatch: /batch-admin\.spec\.ts/,
       dependencies: ['lists'],
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(executablePath ? { launchOptions: { executablePath } } : {}),
+      },
+    },
+    {
+      // Этап 7b.3: карточка пропуска и история, время строки пакета (дата-время числом Excel) — на той же базе
+      // после `batch-admin.spec.ts`.
+      name: 'pass-card',
+      testMatch: /pass-card\.spec\.ts/,
+      dependencies: ['batch-admin'],
       use: {
         ...devices['Desktop Chrome'],
         ...(executablePath ? { launchOptions: { executablePath } } : {}),

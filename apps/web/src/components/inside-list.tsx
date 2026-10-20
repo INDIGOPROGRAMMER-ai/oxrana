@@ -4,9 +4,11 @@ import { MapPin, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { z } from 'zod';
 import { useApi, useApiPages, useMe } from '../lib/data';
+import { usePassCardLink } from '../lib/pass-link';
 import { PASS_TYPE_LABEL } from '../lib/pass-text';
 import { stayText } from '../lib/stay';
 import { useDebounced } from '../lib/use-debounced';
+import { PassCardHost } from './cabinet/pass-card';
 import { LoadError } from './common';
 import { ExportButton } from './export-button';
 
@@ -38,6 +40,7 @@ export function InsideList({
   showTenant?: boolean;
 }) {
   const { can } = useMe();
+  const card = usePassCardLink();
   const [query, setQuery] = useState('');
   const q = useDebounced(query.trim(), 300);
   const params = new URLSearchParams();
@@ -129,10 +132,30 @@ export function InsideList({
             ].filter(Boolean);
             return (
               <li key={row.visitId}>
-                <Card data-testid="inside-row">
+                <Card
+                  data-testid="inside-row"
+                  className="relative transition-colors hover:bg-accent/40 has-[.open-card:focus-visible]:ring-2 has-[.open-card:focus-visible]:ring-ring"
+                >
                   <CardContent className="grid gap-1 pt-4 sm:grid-cols-[1fr_auto] sm:items-start">
                     <div className="min-w-0 space-y-1">
-                      <p className="font-mono text-base font-semibold">{row.title}</p>
+                      {row.passId ? (
+                        <button
+                          type="button"
+                          onClick={() => card.open(row.passId ?? '')}
+                          aria-haspopup="dialog"
+                          title="Открыть карточку пропуска"
+                          className="open-card text-left font-mono text-base font-semibold underline-offset-2 outline-none after:absolute after:inset-0 after:content-[''] hover:underline"
+                        >
+                          {row.title}
+                        </button>
+                      ) : (
+                        <p
+                          className="font-mono text-base font-semibold"
+                          title="Выезд без пропуска: карточки нет"
+                        >
+                          {row.title}
+                        </p>
+                      )}
                       {showTenant ? (
                         <p className="text-sm font-medium" data-testid="inside-tenant">
                           <span className="text-muted-foreground">Арендатор: </span>
@@ -170,6 +193,7 @@ export function InsideList({
           })}
         </ul>
       )}
+      <PassCardHost />
       {list.hasNextPage ? (
         <div className="flex justify-center">
           <Button

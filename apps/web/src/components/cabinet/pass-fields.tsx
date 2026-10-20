@@ -1,6 +1,7 @@
-import type { CabinetContext, PassView } from '@oxrana/contracts';
+import type { CabinetContext, PassCardSchema, PassView } from '@oxrana/contracts';
 import { SiteTime } from '@oxrana/ui';
 import type { ReactNode } from 'react';
+import type { z } from 'zod';
 import { PASS_TYPE_LABEL } from '../../lib/pass-text';
 
 const name = (list: readonly { id: string; name: string }[] | undefined, id: string | null) =>
@@ -10,12 +11,21 @@ const name = (list: readonly { id: string; name: string }[] | undefined, id: str
  * Все поля пропуска списком «название — значение» (карточка пропуска в кабинете и карточка
  * согласования в админке): пустые поля не показываются, время — в поясе объекта с подписью.
  */
-export function PassFields({ pass, ctx }: { pass: PassView; ctx: CabinetContext | undefined }) {
+export function PassFields({
+  pass,
+  ctx,
+  names,
+}: {
+  pass: PassView;
+  ctx: CabinetContext | undefined;
+  /** Названия по ссылкам от сервера (карточка пропуска): без них — по справочникам контекста. */
+  names?: z.infer<typeof PassCardSchema>['names'];
+}) {
   const rows: [string, ReactNode][] = [
     ['Вид пропуска', PASS_TYPE_LABEL[pass.passType]],
     ...(pass.participant === 'vehicle'
       ? ([
-          ['Тип транспорта', name(ctx?.categories, pass.categoryId)],
+          ['Тип транспорта', names ? names.category : name(ctx?.categories, pass.categoryId)],
           ['Марка', pass.brand],
           ['Водитель', [pass.driverName, pass.driverPhone].filter(Boolean).join(', ') || null],
         ] as [string, ReactNode][])
@@ -30,10 +40,14 @@ export function PassFields({ pass, ctx }: { pass: PassView; ctx: CabinetContext 
       : []),
     [
       'Док',
-      pass.dockId ? `Док ${ctx?.docks.find((d) => d.id === pass.dockId)?.number ?? '—'}` : null,
+      names
+        ? names.dock
+        : pass.dockId
+          ? `Док ${ctx?.docks.find((d) => d.id === pass.dockId)?.number ?? '—'}`
+          : null,
     ],
-    ['Место назначения', name(ctx?.zones, pass.destinationZoneId)],
-    ['Цель визита', name(ctx?.purposes, pass.purposeId)],
+    ['Место назначения', names ? names.zone : name(ctx?.zones, pass.destinationZoneId)],
+    ['Цель визита', names ? names.purpose : name(ctx?.purposes, pass.purposeId)],
     ['Комментарий', pass.comment],
   ];
   return (

@@ -17,8 +17,9 @@ import {
 } from '@oxrana/ui';
 import { Link } from '@tanstack/react-router';
 import { Ban, Inbox, Pencil, SlidersHorizontal, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useApi, useApiPages, useMe } from '../../lib/data';
+import { useState } from 'react';
+import { useApiPages, useMe } from '../../lib/data';
+import { usePassCardLink } from '../../lib/pass-link';
 import { PASS_STATUS_LABEL, PASS_TYPE_LABEL, passTitle } from '../../lib/pass-text';
 import { useDebounced } from '../../lib/use-debounced';
 import { useWideScreen } from '../../lib/use-media';
@@ -26,7 +27,7 @@ import { LoadError } from '../common';
 import { ExportButton } from '../export-button';
 import { CabinetProvider, useCabinet } from './cabinet-context';
 import { CancelPassDialog } from './cancel-dialog';
-import { PassDetails } from './pass-details';
+import { PassCardHost } from './pass-card';
 import { PassEditDialog } from './pass-edit';
 import { PassStatus } from './status-badge';
 
@@ -44,14 +45,7 @@ const CANCELLABLE = new Set<PassStatusCode>(['pending_approval', 'approved']);
  * Список пропусков (08_ «История»): фильтры по статусу, дню, типу и цифрам номера; статусы
  * согласования; отмена своих. Обновляется по событиям объекта, без F5.
  */
-export function PassList({
-  initialStatus,
-  openId,
-}: {
-  initialStatus?: PassStatusCode | undefined;
-  /** Пропуск, карточку которого надо открыть сразу (ссылка из уведомления). */
-  openId?: string | undefined;
-}) {
+export function PassList({ initialStatus }: { initialStatus?: PassStatusCode | undefined }) {
   const { me, can } = useMe();
   const { tenant, ctx, allTenants } = useCabinet();
   // страница «Пропуска» админки: все арендаторы объекта, фильтр и название арендатора в строке (7b.2)
@@ -63,11 +57,8 @@ export function PassList({
   const [date, setDate] = useState('');
   const [query, setQuery] = useState('');
   const q = useDebounced(query.trim(), 300);
-  const [opened, setOpened] = useState<PassView | null>(null);
-  const linked = useApi<PassView>(openId ? `/passes/${openId}` : null);
-  useEffect(() => {
-    if (linked.data) setOpened(linked.data);
-  }, [linked.data]);
+  // открытая карточка — в адресе `?pass=<id>` (ссылка из уведомления, «Назад» закрывает)
+  const card = usePassCardLink();
   const [cancelling, setCancelling] = useState<PassView | null>(null);
   const [editing, setEditing] = useState<PassView | null>(null);
 
@@ -352,13 +343,20 @@ export function PassList({
             const blocked = cancelReason(pass);
             return (
               <li key={pass.id}>
-                <Card data-testid="pass-row" data-status={pass.status}>
+                {/* вся строка открывает карточку: кнопка-номер растянута на карточку, кнопки справа выше неё */}
+                <Card
+                  data-testid="pass-row"
+                  data-status={pass.status}
+                  className="relative transition-colors hover:bg-accent/40 has-[.open-card:focus-visible]:ring-2 has-[.open-card:focus-visible]:ring-ring"
+                >
                   <CardContent className="grid gap-3 pt-4 sm:grid-cols-[1fr_auto] sm:items-start">
                     <div className="min-w-0 space-y-1">
                       <button
                         type="button"
-                        onClick={() => setOpened(pass)}
-                        className="text-left font-mono text-base font-semibold underline-offset-2 hover:underline"
+                        onClick={() => card.open(pass.id)}
+                        aria-haspopup="dialog"
+                        title="Открыть карточку пропуска"
+                        className="open-card text-left font-mono text-base font-semibold underline-offset-2 outline-none after:absolute after:inset-0 after:content-[''] hover:underline"
                       >
                         {passTitle(pass)}
                       </button>
@@ -388,7 +386,7 @@ export function PassList({
                         <p className="text-xs text-muted-foreground">{pass.driverName}</p>
                       ) : null}
                     </div>
-                    <div className="flex flex-col items-start gap-2 sm:items-end">
+                    <div className="relative z-10 flex flex-col items-start gap-2 sm:items-end">
                       <PassStatus pass={pass} />
                       <Button
                         size="sm"
@@ -433,7 +431,7 @@ export function PassList({
           </Button>
         </div>
       ) : null}
-      <PassDetails pass={opened} onClose={() => setOpened(null)} />
+      <PassCardHost />
       <CancelPassDialog pass={cancelling} onClose={() => setCancelling(null)} />
       {admin && editing ? (
         // правка чужого пропуска: форма и справочники — этого арендатора, а не «всего объекта»

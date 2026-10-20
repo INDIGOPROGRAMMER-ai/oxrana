@@ -6,8 +6,11 @@ import { RequireSite } from '../components/common';
 import { useMe } from '../lib/data';
 
 export const Route = createFileRoute('/admin/passes')({
-  validateSearch: (search: Record<string, unknown>): { view?: PassesView } =>
-    search.view === 'inside' ? { view: 'inside' } : {},
+  // `pass` — открытая карточка пропуска (ссылку можно отправить)
+  validateSearch: (search: Record<string, unknown>): { view?: PassesView; pass?: string } => ({
+    ...(search.view === 'inside' ? { view: 'inside' as const } : {}),
+    ...(typeof search.pass === 'string' ? { pass: search.pass } : {}),
+  }),
   component: PassesPage,
 });
 

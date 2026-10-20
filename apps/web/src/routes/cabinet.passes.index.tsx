@@ -13,7 +13,7 @@ export const Route = createFileRoute('/cabinet/passes/')({
     (PASS_STATUSES as readonly string[]).includes(search.status)
       ? { status: search.status as PassStatus }
       : {}),
-    // пропуск, который открыло уведомление (колокольчик)
+    // открытая карточка пропуска (в том числе из уведомления в колокольчике)
     ...(typeof search.pass === 'string' ? { pass: search.pass } : {}),
   }),
   component: PassesPage,
@@ -22,7 +22,7 @@ export const Route = createFileRoute('/cabinet/passes/')({
 const CREATE = ['pass.create.single', 'pass.create.multi', 'pass.create.permanent'] as const;
 
 function PassesPage() {
-  const { status, pass } = Route.useSearch();
+  const { status } = Route.useSearch();
   const { can } = useMe();
   const { passForm } = useCabinet();
   const canCreate = CREATE.some((p) => can(p));
@@ -45,7 +45,7 @@ function PassesPage() {
           ) : undefined
         }
       />
-      <PassList key={status ?? 'all'} initialStatus={status} openId={pass} />
+      <PassList key={status ?? 'all'} initialStatus={status} />
     </div>
   );
 }

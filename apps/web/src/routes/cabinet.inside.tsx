@@ -5,8 +5,11 @@ import { InsideList } from '../components/inside-list';
 
 export const Route = createFileRoute('/cabinet/inside')({
   // лимит, на виджет которого нажали: список показывает ровно те визиты, что считает виджет
-  validateSearch: (search: Record<string, unknown>): { quota?: string } =>
-    typeof search.quota === 'string' ? { quota: search.quota } : {},
+  validateSearch: (search: Record<string, unknown>): { quota?: string; pass?: string } => ({
+    ...(typeof search.quota === 'string' ? { quota: search.quota } : {}),
+    // открытая карточка пропуска
+    ...(typeof search.pass === 'string' ? { pass: search.pass } : {}),
+  }),
   component: InsidePage,
 });
 
